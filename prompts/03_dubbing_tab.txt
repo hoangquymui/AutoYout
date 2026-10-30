@@ -1,0 +1,161 @@
+PROMPT PHASE 3 — TAB "GIỌNG ĐỌC" → "LỒNG TIẾNG" (TTS theo cue SRT)
+
+Repo: D:\mui\f375\AutoYout. Đọc prompts/00_context.txt trước.
+Phụ thuộc: Phase 2 đã tạo core/subtitles.py (Cue, parse_srt, parse_vtt, write_srt,
+text_to_cues, cues_to_text). Nếu chưa có, tạo module đó trước theo đúng chữ ký trong
+prompts/02_script_tab.txt phần A.
+
+MỤC TIÊU
+Lấy cảm hứng từ app lồng tiếng tham khảo: bảng cue (Id/Timing/Content/Voice/Status),
+chạy hàng loạt, ghép MP3 + xuất SRT — nhưng tích hợp vào pipeline AutoYout. Tab hiện tại
+(ui/tab_tts.py) chỉ đọc cả file text; tab mới hỗ trợ thêm chế độ theo phụ đề.
+
+PHẦN A — dữ liệu cue (core/dubbing.py, file mới)
+  @dataclass CueJob:
+    id: int
+    start: float
+    end: float
+    text: str
+    voice: str = ""          # "" = dùng giọng mặc định
+    status: str = "PENDING"  # PENDING | PROCESSING | DONE | ERROR
+    out: str = ""            # đường dẫn mp3 tương đối trong project (hoặc tuyệt đối)
+    error: str = ""
+    text_hash: str = ""      # sha256(text + "|" + voice) để biết khi nào cần render lại
+
+  cues_path(manager, base) -> Path          # manager.audio_dir / f"{base}.cues.json"
+  load_cues(manager, base) -> List[CueJob]  # đọc json, thiếu/hỏng → []
+  save_cues(manager, base, cues)            # write_json_atomic, to_state/from_state
+  import_srt(manager, srt_path) -> str      # trả base
+    * base = stem đã qua safe_filename
+    * nếu input/<base>.txt chưa có → ghi cues_to_text(cues) vào input/<base>.txt
+    * nếu input/<base>.json chưa có → ghi {"title": <stem>, "language": "vi"}
+    * save_cues(...); set item dub_mode="srt"; manager.scan()
+  import_txt(manager, txt_path, max_chars=350) -> str
+    * dựng cue bằng subtitles.text_to_cues, chia đều timing theo độ dài ký tự
+  split_long_cues(cues, max_chars) -> List[CueJob]
+    * cue text > max_chars → tách theo split_for_tts(); chia duration theo tỉ lệ ký tự
+  merge_short_cues(cues, min_chars=25, max_gap=0.4) -> List[CueJob]
+    * gộp cue ngắn với cue kế nếu khoảng hở <= max_gap; cộng duration
+
+  ProjectItem (core/project_manager.py):
+    - thêm field dub_mode: str = "text", cues_path: Optional[Path] = None
+    - to_state() lưu "dub_mode"; scan() đọc lại previous["dub_mode"] (mặc định "text")
+    - delete_project_outputs(audio=True): xoá thư mục audio/cues/<base>/ và reset mọi
+      cue.status="PENDING", nhưng GIỮ cues json
+    - state reconciliation giữ nguyên: audio chính không có → item PENDING
+
+PHẦN B — engine tổng hợp theo cue
+  core/dubbing.py class DubbingEngine:
+    __init__(settings)  # đọc config dubbing + tts
+    synthesize_item(manager, item, cues, progress_cb=None, message_cb=None,
+                    pause_cb=None, cancel_cb=None) -> float  # trả tổng duration
+      * language = item.language (vi → TTSEngine, khác → EdgeTTSEngine, dùng đúng cách
+        pipeline_worker đang chọn engine)
+      * tạo 1 engine/instance và dùng lại cho mọi cue trong item (H2MTTS nạp model 1 lần)
+      * out_dir = manager.audio_dir / "cues" / item.base; mỗi cue 1 file 0001.mp3...
+      * bỏ qua cue DONE khi text_hash không đổi và file tồn tại
+      * retry mỗi cue tối đa settings.dubbing.retries_per_cue (mặc định 1)
+      * cập nhật cue.status + save_cues định kỳ (sau mỗi cue) để resume sau crash
+      * progress_cb(percent) theo số cue hoàn thành; pause_cb gọi giữa các cue
+      * edge-tts: chạy song song tối đa 3 cue bằng ThreadPoolExecutor, H2MTTS chạy tuần tự
+    join_item(manager, item, cues, mode, gap=0.15) -> (Path mp3, Path srt, float dur)
+      mode = "timeline" | "natural"
+
+  THUẬT TOÁN (viết hàm thuần, dễ test):
+    fit_plan(audio_dur, slot_dur, max_tempo=1.30) -> dict
+      * slot_dur <= 0: return {"tempo": 1.0, "pad": 0.0, "trim": 0.0, "natural": True}
+      * audio <= slot: {"tempo": 1.0, "pad": slot-audio, "trim": 0.0}
+      * slot < audio <= slot*max_tempo: {"tempo": audio/slot, "pad": 0.0, "trim": 0.0}
+      * audio > slot*max_tempo: {"tempo": max_tempo, "pad": 0.0,
+        "trim": audio/max_tempo - slot}
+    timeline mode:
+      * cursor=0; với từng cue theo thứ tự: nếu cue.start > cursor → chèn silence
+        (cue.start - cursor); render cue với atempo/pad/trim để dài ĐÚNG slot
+        (có thể pad thêm cho bằng slot nếu audio ngắn); cursor = cue.start + slot
+      * nối bằng ffmpeg concat demuxer (sinh file silence 16-bit PCM tạm, cache theo ms)
+        và encode libmp3lame; SRT xuất = timing gốc
+    natural mode:
+      * nối cue liên tiếp, chèn gap (settings.dubbing.gap) giữa các cue
+      * đo duration thật từng file bằng utils.media_probe.probe_duration
+      * SRT xuất = start/end tích luỹ mới
+    Kết quả ghi vào audio/<base>.mp3 và audio/<base>.srt (đè file cũ, atomic copy).
+    Dùng ffmpeg qua FFmpegRenderer(self.settings).ffmpeg (đã resolve path).
+
+PHẦN C — UI: ui/tab_dubbing.py (thay ui/tab_tts.py)
+  Class DubbingTab(QWidget) — THAY THẾ TTSConfigTab. BẮT BUỘC giữ nguyên public API mà
+  main_window đang dùng: busy_changed, engine_reload_requested, set_engine(),
+  set_busy(), preview_running(), cancel_preview(), load_from(), apply_to(),
+  apply_theme(). Thêm set_project(manager).
+  Signal mới: reload_requested = Signal() (sau import/sửa để tab Dự án refresh),
+             busy_changed dùng chung cho trạng thái chạy.
+
+  Cấu trúc:
+  1) GroupBox "Engine && giọng mặc định" — tái sử dụng NGUYÊN phần engine/voice/nghe thử
+     của tab_tts.py: thư mục H2MTTS, model turbo/nano, backend, ngôn ngữ, vùng miền,
+     giọng, tốc độ, gap câu/đoạn, max chars, bitrate, preview. Không viết lại.
+  2) Toolbar hàng 1: "Start"/"Stop" (chạy lồng tiếng cho các cue chưa DONE),
+     "Import SRT", "Import Folder" (glob "*.srt" + "*.txt" trong thư mục chọn),
+     "Open Output", "Join MP3 && Xuất SRT".
+  3) Toolbar hàng 2: checkbox "Auto Split" (+ spin max chars), "Gộp cue ngắn",
+     combo "Chế độ ghép" (Giữ timing gốc / Timing tự nhiên), spin gap, label
+     "N cue · Done X · Lỗi Y · Tổng thời lượng".
+  4) QTableWidget 6 cột: Id, Timing ("00:00:01,000 → 00:00:04,500"), Content (edit
+     được), Voice (QComboBox trong cell hoặc menu chuột phải "Gán giọng"), Status
+     (màu như theme.STATE_COLORS), Output (tên file).
+     - double-click cell Content → sửa; Enter/blur → cập nhật cues + hash + status PENDING
+     - click 1 dòng → AudioPreview phát mp3 cue đó (nếu có)
+     - chuột phải: "Phát cue", "Chạy lại cue này", "Gán giọng cho cue đang chọn",
+       "Gán giọng cho tất cả", "Xoá cue"
+  5) Thanh tiến trình + status label (paint_status).
+  DubbingWorker(QThread): gọi DubbingEngine.synthesize_item, signal progress(int,str),
+  done(bool,str), per-cue updated(id,status). Huỷ/pause như PipelineWorker.
+
+  ui/main_window.py:
+    - thay `from ui.tab_tts import TTSConfigTab` bằng DubbingTab; tab label
+      "Lồng tiếng", icon "mic" (giữ thứ tự tab)
+    - _reload_project: dubbing_tab.set_project(self.manager)
+    - connect dubbing_tab.reload_requested -> _reload_project
+    - nút pipeline "1. Chạy TTS" đổi label "1. Lồng tiếng" (tooltip cập nhật)
+    - các chỗ gọi tts_tab.* giữ nguyên tên biến hoặc đổi đồng loạt — không sót tham chiếu
+      (grep "tts_tab" trước khi xong)
+
+PHẦN D — tích hợp pipeline (core/pipeline_worker.py)
+  _stage_tts():
+    - với mỗi item: nếu item.dub_mode == "srt" và load_cues() không rỗng →
+      DubbingEngine.synthesize_item + join_item(mode từ settings.dubbing.timing_mode)
+      rồi update item state TTS_DONE, duration, audio_mtime như nhánh cũ
+    - mapping progress: cue percent → khoảng tiến trình của item như hiện tại
+    - huỷ/pause hoạt động giữa các cue; lỗi 1 cue không làm chết cả item trừ khi
+      settings.app.stop_on_error
+    - item thường (dub_mode="text") chạy y như cũ, không đổi hành vi
+
+PHẦN E — settings
+  config/default_settings.json thêm khối "dubbing":
+    "timing_mode": "timeline",       # timeline | natural
+    "gap": 0.15, "auto_split": true, "max_chars": 350,
+    "merge_short": false, "retries_per_cue": 1,
+    "edge_parallel": 3, "voices_by_role": {}, "glob": "*.srt"
+
+TIÊU CHÍ NGHIỆM THU
+- Import 1 file .srt (200 cue) → bảng hiện đủ, tab Dự án có item tương ứng.
+- Start → từng cue chuyển PROCESSING → DONE, có mp3 riêng; dừng giữa chừng rồi Start
+  lại chỉ chạy cue chưa xong.
+- Join "Giữ timing gốc" → audio/<base>.mp3 dài xấp xỉ cue cuối + srt trùng timing gốc.
+- Join "Timing tự nhiên" → srt mới khớp duration thật, audio liền mạch, gap đúng.
+- Sửa text 1 cue → cue đó tự reset PENDING, chạy lại chỉ cue đó.
+- Pipeline "CHẠY TOÀN BỘ" với item SRT: lồng tiếng xong → video burn đúng phụ đề.
+- App không treo khi 200 cue; huỷ giữa chừng an toàn.
+
+KIỂM THỬ (tests/)
+- test_dubbing_cues.py: CueJob json roundtrip; split_long_cues chia duration đúng tổng;
+  merge_short_cues; import_srt tạo input/<base>.txt khi thiếu (tmp_path).
+- test_timing_fit.py: fit_plan (4 nhánh + slot<=0 + số âm), natural timings tích luỹ.
+- test_dubbing_join.py: @requires_ffmpeg — 3 cue giả (mp3 ngắn tạo bằng ffmpeg lavfi),
+  join timeline → duration gần bằng cue cuối; join natural → duration = tổng + gap.
+- test_pipeline_dubbing.py: item dub_mode="srt" + cues rỗng → rơi về nhánh text cũ
+  (mock engine), không crash.
+
+KHÔNG LÀM
+- Không đổi ffmpeg_renderer (trừ khi cần lộ helper resolve ffmpeg — đã có FFmpegRenderer).
+- Không thêm dependency (dùng ffmpeg CLI + probe_duration sẵn có).
+- Không xoá file cue đã render khi user chỉ sửa text khác cue (chỉ xoá đúng cue đó).

@@ -1,0 +1,12 @@
+{
+  "title": "AutoYout là gì? Giới thiệu bộ công cụ",
+  "description": "Video giới thiệu AutoYout: quy trình Text → TTS → Video → YouTube và khả năng chạy tiếp khi bị gián đoạn.",
+  "tags": ["AutoYout", "TTS tiếng Việt", "H2MTTS", "FFmpeg"],
+  "chapters": [
+    {"start": 0, "title": "Giới thiệu"},
+    {"start": 8, "title": "Ba bước của quy trình"},
+    {"start": 26, "title": "Lưu trạng thái project"}
+  ],
+  "thumbnail_path": "thumbnail.jpg",
+  "category_id": "28"
+}

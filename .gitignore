@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Runtime output
+logs/
+preview/
+
+# Local secrets and per-user settings
+config/user_settings.json
+config/youtube_credentials/
+
+# Belongs to an unrelated Electron project
+package.json

@@ -1,0 +1,93 @@
+PROMPT PHASE 1 — PROJECT SKELETON + TẠO PROJECT MỚI
+
+Dán prompt này cho agent đang mở repo D:\mui\f375\AutoYout (đọc prompts/00_context.txt
+nếu agent chưa có bối cảnh).
+
+MỤC TIÊU
+Người dùng chọn hoặc tạo project mới thì app tự phát hiện các thư mục cần thiết, tạo
+thư mục còn thiếu và hiển thị rõ trạng thái. Không đụng tới pipeline TTS/Video/Upload.
+
+CẤU TRÚC THƯ MỤC CHUẨN (8 thư mục trong project)
+  input/      kịch bản nguồn (.txt/.json)
+  script/     transcript gốc + bản dịch + .srt        (MỚI)
+  audio/      .mp3 + cue data + .srt
+  video/      .mp4
+  thumbs/     thumbnail 1280x720                       (MỚI)
+  assets/     ảnh nền, nhạc, template
+  downloads/  video nguồn tải về                       (MỚI - chuyển từ hard-code)
+  output/     gói xuất cuối                            (MỚI)
+
+VIỆC CẦN LÀM
+
+1) config/default_settings.json — thêm vào khối "project":
+   "script_dir": "script",
+   "thumbs_dir": "thumbs",
+   "output_dir": "output",
+   (giữ nguyên input_dir/audio_dir/video_dir/assets_dir; KHÔNG thêm downloads vì nó
+   đang được tab_input dùng qua project_dir/"downloads")
+
+2) core/project_manager.py
+   - __init__ nhận thêm script_dir=None, thumbs_dir=None, output_dir=None,
+     dùng self._resolve_dir() như các dir cũ (tự mkdir).
+   - Thêm downloads_dir = self._resolve_dir(None, "downloads").
+   - Thêm method ensure_structure() -> List[str]: trả về danh sách tên thư mục vừa
+     được tạo (chỉ những cái chưa tồn tại trước khi gọi), tạo đủ 8 thư mục trên.
+     Gọi ensure_structure() trong __init__ (sau khi resolve các dir).
+   - Thêm method folder_status() -> List[Dict]: mỗi phần tử
+     {"key": "input", "label": "INPUT", "path": str(path), "exists": bool}
+     cho đủ 8 thư mục, thứ tự cố định như bảng trên.
+   - save_state(): thêm paths.script/thumbs/output/downloads (giữ key cũ để
+     tương thích state đã có).
+   - Thêm @staticmethod create_project(parent_dir, name) -> Path:
+       * name đi qua utils.files.safe_filename(name, "project")
+       * target = Path(parent_dir) / safe_name; target.mkdir(parents=True, exist_ok=True)
+       * nếu target đã tồn tại VÀ có file bên trong (bất kỳ entry nào) →
+         raise ValueError("Thư mục đã tồn tại và không rỗng: <path>")
+       * khởi tạo ProjectManager(target) rồi gọi manager.save_state(), trả về target
+   - KHÔNG xoá/đổi tên dir cũ; project_state.json cũ vẫn đọc được.
+
+3) ui/tab_project.py
+   - Thêm 3 ô đường dẫn script/thumbs/output vào grid hiện có (đang 4 ô một hàng,
+     chuyển thành 2 hàng 4 cột hoặc 1 hàng 7 cột — chọn cách gọn, giữ style
+     _folder_field()).
+   - Cạnh nút "Chọn Project" thêm nút "Tạo Project mới" (icon "plus"):
+       * Hỏi thư mục cha bằng QFileDialog.getExistingDirectory
+       * Hỏi tên bằng QInputDialog.getText
+       * Gọi ProjectManager.create_project(); lỗi ValueError hiện QMessageBox.warning
+       * Thành công: set_project(path) + emit reload_requested
+   - Thêm QGroupBox "Cấu trúc thư mục" (đặt dưới khối "Thư mục dự án"):
+       * Mỗi thư mục 1 dòng: icon ✓ (theme.SUCCESS) hoặc ✗ (theme.DANGER), tên,
+         đường dẫn (elide), nút nhỏ mở bằng QDesktopServices
+       * Nút "Tạo thư mục thiếu" gọi manager.ensure_structure(), log số thư mục đã tạo
+         qua logger, rồi reload_requested
+       * Khi manager is None: hiển thị placeholder "Chưa chọn project."
+   - load_from/apply_to: đọc/ghi thêm 3 key mới.
+   - Phương thức refresh_structure() public để MainWindow gọi sau khi reload.
+
+4) ui/main_window.py — BẮT BUỘC sửa 2 chỗ, nếu không sẽ reload loop:
+   - _reload_project(): truyền script_dir/thumbs_dir/output_dir từ settings vào
+     ProjectManager(...).
+   - _manager_matches_settings(): so sánh thêm 3 dir mới (dùng đúng logic resolve
+     tương đối như input/audio/video).
+   - Sau khi manager mới: gọi self.project_tab.refresh_structure().
+   - (Tùy chọn) logger.info khi ensure_structure tạo thư mục mới.
+
+5) tests/test_project_structure.py (mới)
+   - ProjectManager(tmp_path) tự tạo đủ 8 thư mục; folder_status() trả 8 dòng exists=True.
+   - Đường dẫn tương đối tuỳ biến (script_dir="work/script") resolve đúng trong project.
+   - create_project(tmp_path, "Kênh Truyện 01") tạo folder + project_state.json;
+     gọi lần 2 khi folder đã có file → ValueError.
+   - ensure_structure() idempotent: gọi lần 2 trả list rỗng.
+   - ProjectManager mở lại từ state cũ (không có 3 key mới) không lỗi, dùng default.
+
+TIÊU CHÍ NGHIỆM THU
+- Chọn 1 thư mục trống làm project → 8 thư mục xuất hiện, checklist toàn ✓.
+- Xoá tay thư mục thumbs/ → bấm "Tạo thư mục thiếu" → được tạo lại, checklist cập nhật.
+- Tạo project mới ở thư mục cha bất kỳ → project mở ngay, không cần khởi động lại app.
+- Bấm "Áp dụng & quét lại" nhiều lần không bị reload vô hạn.
+- python -m pytest -q pass toàn bộ (test cũ + mới).
+
+KHÔNG LÀM
+- Không sửa pipeline_worker, tab_input, tab_tts, tab_video, tab_youtube.
+- Không di chuyển file đang có của project cũ.
+- Không thêm dependency.

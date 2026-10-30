@@ -1,0 +1,3 @@
+Chọn thư mục project, đặt các file văn bản vào thư mục input. Mỗi file txt có thể đi kèm một file json cùng tên để mô tả tiêu đề, mô tả, thẻ và ảnh thu nhỏ.
+
+Sau khi quét dữ liệu, bấm nút Chạy TTS để tạo âm thanh, rồi bấm Tạo Video để ghép thành phẩm. Nếu muốn làm tất cả trong một lần, dùng nút Chạy toàn bộ pipeline.

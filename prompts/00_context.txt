@@ -1,0 +1,93 @@
+PROMPT 00 — BỐI CẢNH CHUNG (đọc trước mọi phase)
+
+Bạn đang làm việc trong repo AutoYout tại: D:\mui\f375\AutoYout
+Hệ điều hành: Windows (win32), shell Git Bash. KHÔNG phải git repo, không commit.
+Ngôn ngữ giao tiếp với người dùng: tiếng Việt. Message lỗi trong app: tiếng Việt.
+
+=== APP LÀ GÌ ===
+AutoYout là app desktop Python 3.11 + PySide6, pipeline:
+  Input (YouTube/web/media → .txt) → TTS (H2MTTS cho tiếng Việt, edge-tts cho ngôn ngữ khác)
+  → Video (FFmpeg: ảnh/video nền + audio + phụ đề) → Upload YouTube (OAuth2 hoặc Playwright).
+Quản lý theo "project folder": mỗi project có input/, audio/, video/, assets/ và file
+project_state.json (lưu trạng thái từng item + video job).
+
+Mục tiêu nâng cấp (đang triển khai theo 4 phase):
+  1. Project skeleton: tự tạo đủ thư mục (input, script, audio, video, thumbs, assets,
+     downloads, output) + nút "Tạo Project mới".
+  2. Tab Kịch bản: YouTube URL → transcript có timestamp → Gemini chuyển thể đa ngôn ngữ
+     → nhiều file input (_en, _es...).
+  3. Tab Giọng đọc đổi thành Lồng tiếng: bảng cue SRT (Id/Timing/Content/Voice/Status),
+     TTS từng cue, Join MP3 + xuất SRT.
+  4. Tab YouTube tách thành 2 sub-tab: "Đăng tải" (giữ nguyên) và "Hình thu nhỏ"
+     (gợi ý tiêu đề, prompt tạo ảnh, template thumbnail 1280x720).
+
+=== CẤU TRÚC CODE ===
+main.py                      entry point (QApplication + MainWindow)
+core/settings.py             load_settings() / save_settings() / get_setting / set_setting
+core/project_manager.py      ProjectManager, ProjectItem, VideoJob, normalize_metadata,
+                             scan(), các state ITEM_*
+core/input_pipeline.py       download_youtube(), transcribe_media(), fetch_web_text(),
+                             polish_text() (Gemini), youtube_to_text(), web_to_text()
+core/tts_engine.py           TTSEngine (H2MTTS, synthesize(text, out_path, progress_cb,
+                             message_cb, pause_cb, cancel_cb) → result.duration/chunks)
+core/edge_tts_engine.py      EdgeTTSEngine (synthesize(text, out_path, language=...))
+core/text_processor.py       normalize_text(), split_sentences(), chunk_text(),
+                             split_for_tts(text, max_chars), join_scripts()
+core/ffmpeg_renderer.py      FFmpegRenderer (resolve ffmpeg/ffprobe, render_all,
+                             VideoConfig, _write_srt, _srt_timestamp)
+core/ai_images.py            ImagenProvider (Google Imagen qua Gemini API), ensure_images()
+core/pipeline_worker.py      PipelineWorker(QThread): stage "tts" / "video" / "upload" / "all"
+core/youtube_uploader.py     YouTubeUploader, YouTubeConfig, OAuth + browser automation
+core/languages.py            LANGUAGES, language_choices(), normalize_language(),
+                             detect_suffix_language() (nhận "_en"/"_es"...), edge_voice(),
+                             subtitle_font(), youtube_language()
+ui/main_window.py            MainWindow: tabs + panel pipeline + theme
+ui/tab_project.py            ProjectTab (thư mục, bảng file, takes, ngôn ngữ)
+ui/tab_input.py              InputTab (YouTube/web/media → txt), InputWorker(QThread)
+ui/tab_tts.py                TTSConfigTab (engine, giọng, nghe thử) — sẽ thành DubbingTab
+ui/tab_video.py              VideoConfigTab
+ui/tab_youtube.py            YouTubeConfigTab (kênh, lịch, metadata, thumbnail path)
+ui/components/page.py        PageHeader, wrap_scroll, icon_button, section_label,
+                             paint_status(label, level), refresh_statuses(root)
+ui/components/audio_player.py  AudioPreview (set_file/play/apply_theme)
+ui/components/icons.py       icon(name, role, size), set_icon(), registry gồm:
+                             folder, folder-open, download, mic, film, youtube, image,
+                             file, list, play, stop, pause, refresh, plus, trash, key,
+                             globe, clock, check, check-circle, x, zap, waveform, ...
+ui/theme.py                  theme.ACCENT/TEXT/TEXT_DIM/TEXT_MUTED/SUCCESS/WARNING/
+                             DANGER/BLUE, theme.STATE_COLORS, set_mode(), current_mode()
+utils/files.py               write_json_atomic, load_json, ensure_dir, safe_filename,
+                             unique_path, natural_sorted, read_text_smart
+utils/media_probe.py         probe_duration(path), format_duration(sec), resolve_tool
+utils/logger.py              get_logger(name)
+config/default_settings.json settings mặc định (deep-merge với config/user_settings.json)
+
+=== QUY ƯỚC BẮT BUỘC ===
+- core/*.py KHÔNG import Qt (phải chạy được headless / từ CLI / trong QThread).
+- ui/*.py chỉ dựng giao diện + gọi core; tác vụ nặng chạy trong QThread, giao tiếp
+  qua Signal, worker KHÔNG chạm widget.
+- Ghi file state bằng utils.files.write_json_atomic, đọc bằng load_json.
+- Không thêm dependency mới nếu thư viện đã có trong requirements.txt
+  (PySide6, Pillow, pydub, edge-tts, yt-dlp, faster-whisper, google-api, playwright,
+  numpy, soundfile). KHÔNG sửa package.json (file của app Electron khác, không liên quan).
+- Comment ngắn, chỉ khi lý do không hiển nhiên. Không viết docstring dài, không tạo file
+  tài liệu .md. Không refactor ngoài phạm vi task.
+- Mọi hàm public mới đặt tên tiếng Anh; label/hint UI tiếng Việt.
+- Khi lỗi mạng/API: raise exception với message tiếng Việt rõ ràng, không nuốt lỗi.
+
+=== CHẠY & KIỂM THỬ ===
+  python main.py                 # chạy app (GUI)
+  python -m pytest -q            # chạy toàn bộ test
+  python -m pytest tests/test_xxx.py -q
+tests/conftest.py tự set QT_QPA_PLATFORM=offscreen và cung cấp marker
+`requires_ffmpeg` (bỏ qua test nếu ffmpeg không có trong PATH).
+Trước khi báo hoàn thành: chạy toàn bộ pytest, không được để test cũ fail.
+
+=== LUỒNG DỮ LIỆU QUAN TRỌNG ===
+- ProjectManager.scan() chỉ nhận file .txt/.json trong input/ và ghép theo stem
+  (name.txt + name.json). Ngôn ngữ item lấy theo thứ tự: metadata > hậu tố tên file
+  (_en, _es) > ngôn ngữ mặc định của project.
+- PipelineWorker._stage_tts() tách item theo ngôn ngữ: vi → TTSEngine, khác → EdgeTTSEngine.
+- normalize_metadata() đọc "thumbnail_path" trong JSON item; đường dẫn tương đối được
+  resolve theo thư mục chứa JSON rồi fallback assets/. Uploader dùng metadata này.
+- Naming output chuẩn: input/<base>.txt, audio/<base>.mp3, video/<base>.mp4.

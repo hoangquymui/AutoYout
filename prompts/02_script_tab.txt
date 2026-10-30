@@ -1,0 +1,152 @@
+PROMPT PHASE 2 — TAB "KỊCH BẢN" (YouTube → transcript → chuyển thể đa ngôn ngữ)
+
+Repo: D:\mui\f375\AutoYout. Đọc prompts/00_context.txt để nắm bối cảnh/quy ước.
+Phụ thuộc: Phase 1 (thư mục project.script_dir) — nếu chưa làm, dùng Path(project)/"script"
+với mkdir(parents=True, exist_ok=True) tạm thời.
+
+MỤC TIÊU
+Người dùng dán link YouTube → lấy transcript có timestamp (ưu tiên phụ đề có sẵn của
+YouTube, fallback Whisper) → sửa → nhờ Gemini chuyển thể sang nhiều ngôn ngữ → lưu thành
+nhiều file input để pipeline cũ chạy tiếp. Ngôn ngữ đích ghi bằng hậu tố tên file
+(_en, _es...) để core/languages.detect_suffix_language() tự nhận.
+
+PHẦN A — core/subtitles.py (file mới, dùng chung cho Phase 3)
+  @dataclass Cue: index:int, start:float, end:float, text:str
+  format_timestamp(seconds, sep=",") -> "HH:MM:SS,mmm"     (SRT)
+  parse_timestamp(text) -> float                            (nhận cả "," và ".")
+  parse_srt(text: str) -> List[Cue]
+    - chịu được BOM, CRLF, block thiếu index, text nhiều dòng, dòng rác
+    - bỏ cue rỗng; end < start thì đảo; lỗi từng block thì skip + log warning
+  parse_vtt(text: str) -> List[Cue]
+    - bỏ header WEBVTT, NOTE, STYLE; timestamp dạng "00:00:01.000 --> 00:00:04.500"
+      và dạng ngắn "00:01.000"; bỏ phần cue settings sau timestamp
+    - gộp cue trùng thời gian liên tiếp (YouTube auto-sub hay lặp dòng)
+  write_srt(cues: List[Cue], path) -> Path  (atomic: ghi file .tmp rồi os.replace)
+  cues_to_text(cues) -> str   # nối text thành đoạn văn, giữ xuống dòng giữa cue
+  text_to_cues(text, total_seconds=0.0) -> List[Cue]
+    # chia theo đoạn/câu bằng core/text_processor.split_sentences + split_for_tts,
+    # timing chia đều theo độ dài ký tự (dùng khi import TXT không có timestamp)
+
+PHẦN B — core/ai_client.py (file mới) + refactor
+  - Chuyển phần gọi Gemini thành 1 chỗ:
+      gemini_generate(prompt: str, api_key: str, model: str = "gemini-2.0-flash",
+                      timeout: float = 120.0, temperature: float = 0.4) -> str
+    (urllib, header x-goog-api-key, endpoint giống core/input_pipeline.py)
+  - core/input_pipeline.polish_text() gọi lại gemini_generate (giữ nguyên chữ ký public,
+    giữ test cũ pass). core/ai_images._post_json giữ nguyên (khác endpoint predict).
+  - Thêm build_translate_prompt(text, source_lang, target_lang, style="") -> str:
+      System kiểu: "Bạn là biên kịch kể chuyện chuyên nghiệp. Chuyển thể văn bản sang
+      {target}, giữ nguyên toàn bộ sự kiện/chi tiết, KHÔNG thêm/bớt/diễn giải. Viết
+      thành lời kể tự nhiên để đọc thành tiếng: câu ngắn 8-20 từ, không emoji, không
+      markdown, không ghi chú, số nhỏ viết bằng chữ. Chỉ trả về bản dịch."
+      + nếu style có nội dung thì chèn thêm yêu cầu phong cách.
+  - translate_text(text, api_key, model, source_lang, target_lang,
+                   style="", generate_fn=None, progress_cb=None, cancel_cb=None) -> str
+      * chia đoạn theo ranh giới paragraph, gom tới <= 6000 ký tự mỗi lần gọi
+      * gọi tuần tự, retry tối đa 2 lần (backoff 1.5s), progress_cb(done_chunks,total)
+      * generate_fn cho phép inject khi test (mặc định = gemini_generate)
+
+PHẦN C — core/input_pipeline.py bổ sung
+  fetch_youtube_info(url) -> dict          # yt_dlp extract_info(download=False, noplaylist)
+      trả {title, video_id, duration, has_manual_subs, has_auto_subs, sub_langs}
+  download_youtube_subtitles(url, dest_dir, languages: List[str]) -> Optional[Path]
+      # yt-dlp: skip_download=True, writesubtitles=True, writeautomaticsub=True,
+      # subtitleslangs=languages or ["vi","en"], subtitlesformat="vtt/srt/best"
+      # trả path .vtt/.srt đầu tiên tìm thấy (tên chứa video id) hoặc None
+  transcribe_segments(media_path, language, model_size="small",
+                      progress_cb=None, cancel_cb=None) -> Tuple[List[Cue], str]
+      # refactor từ transcribe_media: giữ nguyên logic WhisperModel + vad_filter,
+      # trả cues (start/end/text) và detected_language.
+      # transcribe_media() GIỮ NGUYÊN chữ ký + hành vi cũ, gọi transcribe_segments rồi
+      # ghép đoạn như hiện tại (tests/test_input_pipeline.py phải pass không sửa).
+  get_youtube_transcript(url, dest_dir, language="vi", prefer_youtube_subs=True,
+                         model_size="small", keep_video=True,
+                         progress_cb=None, cancel_cb=None) -> Tuple[List[Cue], dict]
+      * nếu prefer_youtube_subs: thử download_youtube_subtitles → parse_vtt/parse_srt
+      * nếu không có / người dùng tắt: download_youtube + transcribe_segments
+      * meta = {title, video_id, duration, source_language, origin: "youtube"|"whisper",
+                url}
+      * progress: 0-15 tải info/sub, 15-90 (whisper) hoặc 15-100 (subs), 100 xong
+
+PHẦN D — ui/tab_script.py (file mới) + nối MainWindow
+  Class ScriptTab(QWidget), signals:
+    busy_changed = Signal(bool)
+    reload_requested = Signal()          # sau khi lưu file vào input/
+  API bắt buộc (giống InputTab): load_from(settings), apply_to(settings),
+    set_project(manager), busy() -> bool, stop_and_wait(timeout_ms=15000).
+  ScriptWorker(QThread) dùng get_youtube_transcript + translate_text, signal:
+    progress(int, str), transcript_ready(list, dict), translated(str, str, str),
+    failed(str), finished()
+    - cancel qua threading.Event; worker không chạm widget.
+
+  Bố cục (wrap_scroll + PageHeader "Kịch bản", subtitle mô tả):
+  1) GroupBox "Nguồn YouTube"
+     - QLineEdit URL (placeholder "Dán link video YouTube…")
+     - combo Ngôn ngữ nguồn (language_choices), checkbox "Ưu tiên phụ đề có sẵn của
+       YouTube" (mặc định bật), combo model Whisper (dùng lại danh sách _MODELS của
+       tab_input), checkbox "Giữ video sau khi nhận dạng", QLineEdit API key Gemini
+       (EchoMode.Password, dùng chung key với tab Video nếu trống)
+     - Nút "Lấy transcript" (primaryButton, icon "download"), nút "Huỷ"
+     - progress bar + label status (paint_status)
+  2) GroupBox "Transcript"
+     - QTableWidget 3 cột: ID (#), Time ("00:00:01,000 → 00:00:04,500"), Text (edit được)
+     - toolbar: "Xoá cue đang chọn", "Gộp cue liền kề" (nối text 2 cue đang chọn),
+       "Lưu SRT" (ghi script/<base>.srt), label "N cue · X ký tự"
+     - QPlainTextEdit "Sửa toàn văn" ẩn/hiện bằng checkbox; khi sửa toàn văn rồi
+       chuyển ngược thì dùng text_to_cues() để dựng lại timing
+  3) GroupBox "Chuyển thể ngôn ngữ"
+     - grid checkbox cho language_choices() (mặc định bỏ chọn "vi")
+     - QPlainTextEdit prompt template (mặc định để trống = dùng prompt chuẩn; nếu có
+       nội dung thì nối thêm vào build_translate_prompt như phần style)
+     - Nút "Chuyển thể" (icon "globe" / "zap")
+     - QTableWidget kết quả: Ngôn ngữ | Trạng thái | File | nút "Lưu vào input"
+     - Nút "Lưu tất cả vào INPUT"
+  Hành vi lưu:
+    * script/<base>.json  {"title","url","video_id","source_language","origin",
+      "segments":[{start,end,text}], "updated_at"}
+    * script/<base>.srt   từ cues
+    * input/<base>_<lang>.txt  (base = safe_filename(title) hoặc video_id;
+      dùng utils.files.unique_text_path nếu trùng)
+    * input/<base>_<lang>.json {"title": <title> gốc + " [<LANG>]", "language": lang,
+      "url": url}
+    * sau khi lưu xong emit reload_requested (MainWindow sẽ scan lại project)
+
+  ui/main_window.py:
+    - import ScriptTab; thêm tab "Kịch bản" giữa "Nhập liệu" và "Giọng đọc",
+      icon "file", tooltip giải thích
+    - _load_settings_into_tabs / _collect_all: thêm load_from/apply_to
+    - _reload_project: script_tab.set_project(self.manager)
+    - connect: script_tab.busy_changed -> self._on_input_busy;
+      script_tab.reload_requested -> self._reload_project
+    - closeEvent: nếu script_tab.busy() → hỏi như input_tab rồi stop_and_wait
+    - _update_tab_icons: thêm "file" vào tuple icon theo thứ tự tab
+
+PHẦN E — settings
+  config/default_settings.json thêm khối "script":
+    "api_key": "", "model": "gemini-2.0-flash", "prefer_youtube_subs": true,
+    "whisper_model": "small", "keep_video": true, "source_language": "vi",
+    "target_languages": ["en"], "prompt_template": ""
+
+TIÊU CHÍ NGHIỆM THU
+- Dán link có phụ đề → transcript hiện trong <10s (không tải video); dán link không có
+  phụ đề → tự chuyển Whisper và báo tiến trình rõ.
+- Sửa text 1 cue trong bảng → lưu SRT phản ánh đúng thay đổi.
+- Chọn 3 ngôn ngữ + Chuyển thể → 3 file input/<base>_xx.txt xuất hiện; tab Dự án quét
+  lại thấy 3 item với ngôn ngữ đúng (VI/EN/ES...).
+- Huỷ giữa chừng không treo app; đóng app khi đang chạy có cảnh báo.
+- Không có API key Gemini: nút Chuyển thể báo lỗi tiếng Việt rõ, không crash.
+
+KIỂM THỬ (tests/)
+- test_subtitles.py: parse_srt (BOM/CRLF/multiline/end<start), parse_vtt (header,
+  cue settings, timestamp ngắn, gộp dòng lặp), write_srt roundtrip, text_to_cues timing
+  không âm và tăng dần.
+- test_translate.py: build_translate_prompt chứa tên ngôn ngữ đích; translate_text với
+  generate_fn giả (echo) chia đúng số chunk khi text > 6000 ký tự và giữ "\n\n";
+  retry khi generate_fn raise 1 lần rồi thành công.
+- test_input_segments.py: transcribe_segments tồn tại + helper dựng cue từ segment giả
+  (không cần cài whisper/không gọi mạng).
+
+KHÔNG LÀM
+- Không đổi hành vi transcribe_media/youtube_to_text hiện có.
+- Không thêm dependency mới (dùng urllib, yt-dlp sẵn có).
+- Không gọi API thật trong test.

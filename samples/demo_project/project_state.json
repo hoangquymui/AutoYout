@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "items": {
+    "tap_01": {
+      "base": "tap_01",
+      "text_file": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\input\\tap_01.txt",
+      "json_file": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\input\\tap_01.json",
+      "text_hash": "0102fe4a2e47a0afd171049fcc313757b6acacd062fa3ec15aa5ccf2d3a380ab",
+      "audio_path": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\audio\\tap_01.mp3",
+      "duration": 23.8,
+      "audio_mtime": 1793173686.959427,
+      "state": "VIDEO_DONE",
+      "error": "",
+      "video_id": "one::tap_01",
+      "metadata_error": "",
+      "updated_at": "2026-10-29T08:53:32"
+    },
+    "tap_02": {
+      "base": "tap_02",
+      "text_file": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\input\\tap_02.txt",
+      "json_file": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\input\\tap_02.json",
+      "text_hash": "c1be30a068cbb1374aaa17c139a151dbe8a1dbe6d28b605aa38654bfb1e907fb",
+      "audio_path": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\audio\\tap_02.mp3",
+      "duration": 18.3,
+      "audio_mtime": 1793173692.7325778,
+      "state": "VIDEO_DONE",
+      "error": "",
+      "video_id": "one::tap_02",
+      "metadata_error": "",
+      "updated_at": "2026-10-29T08:53:35"
+    },
+    "tap_10": {
+      "base": "tap_10",
+      "text_file": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\input\\tap_10.txt",
+      "json_file": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\input\\tap_10.json",
+      "text_hash": "f895e57b87b668e913e4e6f4c4cefdc1c1c6819043c2f25a2e919a122e992c5f",
+      "audio_path": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\audio\\tap_10.mp3",
+      "duration": 13.74,
+      "audio_mtime": 1793173696.7249978,
+      "state": "VIDEO_DONE",
+      "error": "",
+      "video_id": "one::tap_10",
+      "metadata_error": "",
+      "updated_at": "2026-10-29T08:53:38"
+    }
+  },
+  "videos": {
+    "one::tap_01": {
+      "id": "one::tap_01",
+      "path": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\video\\tap_01.mp4",
+      "items": [
+        "tap_01"
+      ],
+      "title": "AutoYout là gì? Giới thiệu bộ công cụ",
+      "state": "VIDEO_DONE",
+      "duration": 23.8,
+      "timestamps": [
+        [
+          0.0,
+          "Giới thiệu"
+        ],
+        [
+          8.0,
+          "Ba bước của quy trình"
+        ],
+        [
+          23.8,
+          "Lưu trạng thái project"
+        ]
+      ],
+      "timestamps_text": "0:00 Giới thiệu\n0:08 Ba bước của quy trình\n0:23 Lưu trạng thái project",
+      "error": "",
+      "youtube_video_id": "",
+      "youtube_url": "",
+      "scheduled_at": "",
+      "rendered_at": "2026-10-29T08:53:32",
+      "uploaded_at": "",
+      "audio_mtime": 1793173686.959427
+    },
+    "one::tap_02": {
+      "id": "one::tap_02",
+      "path": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\video\\tap_02.mp4",
+      "items": [
+        "tap_02"
+      ],
+      "title": "Hướng dẫn tạo video đầu tiên",
+      "state": "VIDEO_DONE",
+      "duration": 18.3,
+      "timestamps": [
+        [
+          0.0,
+          "Chuẩn bị dữ liệu"
+        ],
+        [
+          12.0,
+          "Chạy TTS và tạo video"
+        ]
+      ],
+      "timestamps_text": "0:00 Chuẩn bị dữ liệu\n0:12 Chạy TTS và tạo video",
+      "error": "",
+      "youtube_video_id": "",
+      "youtube_url": "",
+      "scheduled_at": "",
+      "rendered_at": "2026-10-29T08:53:35",
+      "uploaded_at": "",
+      "audio_mtime": 1793173692.7325778
+    },
+    "one::tap_10": {
+      "id": "one::tap_10",
+      "path": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\video\\tap_10.mp4",
+      "items": [
+        "tap_10"
+      ],
+      "title": "Phần 10: Sắp xếp tự nhiên và gộp video",
+      "state": "VIDEO_DONE",
+      "duration": 13.74,
+      "timestamps": [
+        [
+          0.0,
+          "Sắp xếp tự nhiên"
+        ],
+        [
+          13.74,
+          "Gộp video và timestamps"
+        ]
+      ],
+      "timestamps_text": "0:00 Sắp xếp tự nhiên\n0:13 Gộp video và timestamps",
+      "error": "",
+      "youtube_video_id": "",
+      "youtube_url": "",
+      "scheduled_at": "",
+      "rendered_at": "2026-10-29T08:53:38",
+      "uploaded_at": "",
+      "audio_mtime": 1793173696.7249978
+    }
+  },
+  "project_dir": "D:\\mui\\f375\\AutoYout\\samples\\demo_project",
+  "paths": {
+    "input": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\input",
+    "audio": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\audio",
+    "video": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\video",
+    "assets": "D:\\mui\\f375\\AutoYout\\samples\\demo_project\\assets"
+  },
+  "updated_at": "2026-10-29T08:53:38"
+}

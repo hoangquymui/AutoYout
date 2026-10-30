@@ -1,0 +1,324 @@
+"""Renderer job planning and a real short encode."""
+from __future__ import annotations
+
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from conftest import requires_ffmpeg
+from core.ffmpeg_renderer import FFmpegRenderer, RenderError, VideoConfig
+from core.project_manager import ProjectItem, ProjectManager, VIDEO_DONE
+from core.settings import load_settings
+
+
+def _manager(tmp_path: Path, count: int = 3) -> ProjectManager:
+    inputs = tmp_path / "input"
+    inputs.mkdir(parents=True, exist_ok=True)
+    for index in range(1, count + 1):
+        (inputs / f"tap_{index}.txt").write_text(f"Nội dung phần {index}.", encoding="utf-8")
+    manager = ProjectManager(tmp_path)
+    manager.scan()
+    return manager
+
+
+def _config(tmp_path: Path, **overrides) -> VideoConfig:
+    raw = {
+        "grouping": "one",
+        "group_size": 2,
+        "visual": "image",
+        "image": str(tmp_path / "bg.png"),
+        "resolution": "640x360",
+        "fps": 24,
+        "encoder": "libx264",
+        "crf": 30,
+        "gap": 0.2,
+    }
+    raw.update(overrides)
+    return VideoConfig.from_settings({"video": raw})
+
+
+def _renderer() -> FFmpegRenderer:
+    settings = load_settings()
+    return FFmpegRenderer(settings)
+
+
+def test_plans_one_video_per_item(tmp_path: Path) -> None:
+    manager = _manager(tmp_path, 3)
+    jobs = _renderer().build_jobs(manager, _config(tmp_path))
+    assert [job.id for job in jobs] == ["one::tap_1", "one::tap_2", "one::tap_3"]
+    assert all(len(job.items) == 1 for job in jobs)
+    assert all(job.path.parent == manager.video_dir for job in jobs)
+
+
+def test_plans_groups_of_n(tmp_path: Path) -> None:
+    manager = _manager(tmp_path, 5)
+    jobs = _renderer().build_jobs(manager, _config(tmp_path, grouping="group", group_size=2))
+    assert [job.id for job in jobs] == ["group::01", "group::02", "group::03"]
+    assert [len(job.items) for job in jobs] == [2, 2, 1]
+    assert jobs[0].path.name.endswith("_part_01.mp4")
+
+
+def test_plans_all_in_one(tmp_path: Path) -> None:
+    manager = _manager(tmp_path, 3)
+    jobs = _renderer().build_jobs(manager, _config(tmp_path, grouping="all"))
+    assert len(jobs) == 1
+    assert jobs[0].id == "all"
+    assert len(jobs[0].items) == 3
+
+
+def test_invalid_grouping_raises(tmp_path: Path) -> None:
+    manager = _manager(tmp_path, 1)
+    cfg = VideoConfig.from_settings({"video": {"grouping": "nope"}})
+    with pytest.raises(RenderError):
+        _renderer().build_jobs(manager, cfg)
+
+
+def _make_media(tmp_path: Path, ffmpeg: str) -> Path:
+    image = tmp_path / "bg.png"
+    audio = tmp_path / "audio" / "tap_1.mp3"
+    audio.parent.mkdir(parents=True, exist_ok=True)
+    flags = 0x08000000
+    subprocess.run(
+        [ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", "color=c=0x1b2740:s=640x360:d=1", "-frames:v", "1", str(image)],
+        check=True, creationflags=flags,
+    )
+    subprocess.run(
+        [ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", "sine=frequency=440:duration=2", "-c:a", "libmp3lame",
+         "-b:a", "192k", str(audio)],
+        check=True, creationflags=flags,
+    )
+    return image
+
+
+@requires_ffmpeg
+def test_render_short_video(tmp_path: Path, ffmpeg: str) -> None:
+    _manager(tmp_path, 1)
+    image = _make_media(tmp_path, ffmpeg)
+    manager = ProjectManager(tmp_path)
+    manager.scan()
+    renderer = _renderer()
+    cfg = _config(tmp_path, image=str(image))
+
+    progress: list[int] = []
+    jobs, errors = renderer.render_all(
+        manager, cfg, force=True,
+        progress_cb=lambda value, _message: progress.append(value),
+    )
+
+    assert errors == []
+    assert len(jobs) == 1
+    job = manager.get_video("one::tap_1")
+    assert job is not None and job.state == VIDEO_DONE
+    assert job.path.is_file() and job.path.stat().st_size > 2000
+    assert job.timestamps_text.startswith("0:00")
+    assert max(progress) >= 90
+    assert renderer.needs_render(manager, job) is False
+    assert renderer.needs_render(manager, job, force=True) is True
+
+
+def test_ai_visual_config_validates(tmp_path: Path) -> None:
+    cfg = _config(tmp_path, visual="ai", ai_mode="manual", ai_count=3)
+    assert cfg.errors() == []
+    bad_mode = _config(tmp_path, visual="ai", ai_mode="dalle")
+    assert any("Chế độ ảnh AI" in problem for problem in bad_mode.errors())
+    too_many = VideoConfig(visual="ai", ai_count=99)
+    assert any("Số ảnh AI" in problem for problem in too_many.errors())
+
+
+def _make_chapter_images(folder: Path, ffmpeg: str, base: str, count: int) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    colors = ["0x1b2740", "0x3a2f5b", "0x2e4a3f", "0x5b3a2f"]
+    for index in range(count):
+        subprocess.run(
+            [ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi",
+             "-i", f"color=c={colors[index % len(colors)]}:s=640x360:d=1",
+             "-frames:v", "1", str(folder / f"{base}_{index + 1:02d}.png")],
+            check=True, creationflags=0x08000000,
+        )
+
+
+@requires_ffmpeg
+def test_render_ai_chapters_with_motion_and_xfade(tmp_path: Path, ffmpeg: str) -> None:
+    _manager(tmp_path, 2)
+    _make_media(tmp_path, ffmpeg)
+    audio_dir = tmp_path / "audio"
+    subprocess.run(
+        [ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", "sine=frequency=330:duration=2", "-c:a", "libmp3lame",
+         "-b:a", "192k", str(audio_dir / "tap_2.mp3")],
+        check=True, creationflags=0x08000000,
+    )
+    manager = ProjectManager(tmp_path)
+    manager.scan()
+    ai_dir = manager.assets_dir / "ai"
+    _make_chapter_images(ai_dir, ffmpeg, "tap_1", 2)
+    _make_chapter_images(ai_dir, ffmpeg, "tap_2", 1)
+
+    cfg = _config(
+        tmp_path, grouping="all", visual="ai", ai_mode="manual",
+        ai_dir=str(ai_dir), ai_count=2, ai_motion=True, ai_xfade=0.3,
+        resolution="320x180", fps=12, crf=40, chapter_titles=False,
+    )
+    assert cfg.errors() == []
+    renderer = _renderer()
+    jobs, errors = renderer.render_all(manager, cfg, force=True)
+
+    assert errors == []
+    assert len(jobs) == 1
+    job = manager.get_video("all")
+    assert job is not None and job.state == VIDEO_DONE
+    assert job.path.is_file() and job.path.stat().st_size > 2000
+    assert 3.5 < job.duration < 5.5
+
+
+@requires_ffmpeg
+def test_render_ai_manual_mode_requires_images(tmp_path: Path, ffmpeg: str) -> None:
+    _manager(tmp_path, 1)
+    _make_media(tmp_path, ffmpeg)
+    manager = ProjectManager(tmp_path)
+    manager.scan()
+    ai_dir = manager.assets_dir / "ai"
+    ai_dir.mkdir(parents=True, exist_ok=True)
+
+    cfg = _config(
+        tmp_path, visual="ai", ai_mode="manual", ai_dir=str(ai_dir),
+        resolution="320x180", fps=12, crf=40,
+    )
+    jobs, errors = _renderer().render_all(manager, cfg, force=True)
+    assert jobs == []
+    assert len(errors) == 1
+    assert "Thiếu ảnh cho chương" in errors[0]
+
+
+def test_ai_imagen_without_key_is_rejected(tmp_path: Path) -> None:
+    _manager(tmp_path, 1)
+    manager = ProjectManager(tmp_path)
+    manager.scan()
+    cfg = _config(tmp_path, visual="ai", ai_mode="imagen", ai_api_key="")
+    with pytest.raises(RenderError):
+        _renderer()._validate_inputs(manager, manager.get_items(), cfg)
+
+
+# ── phụ đề (subtitles) + duck nhạc nền ────────────────────────────────────────
+def _item(tmp_path: Path, text: str = "",
+          metadata: dict | None = None) -> ProjectItem:
+    return ProjectItem(
+        base="tap_1", text_file=None, json_file=None, text=text,
+        text_hash="", metadata=metadata or {},
+        audio_path=tmp_path / "audio" / "tap_1.mp3",
+    )
+
+
+def test_config_reads_subtitle_and_duck_settings() -> None:
+    cfg = VideoConfig.from_settings({
+        "video": {"subtitle_enabled": True, "bgm_duck": 0.4},
+    })
+    assert cfg.subtitle_enabled is True
+    assert cfg.bgm_duck == 0.4
+    defaults = VideoConfig.from_settings({})
+    assert defaults.subtitle_enabled is False
+    assert defaults.bgm_duck == 0.25
+    bad = VideoConfig(bgm_duck=1.5)
+    assert any("bgm_duck" in problem for problem in bad.errors())
+
+
+def test_duck_expression_during_narration(tmp_path: Path) -> None:
+    item = _item(tmp_path)
+    segments = [(item, 1.0, 4.0), (item, 6.5, 2.0)]
+    expr = FFmpegRenderer._duck_expression(segments, 0.25)
+    assert expr.startswith("if(")
+    assert "between(t,1.000,5.000)" in expr
+    assert "between(t,6.500,8.500)" in expr
+    assert expr.endswith(",0.2500,1)")
+    # no ducking when level >= 1 or no segments
+    assert FFmpegRenderer._duck_expression(segments, 1.0) == ""
+    assert FFmpegRenderer._duck_expression([], 0.25) == ""
+    assert FFmpegRenderer._duck_expression(segments, 0.0).endswith(",0.0000,1)")
+
+
+def test_split_subtitle_text_events() -> None:
+    text = "Câu một. Câu hai! Câu ba?"
+    events = FFmpegRenderer._split_subtitle_text(text, 2.0, 8.0)
+    assert len(events) == 3
+    assert events[0][0] == 2.0
+    assert events[-1][1] == 8.0
+    assert " ".join(chunk for _, _, chunk in events) == text
+    assert all(start < end for start, end, _ in events)
+    # long text in a short slot merges into fewer, readable events
+    many = ". ".join(f"Câu thứ {i}" for i in range(1, 7)) + "."
+    merged = FFmpegRenderer._split_subtitle_text(many, 0.0, 2.4)
+    assert 1 <= len(merged) <= 2
+    assert FFmpegRenderer._split_subtitle_text("", 0.0, 5.0) == []
+
+
+def test_subtitle_text_from_item_and_metadata_chapters(tmp_path: Path) -> None:
+    item = _item(tmp_path, text="Nội dung thuyết minh. Gồm hai câu.")
+    segments = [(item, 0.0, 4.0)]
+    events = FFmpegRenderer._subtitle_events(segments, 4.0)
+    assert len(events) == 2
+    assert all(0.0 <= start < end <= 4.0 for start, end, _ in events)
+    meta_item = _item(tmp_path, text="", metadata={
+        "chapters": [{"title": "Mở đầu"}, {"title": "Kết"}],
+    })
+    assert FFmpegRenderer._item_subtitle_text(meta_item) == "Mở đầu\nKết"
+
+
+def test_write_subtitles_creates_ass_with_vietnamese(tmp_path: Path) -> None:
+    item = _item(tmp_path, text="Chào bạn! Đây là phụ đề tiếng Việt.")
+    cfg = _config(tmp_path, subtitle_enabled=True)
+    renderer = _renderer()
+    assert renderer._write_subtitles([(item, 0.0, 3.0)], 3.0, tmp_path, cfg) is True
+    ass = (tmp_path / "subs.ass").read_text(encoding="utf-8")
+    assert "[V4+ Styles]" in ass
+    assert "Style: Sub,Arial," in ass
+    assert "Dialogue:" in ass
+    assert "phụ đề tiếng Việt" in ass
+    # no text → no file
+    assert renderer._write_subtitles([(_item(tmp_path), 0.0, 3.0)], 3.0, tmp_path, cfg) is False
+
+
+def test_build_filter_burns_subtitles_and_ducks_bgm(tmp_path: Path) -> None:
+    item = _item(tmp_path, text="Chào bạn! Phụ đề tiếng Việt.")
+    segments = [(item, 0.0, 3.0)]
+    cfg = _config(tmp_path, subtitle_enabled=True, bgm_duck=0.3)
+    graph, vlabel, _alabel = _renderer()._build_filter(
+        cfg, {"kind": "image", "path": str(tmp_path / "bg.png")},
+        [], 3.0, tmp_path, has_bgm=True, segments=segments)
+    assert "subtitles=subs.ass:fontsdir=." in graph
+    assert f"[{vlabel}]null[vout]" in graph
+    assert "volume='if(between(t,0.000,3.000),0.3000,1)':eval=frame" in graph
+
+
+@requires_ffmpeg
+def test_render_with_subtitles_and_bgm_duck(tmp_path: Path, ffmpeg: str) -> None:
+    _manager(tmp_path, 1)
+    image = _make_media(tmp_path, ffmpeg)
+    bgm = tmp_path / "bgm.mp3"
+    subprocess.run(
+        [ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", "sine=frequency=220:duration=4", "-c:a", "libmp3lame",
+         "-b:a", "128k", str(bgm)],
+        check=True, creationflags=0x08000000,
+    )
+    manager = ProjectManager(tmp_path)
+    manager.scan()
+    item = manager.get_items()[0]
+    item.text = "Chào bạn. Đây là phụ đề tiếng Việt!"
+    renderer = _renderer()
+    if not renderer.has_filter("subtitles"):
+        pytest.skip("ffmpeg thiếu filter subtitles (libass)")
+    cfg = _config(
+        tmp_path, image=str(image), subtitle_enabled=True,
+        bgm=str(bgm), bgm_duck=0.25,
+    )
+    jobs, errors = renderer.render_all(manager, cfg, force=True)
+    assert errors == []
+    assert len(jobs) == 1
+    job = manager.get_video("one::tap_1")
+    assert job is not None and job.state == VIDEO_DONE
+    assert job.path.is_file() and job.path.stat().st_size > 2000
+

@@ -1,0 +1,40 @@
+# AutoYout - Python 3.11 (Windows)
+# GUI
+PySide6>=6.6
+
+# Core media / audio
+numpy>=1.26
+soundfile>=0.12.1
+pydub>=0.25.1
+
+# H2MTTS engine (VieNeu TTS v3 Turbo/Nano)
+vieneu>=3.8.3
+vieneu_utils>=0.1
+onnxruntime>=1.17
+tokenizers>=0.19
+transformers>=4.56
+huggingface_hub>=0.26
+safetensors>=0.4
+torch>=2.2
+torchaudio>=2.2
+
+# Multi-language narration (vi stays on H2MTTS, everything else uses edge-tts)
+edge-tts>=6.1
+
+# Input pipeline: YouTube → video → transcript (optional until you import URLs)
+yt-dlp>=2024.4.9
+faster-whisper>=1.0
+
+# YouTube Data API v3 (optional until you use API upload)
+google-api-python-client>=2.100
+google-auth-oauthlib>=1.2
+google-auth-httplib2>=0.2
+
+# Browser automation upload (optional until you use Playwright upload)
+playwright>=1.45
+
+# Images / helpers
+Pillow>=10.0
+
+# Tests
+pytest>=8.0

@@ -1,0 +1,11 @@
+{
+  "title": "Phần 10: Sắp xếp tự nhiên và gộp video",
+  "description": "Minh họa sắp xếp tự nhiên và chế độ gộp nhiều bài thành một video kèm timestamps.",
+  "tags": ["sắp xếp tự nhiên", "timestamps", "AutoYout"],
+  "chapters": [
+    {"start": 0, "title": "Sắp xếp tự nhiên"},
+    {"start": 15, "title": "Gộp video và timestamps"}
+  ],
+  "thumbnail_path": "thumbnail.jpg",
+  "category_id": "28"
+}
