@@ -37,9 +37,9 @@ def test_cue_from_dict_swaps_reversed_range() -> None:
     assert cue.start == 2 and cue.end == 5
 
 
-def test_get_youtube_transcript_rejects_bad_url(tmp_path: Path) -> None:
+def test_get_youtube_transcript_rejects_bad_url() -> None:
     with pytest.raises(pipeline.InputError):
-        pipeline.get_youtube_transcript("not-a-url", tmp_path)
+        pipeline.get_youtube_transcript("not-a-url")
 
 
 def test_fetch_youtube_info_rejects_bad_url() -> None:

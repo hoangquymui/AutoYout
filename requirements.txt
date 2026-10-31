@@ -21,7 +21,8 @@ torchaudio>=2.2
 # Multi-language narration (vi stays on H2MTTS, everything else uses edge-tts)
 edge-tts>=6.1
 
-# Input pipeline: YouTube → video → transcript (optional until you import URLs)
+# Kịch bản: lấy transcript YouTube từ phụ đề có sẵn (youtube-transcript-api)
+youtube-transcript-api>=0.6.3
 yt-dlp>=2024.4.9
 faster-whisper>=1.0
 

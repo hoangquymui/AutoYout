@@ -6,7 +6,8 @@ Everything here is Qt-free so it can run in a worker thread or from a CLI:
 * :func:`transcribe_media` — speech-to-text with faster-whisper (any language);
 * :func:`fetch_web_text` — dependency-free HTML → plain text (stdlib only);
 * :func:`polish_text` — optional Gemini pass that fixes punctuation/typos;
-* :func:`youtube_to_text` / :func:`web_to_text` — the full step-1 workflows.
+* :func:`youtube_to_text` — YouTube captions → plain ``.txt`` (no video download);
+* :func:`web_to_text` — the full web step-1 workflow.
 
 The optional dependencies (``yt-dlp``, ``faster-whisper``) are imported inside
 the functions, so a missing package surfaces as a clear Vietnamese error instead
@@ -15,6 +16,7 @@ of an ImportError at application start.
 from __future__ import annotations
 
 import gzip
+import json
 import os
 import re
 import urllib.error
@@ -22,16 +24,15 @@ import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
+from urllib.parse import quote
 
-from core.ai_client import AIError, gemini_generate
+from core.ai_client import DEFAULT_MODEL, AIError, gemini_generate
 from core.languages import (
     DEFAULT_LANGUAGE,
-    detect_suffix_language,
-    is_known,
     language_name,
     normalize_language,
 )
-from core.subtitles import Cue, parse_srt, parse_vtt
+from core.subtitles import Cue
 from utils.logger import get_logger
 
 logger = get_logger("input")
@@ -43,7 +44,7 @@ _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
-_AI_DEFAULT_MODEL = "gemini-2.0-flash"
+_AI_DEFAULT_MODEL = DEFAULT_MODEL
 
 
 class InputError(RuntimeError):
@@ -135,8 +136,9 @@ def download_youtube(url: str, dest_dir: str | os.PathLike,
     return target
 
 
-# ── YouTube metadata & subtitles ─────────────────────────────────────────────
-_SUB_EXTS = {".vtt", ".srt"}
+# ── YouTube metadata & transcript ────────────────────────────────────────────
+_YT_ID_RE = re.compile(
+    r"(?:v=|/videos/|youtu\.be/|/embed/|/shorts/|/live/)([A-Za-z0-9_-]{11})")
 
 
 def _require_ytdlp():
@@ -152,6 +154,24 @@ def _validate_youtube_url(url: str) -> str:
     if not re.match(r"^https?://", url, re.IGNORECASE):
         raise InputError("URL YouTube không hợp lệ.")
     return url
+
+
+def youtube_video_id(url: str) -> str:
+    """Extract the 11-character video id from any common YouTube URL."""
+    match = _YT_ID_RE.search(_validate_youtube_url(url))
+    if match is None:
+        raise InputError("Không nhận ra ID video YouTube từ URL.")
+    return match.group(1)
+
+
+def _load_transcript_api():
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+    except ImportError as exc:
+        raise InputError(
+            "Thiếu thư viện youtube-transcript-api. "
+            "Cài bằng: pip install youtube-transcript-api") from exc
+    return YouTubeTranscriptApi
 
 
 def fetch_youtube_info(url: str) -> Dict[str, object]:
@@ -187,146 +207,116 @@ def fetch_youtube_info(url: str) -> Dict[str, object]:
     }
 
 
-def download_youtube_subtitles(url: str, dest_dir: str | os.PathLike,
-                               languages: Optional[List[str]] = None,
-                               cancel_cb: CancelCb = None) -> Optional[Path]:
-    """Download the first matching caption track; ``None`` when unavailable."""
-    url = _validate_youtube_url(url)
-    yt_dlp = _require_ytdlp()
-    dest = Path(dest_dir)
-    dest.mkdir(parents=True, exist_ok=True)
-    langs = [str(code).strip() for code in (languages or ["vi", "en"])
-             if str(code).strip()]
-    options = {
-        "skip_download": True,
-        "writesubtitles": True,
-        "writeautomaticsub": True,
-        "subtitleslangs": langs or ["vi", "en"],
-        "subtitlesformat": "vtt/srt/best",
-        "outtmpl": str(dest / "%(id)s.%(ext)s"),
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-    }
+def fetch_youtube_title(url: str) -> str:
+    """Best-effort title via YouTube's oEmbed endpoint (stdlib only)."""
+    endpoint = ("https://www.youtube.com/oembed?format=json&url="
+                + quote(_validate_youtube_url(url), safe=""))
+    request = urllib.request.Request(endpoint, headers={"User-Agent": _UA})
     try:
-        with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(url, download=True)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            data = json.loads(_decode(response.read(),
+                                      response.headers.get("Content-Type", "")))
+        return str(data.get("title") or "").strip()
     except Exception as exc:
-        logger.warning("Không tải được phụ đề YouTube: %s", exc)
+        logger.warning("Không lấy được tiêu đề video: %s", exc)
+        return ""
+
+
+def fetch_youtube_transcript(
+    url: str,
+    languages: Optional[List[str]] = None,
+    cancel_cb: CancelCb = None,
+) -> Optional[Tuple[List[Cue], str]]:
+    """Fetch YouTube captions with ``youtube-transcript-api``.
+
+    Returns ``(cues, language_code)``; ``None`` when the video has no usable
+    transcript. A missing package raises :class:`InputError`.
+    """
+    video_id = youtube_video_id(url)
+    api_cls = _load_transcript_api()
+    wanted: List[str] = []
+    for code in (languages or ["vi", "en"]):
+        normalized = normalize_language(code, "")
+        if normalized and normalized not in wanted:
+            wanted.append(normalized)
+    try:
+        api = api_cls()
+        # youtube-transcript-api >= 1.0 exposes instance methods; older
+        # releases only provide the classmethod ``list_transcripts``.
+        list_method = getattr(api, "list", None) or api_cls.list_transcripts
+        transcripts = list_method(video_id)
+        try:
+            transcript = transcripts.find_transcript(wanted or ["vi", "en"])
+        except Exception:
+            # No track in the requested languages: take whatever exists.
+            transcript = next(iter(transcripts), None)
+        if transcript is None:
+            return None
+        fetched = transcript.fetch()
+        rows = (fetched.to_raw_data() if hasattr(fetched, "to_raw_data")
+                else list(fetched))
+    except Exception as exc:
+        logger.warning("Không lấy được transcript YouTube: %s", exc)
         return None
     _check_cancel(cancel_cb)
-    video_id = str((info or {}).get("id") or "").strip()
-    candidates = [
-        path for path in dest.iterdir()
-        if path.is_file() and path.suffix.lower() in _SUB_EXTS
-        and (not video_id or video_id in path.name)
-    ]
-    if not candidates:
+    cues: List[Cue] = []
+    for snippet in rows:
+        if isinstance(snippet, dict):
+            start = float(snippet.get("start") or 0.0)
+            duration = float(snippet.get("duration") or 0.0)
+            text = str(snippet.get("text") or "")
+        else:
+            start = float(getattr(snippet, "start", 0.0) or 0.0)
+            duration = float(getattr(snippet, "duration", 0.0) or 0.0)
+            text = str(getattr(snippet, "text", "") or "")
+        text = " ".join(text.split())
+        if text:
+            cues.append(Cue(index=len(cues) + 1, start=start,
+                            end=start + max(0.0, duration), text=text))
+    if not cues:
         return None
-
-    def rank(path: Path):
-        name = path.name.lower()
-        lang_rank = next(
-            (index for index, code in enumerate(langs)
-             if f".{code.lower()}." in name),
-            len(langs),
-        )
-        ext_rank = 0 if path.suffix.lower() == ".vtt" else 1
-        return (lang_rank, ext_rank, name)
-
-    candidates.sort(key=rank)
-    return candidates[0]
+    code = normalize_language(getattr(transcript, "language_code", ""), "")
+    return cues, code or (wanted[0] if wanted else DEFAULT_LANGUAGE)
 
 
-def _subtitle_language(filename: str, fallback: str) -> str:
-    for part in Path(str(filename)).name.lower().split("."):
-        if is_known(part):
-            return normalize_language(part)
-    return detect_suffix_language(
-        Path(str(filename)).stem, normalize_language(fallback, DEFAULT_LANGUAGE))
+def _wanted_languages(language: str) -> List[str]:
+    wanted: List[str] = []
+    for code in (language, "en", "vi"):
+        normalized = normalize_language(code, "")
+        if normalized and normalized not in wanted:
+            wanted.append(normalized)
+    return wanted
 
 
 def get_youtube_transcript(
     url: str,
-    dest_dir: str | os.PathLike,
     language: str = DEFAULT_LANGUAGE,
-    prefer_youtube_subs: bool = True,
-    model_size: str = "small",
-    keep_video: bool = True,
     progress_cb: ProgressCb = None,
     cancel_cb: CancelCb = None,
 ) -> Tuple[List[Cue], Dict[str, object]]:
-    """YouTube URL → cues + metadata, preferring existing captions over Whisper."""
+    """YouTube URL → cue list + metadata from existing captions only."""
     url = _validate_youtube_url(url)
-    dest = Path(dest_dir)
-    dest.mkdir(parents=True, exist_ok=True)
     _check_cancel(cancel_cb)
-    _report(progress_cb, 2, "Đang lấy thông tin video...")
-    info = fetch_youtube_info(url)
+    _report(progress_cb, 3, "Đang lấy thông tin video...")
     meta: Dict[str, object] = {
-        "title": str(info.get("title") or ""),
-        "video_id": str(info.get("video_id") or ""),
-        "duration": float(info.get("duration") or 0.0),
+        "title": fetch_youtube_title(url),
+        "video_id": youtube_video_id(url),
+        "duration": 0.0,
         "source_language": normalize_language(language, DEFAULT_LANGUAGE),
-        "origin": "",
+        "origin": "youtube",
         "url": url,
     }
     _report(progress_cb, 8, f"Đã thấy video: {meta['title'] or meta['video_id']}")
-    if prefer_youtube_subs and (info.get("has_manual_subs") or info.get("has_auto_subs")):
-        wanted: List[str] = []
-        for code in (language, "en", "vi"):
-            normalized = normalize_language(code, "")
-            if normalized and normalized not in wanted:
-                wanted.append(normalized)
-        _report(progress_cb, 12, "Đang tải phụ đề YouTube...")
-        subtitle = download_youtube_subtitles(url, dest, wanted, cancel_cb)
-        if subtitle is not None:
-            try:
-                raw = subtitle.read_text(encoding="utf-8-sig", errors="replace")
-            except OSError:
-                raw = ""
-            cues = (parse_vtt(raw) if subtitle.suffix.lower() == ".vtt"
-                    else parse_srt(raw))
-            if not cues:
-                cues = parse_srt(raw)
-            if cues:
-                meta["source_language"] = _subtitle_language(
-                    subtitle.name, str(meta["source_language"]))
-                meta["origin"] = "youtube"
-                meta["duration"] = max(float(meta["duration"] or 0.0), cues[-1].end)
-                _report(progress_cb, 100,
-                        f"Đã lấy {len(cues)} dòng phụ đề YouTube.")
-                return cues, meta
-        _report(progress_cb, 15,
-                "Không dùng được phụ đề, chuyển sang nhận dạng giọng nói...")
-
-    _report(progress_cb, 15, "Đang tải video...")
-    video = download_youtube(
-        url, dest,
-        progress_cb=lambda pct, message: _report(
-            progress_cb, 15 + int(pct * 0.3), message),
-        cancel_cb=cancel_cb,
-    )
-    try:
-        _check_cancel(cancel_cb)
-        _report(progress_cb, 46, "Đang nhận dạng giọng nói...")
-        cues, detected = transcribe_segments(
-            video, language or DEFAULT_LANGUAGE, model_size,
-            progress_cb=lambda pct, message: _report(
-                progress_cb, 46 + int(max(0, pct - 41) * 1.1), message),
-            cancel_cb=cancel_cb,
-        )
-    finally:
-        if not keep_video:
-            try:
-                video.unlink(missing_ok=True)
-            except OSError:
-                pass
+    _report(progress_cb, 12, "Đang lấy transcript YouTube...")
+    found = fetch_youtube_transcript(url, _wanted_languages(language), cancel_cb)
+    if found is None:
+        raise InputError(
+            "Video không có phụ đề khả dụng. Chọn video có phụ đề hoặc nguồn khác.")
+    cues, detected = found
     meta["source_language"] = normalize_language(
         detected, str(meta["source_language"]))
-    meta["origin"] = "whisper"
-    meta["duration"] = max(float(meta["duration"] or 0.0), cues[-1].end)
-    _report(progress_cb, 100, f"Đã nhận dạng {len(cues)} đoạn.")
+    meta["duration"] = max(0.0, cues[-1].end)
+    _report(progress_cb, 100, f"Đã lấy {len(cues)} dòng phụ đề YouTube.")
     return cues, meta
 
 
@@ -385,25 +375,35 @@ def transcribe_segments(media_path: str | os.PathLike,
     return cues, detected
 
 
+def cues_to_text(cues: List[Cue], gap_seconds: float = 1.2,
+                 max_chars: int = 600) -> str:
+    """Join timestamped cues into paragraphs at topic breaks."""
+    paragraphs: List[str] = []
+    buffer: List[str] = []
+    previous_end = 0.0
+    for cue in cues:
+        text = str(cue.text or "").strip()
+        if not text:
+            continue
+        gap = cue.start - previous_end
+        if buffer and (gap > gap_seconds or
+                       sum(len(part) for part in buffer) > max_chars):
+            paragraphs.append(" ".join(buffer))
+            buffer = []
+        buffer.append(text)
+        previous_end = cue.end
+    if buffer:
+        paragraphs.append(" ".join(buffer))
+    return "\n\n".join(paragraphs).strip()
+
+
 def transcribe_media(media_path: str | os.PathLike, language: str = DEFAULT_LANGUAGE,
                      model_size: str = "small", progress_cb: ProgressCb = None,
                      cancel_cb: CancelCb = None) -> str:
     """Transcribe ``media_path`` into text, one paragraph per topic break."""
     cues, _detected = transcribe_segments(
         media_path, language, model_size, progress_cb, cancel_cb)
-    paragraphs: List[str] = []
-    buffer: List[str] = []
-    previous_end = 0.0
-    for cue in cues:
-        gap = cue.start - previous_end
-        if buffer and (gap > 1.2 or sum(len(part) for part in buffer) > 600):
-            paragraphs.append(" ".join(buffer))
-            buffer = []
-        buffer.append(cue.text)
-        previous_end = cue.end
-    if buffer:
-        paragraphs.append(" ".join(buffer))
-    text = "\n\n".join(paragraphs).strip()
+    text = cues_to_text(cues)
     if not text:
         raise InputError("Không nhận dạng được lời nói nào trong file.")
     _report(progress_cb, 90, f"Đã nhận dạng {len(text)} ký tự.")
@@ -540,41 +540,42 @@ def polish_text(text: str, api_key: str, model: str = _AI_DEFAULT_MODEL,
 
 # ── full step-1 workflows ────────────────────────────────────────────────────
 def youtube_to_text(url: str, out_txt: str | os.PathLike,
-                    language: str = DEFAULT_LANGUAGE, model_size: str = "small",
-                    video_dir: str | os.PathLike | None = None,
-                    keep_video: bool = True, api_key: str = "",
+                    language: str = DEFAULT_LANGUAGE, api_key: str = "",
                     ai_model: str = _AI_DEFAULT_MODEL,
                     progress_cb: ProgressCb = None,
                     cancel_cb: CancelCb = None) -> Path:
-    """YouTube URL → MP4 → transcript → ``.txt`` (optionally polished by AI).
+    """YouTube transcript → ``.txt`` (youtube-transcript-api, no download).
 
     ``out_txt`` may be a ``.txt`` path or a folder; folders get a name derived
-    from the downloaded video title so imports are easy to recognise.
+    from the video title so imports are easy to recognise.
     """
+    url = _validate_youtube_url(url)
     target = Path(out_txt)
     out_folder = target if target.suffix.lower() != ".txt" else target.parent
-    work_dir = Path(video_dir) if video_dir else out_folder
+    out_folder.mkdir(parents=True, exist_ok=True)
     _check_cancel(cancel_cb)
-    video = download_youtube(url, work_dir, progress_cb, cancel_cb)
+    _report(progress_cb, 5, "Đang lấy thông tin video...")
+    title = fetch_youtube_title(url)
     if target.suffix.lower() != ".txt":
-        target = unique_text_path(out_folder, video.stem)
-    try:
+        target = unique_text_path(out_folder, title or youtube_video_id(url))
+    _report(progress_cb, 12, "Đang lấy transcript YouTube...")
+    found = fetch_youtube_transcript(url, _wanted_languages(language), cancel_cb)
+    if found is None:
+        raise InputError(
+            "Video không có phụ đề khả dụng. Chọn video có phụ đề hoặc nguồn khác.")
+    cues, _detected = found
+    if not cues:
+        raise InputError("Phụ đề của video rỗng, không có nội dung để lưu.")
+    text = cues_to_text(cues)
+    _report(progress_cb, 70, f"Đã lấy {len(cues)} dòng phụ đề.")
+    if str(api_key or "").strip():
         _check_cancel(cancel_cb)
-        _report(progress_cb, 40, "Đang nhận dạng giọng nói...")
-        text = transcribe_media(video, language, model_size, progress_cb, cancel_cb)
-        if str(api_key or "").strip():
-            _report(progress_cb, 90, "Đang nhờ AI sửa lỗi văn bản...")
-            text = polish_text(text, api_key, ai_model, language)
-        _check_cancel(cancel_cb)
-        save_text(target, text)
-        _report(progress_cb, 100, f"Đã lưu {target.name}.")
-        return target
-    finally:
-        if not keep_video:
-            try:
-                video.unlink(missing_ok=True)
-            except OSError:
-                pass
+        _report(progress_cb, 80, "Đang nhờ AI sửa lỗi văn bản...")
+        text = polish_text(text, api_key, ai_model, language)
+    _check_cancel(cancel_cb)
+    save_text(target, text)
+    _report(progress_cb, 100, f"Đã lưu {target.name}.")
+    return target
 
 
 def web_to_text(url: str, out_txt: str | os.PathLike,

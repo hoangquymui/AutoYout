@@ -45,7 +45,6 @@ from ui.components.log_console import LogConsole
 from ui.components.page import icon_button, refresh_statuses
 from ui.components.status_badge import StatusBadge
 from ui.styles import app_stylesheet
-from ui.tab_input import InputTab
 from ui.tab_project import ProjectTab
 from ui.tab_script import ScriptTab
 from ui.tab_dubbing import DubbingTab
@@ -99,7 +98,6 @@ class MainWindow(QMainWindow):
         self.renderer: Optional[FFmpegRenderer] = None
         self._preview_busy = False
         self._auth_busy = False
-        self._input_busy = False
         self._script_busy = False
         self._log_handler = None
         self._log_emitter: Optional[LogEmitter] = None
@@ -137,13 +135,11 @@ class MainWindow(QMainWindow):
         self.tabs.setMinimumHeight(320)
         self.tabs.tabBar().setDrawBase(False)
         self.project_tab = ProjectTab()
-        self.input_tab = InputTab()
         self.script_tab = ScriptTab()
         self.tts_tab = DubbingTab()
         self.video_tab = VideoConfigTab()
         self.youtube_tab = YouTubeConfigTab()
         self.tabs.addTab(self.project_tab, icon("folder", theme.TEXT_DIM, 15), "Dự án && Dữ liệu")
-        self.tabs.addTab(self.input_tab, icon("download", theme.TEXT_DIM, 15), "Nhập liệu (Input)")
         self.tabs.addTab(self.script_tab, icon("file", theme.TEXT_DIM, 15), "Kịch bản")
         self.tabs.addTab(self.tts_tab, icon("mic", theme.TEXT_DIM, 15), "Lồng tiếng")
         self.tabs.addTab(self.video_tab, icon("film", theme.TEXT_DIM, 15), "Video (FFmpeg)")
@@ -163,15 +159,13 @@ class MainWindow(QMainWindow):
         layout.addWidget(splitter, 1)
 
         self.project_tab.reload_requested.connect(self._reload_project)
-        self.input_tab.reload_requested.connect(self._reload_project)
-        self.input_tab.busy_changed.connect(self._on_input_busy)
-        self.input_tab.file_created.connect(self._on_input_file_created)
         self.script_tab.reload_requested.connect(self._reload_project)
         self.script_tab.busy_changed.connect(self._on_script_busy)
         self.tts_tab.busy_changed.connect(self._on_preview_busy)
         self.tts_tab.engine_reload_requested.connect(self._reload_tts_engine)
         self.tts_tab.reload_requested.connect(self._reload_project)
         self.video_tab.tools_changed.connect(self._check_tools)
+        self.video_tab.run_requested.connect(lambda: self._start_pipeline("video"))
         self.youtube_tab.busy_changed.connect(self._on_auth_busy)
         self.youtube_tab.channels_changed.connect(self._on_channels_changed)
         self.youtube_tab.thumbnail_saved.connect(self._on_thumbnail_saved)
@@ -409,7 +403,6 @@ class MainWindow(QMainWindow):
     # ── startup / settings ───────────────────────────────────────────────────
     def _load_settings_into_tabs(self) -> None:
         self.project_tab.load_from(self.settings)
-        self.input_tab.load_from(self.settings)
         self.script_tab.load_from(self.settings)
         self.tts_tab.load_from(self.settings)
         self.video_tab.load_from(self.settings)
@@ -417,7 +410,6 @@ class MainWindow(QMainWindow):
 
     def _collect_all(self) -> None:
         self.project_tab.apply_to(self.settings)
-        self.input_tab.apply_to(self.settings)
         self.script_tab.apply_to(self.settings)
         self.tts_tab.apply_to(self.settings)
         self.video_tab.apply_to(self.settings)
@@ -567,7 +559,6 @@ class MainWindow(QMainWindow):
             if not silent:
                 self._set_status("Hãy chọn Project Folder trước.", error=True)
             self.project_tab.set_manager(None)
-            self.input_tab.set_project(None)
             self.script_tab.set_project(None)
             self.tts_tab.set_project(None)
             self.youtube_tab.set_project(None)
@@ -576,7 +567,6 @@ class MainWindow(QMainWindow):
         if not path.is_dir():
             logger.error("Thư mục project không tồn tại: %s", project)
             self._set_status(f"Thư mục project không tồn tại: {project}", error=True)
-            self.input_tab.set_project(None)
             self.script_tab.set_project(None)
             self.tts_tab.set_project(None)
             self.youtube_tab.set_project(None)
@@ -609,7 +599,6 @@ class MainWindow(QMainWindow):
                 ", ".join(labels.get(key, key) for key in manager.created_folders),
             )
         self.project_tab.set_manager(manager)
-        self.input_tab.set_project(manager)
         self.script_tab.set_project(manager)
         self.tts_tab.set_project(manager)
         self.youtube_tab.set_project(manager)
@@ -803,17 +792,9 @@ class MainWindow(QMainWindow):
         self._auth_busy = busy
         self._update_actions()
 
-    def _on_input_busy(self, busy: bool) -> None:
-        self._input_busy = busy
-        self._update_actions()
-
     def _on_script_busy(self, busy: bool) -> None:
         self._script_busy = busy
         self._update_actions()
-
-    def _on_input_file_created(self, path: str) -> None:
-        self._set_status(f"Đã nhập văn bản: {Path(path).name}", error=False)
-        logger.info("Nhập liệu xong: %s", path)
 
     def _on_channels_changed(self) -> None:
         self._collect_all()
@@ -845,7 +826,7 @@ class MainWindow(QMainWindow):
 
     # ── theme ────────────────────────────────────────────────────────────────
     def _update_tab_icons(self, index: int | None = None) -> None:
-        names = ("folder", "download", "file", "mic", "film", "youtube")
+        names = ("folder", "file", "mic", "film", "youtube")
         current = self.tabs.currentIndex() if index is None else index
         for position, name in enumerate(names):
             color = theme.ACCENT_SOFT if position == current else theme.TEXT_DIM
@@ -889,7 +870,6 @@ class MainWindow(QMainWindow):
             self.worker is None
             and not self._preview_busy
             and not self._auth_busy
-            and not self._input_busy
             and not self._script_busy
         )
         for button in (self.btn_tts, self.btn_video, self.btn_upload, self.btn_all):
@@ -922,25 +902,6 @@ class MainWindow(QMainWindow):
                     self,
                     "Chưa dừng xong",
                     "Tác vụ chưa dừng hẳn (có thể đang nạp model). Hãy thử thoát lại sau ít phút.",
-                )
-                event.ignore()
-                return
-        if self.input_tab.busy():
-            answer = QMessageBox.question(
-                self,
-                "Đang nhập liệu",
-                "Đang tải/nhận dạng văn bản. Huỷ và thoát?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                event.ignore()
-                return
-            if not self.input_tab.stop_and_wait(15000):
-                QMessageBox.warning(
-                    self,
-                    "Chưa dừng xong",
-                    "Tác vụ nhập liệu chưa dừng hẳn. Hãy thử thoát lại sau ít phút.",
                 )
                 event.ignore()
                 return

@@ -27,7 +27,8 @@ def window(app, monkeypatch, tmp_path: Path):
     # user_settings.json reflects whatever the app was last run with; pin the
     # language defaults so the assertions below are deterministic.
     settings.setdefault("tts", {})["language"] = "vi"
-    settings.setdefault("input", {})["language"] = "vi"
+    # A retired model also exercises the migration back to the current default.
+    settings.setdefault("script", {})["model"] = "gemini-2.0-flash"
     win = main_window.MainWindow(settings)
     yield win
     win.close()
@@ -36,9 +37,9 @@ def window(app, monkeypatch, tmp_path: Path):
 
 
 def test_window_builds_all_tabs(window) -> None:
-    assert window.tabs.count() == 6
+    assert window.tabs.count() == 5
     labels = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-    assert labels == ["Dự án && Dữ liệu", "Nhập liệu (Input)", "Kịch bản",
+    assert labels == ["Dự án && Dữ liệu", "Kịch bản",
                       "Lồng tiếng", "Video (FFmpeg)", "YouTube"]
     assert window.btn_tts.text().startswith("1. Lồng tiếng")
     assert window.btn_video.text().startswith("2. Tạo Video")
@@ -173,47 +174,6 @@ def test_open_project_populates_table(window, tmp_path: Path) -> None:
     assert window.btn_all.isEnabled()
 
 
-def test_input_tab_requires_project(window) -> None:
-    tab = window.input_tab
-    assert tab.busy() is False
-    assert all(button.isEnabled() is False for button in tab._actions)
-    assert "Chưa chọn project" in tab.output_label.text()
-
-
-def test_input_tab_enables_actions_with_project(window, tmp_path: Path) -> None:
-    project = tmp_path / "demo"
-    (project / "input").mkdir(parents=True)
-    window.project_tab.set_project(str(project))
-    window._reload_project()
-
-    tab = window.input_tab
-    assert all(button.isEnabled() for button in tab._actions)
-    assert str(project / "input") in tab.output_label.text()
-
-
-def test_input_settings_roundtrip(window) -> None:
-    tab = window.input_tab
-    tab.youtube_language.setCurrentIndex(tab.youtube_language.findData("en"))
-    tab.youtube_model.setCurrentIndex(tab.youtube_model.findData("medium"))
-    tab.keep_video_check.setChecked(False)
-    tab.ai_fix_check.setChecked(True)
-    tab.api_key_edit.setText("key-123")
-
-    tab.apply_to(window.settings)
-    cfg = window.settings["input"]
-    assert cfg["language"] == "en"
-    assert cfg["whisper_model"] == "medium"
-    assert cfg["keep_video"] is False
-    assert cfg["ai_fix"] is True
-    assert cfg["ai_api_key"] == "key-123"
-
-    cfg["language"] = "zh"
-    tab.load_from(window.settings)
-    assert tab.youtube_language.currentData() == "zh"
-    assert tab.web_language.currentData() == "zh"
-    assert tab.media_language.currentData() == "zh"
-
-
 def test_video_pool_settings_roundtrip(window) -> None:
     tab = window.video_tab
     index = tab.visual_combo.findData("video_pool")
@@ -239,6 +199,34 @@ def test_video_pool_settings_roundtrip(window) -> None:
     assert tab.pool_dir_edit.text() == "D:/clips"
     assert tab.pool_count_spin.value() == 5
     assert tab.write_srt_check.isChecked() is True
+
+
+def test_srt_file_roundtrip(window) -> None:
+    tab = window.video_tab
+    assert tab.srt_edit.isEnabled() is False
+    tab.srt_check.setChecked(True)
+    assert tab.srt_edit.isEnabled() is True
+    tab.srt_edit.setText("D:/subs/tap_1.srt")
+    tab.apply_to(window.settings)
+
+    video = window.settings["video"]
+    assert video["subtitle_srt"] is True
+    assert video["subtitle_file"] == "D:/subs/tap_1.srt"
+
+    tab.srt_check.setChecked(False)
+    tab.srt_edit.setText("")
+    tab.load_from(window.settings)
+    assert tab.srt_check.isChecked() is True
+    assert tab.srt_edit.text() == "D:/subs/tap_1.srt"
+    assert tab.srt_edit.isEnabled() is True
+
+
+def test_video_tab_run_button_starts_video_pipeline(window, monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(window, "_start_pipeline", lambda mode: calls.append(mode))
+    assert window.video_tab.run_button.text() == "Tạo video"
+    window.video_tab.run_button.click()
+    assert calls == ["video"]
 
 
 def test_tts_default_language_roundtrip(window) -> None:
@@ -272,4 +260,79 @@ def test_project_language_column_and_override(window, tmp_path: Path) -> None:
     combo.setCurrentIndex(combo.findData("zh"))
     assert window.manager.get_item("tap_02_en").language == "zh"
     assert table.item(1, 2).text() == "ZH"
+
+
+def test_script_tab_profiles_and_api_key(window, monkeypatch, tmp_path: Path) -> None:
+    import ui.tab_script as tab_script
+    from core.language_profiles import load_profiles as real_load, save_profiles as real_save
+
+    store = tmp_path / "language_prompt.json"
+    monkeypatch.setattr(tab_script, "load_profiles", lambda: real_load(store))
+    monkeypatch.setattr(
+        tab_script, "save_profiles", lambda profiles: real_save(profiles, store))
+    store.write_text(
+        '[{"id": "a1", "language": "en", "prompt": "kể chuyện cuốn hút"},'
+        ' {"id": "b2", "language": "ja", "prompt": ""}]',
+        encoding="utf-8")
+
+    tab = window.script_tab
+    tab.load_from(window.settings)
+    assert [p.language for p in tab._profiles] == ["en", "ja"]
+    assert tab.result_table.rowCount() == 2
+    assert tab.result_table.item(0, 0).text() == "English"
+    assert tab.result_table.item(0, 1).text() == "Chưa chuyển thể"
+    assert tab.api_key_edit.echoMode() == tab.api_key_edit.EchoMode.Password
+    assert tab.add_language_button.isEnabled() is True
+    assert tab.edit_prompts_button.isEnabled() is True
+    assert tab.model_combo.isEditable() is True
+    assert tab.model_combo.currentText() == "gemini-3.8-flash"
+    assert window.settings["script"]["model"] == "gemini-3.8-flash"
+
+    tab.model_combo.setCurrentText("gemini-3.6-flash")
+    tab.apply_to(window.settings)
+    assert window.settings["script"]["model"] == "gemini-3.6-flash"
+    tab.model_combo.setCurrentText("gemini-3.8-flash")
+
+    tab._translations["en"] = "bản dịch thử"
+    tab._reload_targets()
+    assert tab.result_table.item(0, 1).text().startswith("Xong")
+    assert tab.result_table.cellWidget(0, 2).isEnabled() is True
+    tab._reload_targets(keep=False)
+    assert tab.result_table.item(0, 1).text() == "Chưa chuyển thể"
+    assert tab.result_table.cellWidget(0, 2).isEnabled() is False
+
+    tab.api_key_edit.setText("  test-key  ")
+    tab.apply_to(window.settings)
+    assert window.settings["script"]["api_key"] == "test-key"
+    assert tab._api_key() == "test-key"
+
+    tab.api_key_edit.setText("")
+    window.settings["script"]["api_key"] = ""
+    window.settings.setdefault("video", {})["ai_api_key"] = "video-key"
+    tab.load_from(window.settings)
+    assert tab._api_key() == "video-key"
+
+
+def test_language_dialogs_collect_and_edit_values(app) -> None:
+    from core.language_profiles import LanguageProfile
+    from ui.tab_script import _LanguagePromptDialog, _ManageLanguagesDialog
+
+    add = _LanguagePromptDialog(language="en", prompt="giữ sự kiện")
+    assert add.values() == ("en", "giữ sự kiện")
+
+    manage = _ManageLanguagesDialog([
+        LanguageProfile("en", "prompt en", "id1"),
+        LanguageProfile("ja", "prompt ja", "id2"),
+    ])
+    assert manage.table.rowCount() == 2
+    assert manage.table.item(0, 0).text() == "English"
+    assert manage.table.item(1, 1).text() == "prompt ja"
+
+    manage.table.item(0, 1).setText("prompt mới")
+    manage._remove("ja")
+    assert manage.table.rowCount() == 1
+    manage._accept()
+    profiles = manage.profiles()
+    assert [(p.language, p.prompt, p.id) for p in profiles] == [
+        ("en", "prompt mới", "id1")]
 
