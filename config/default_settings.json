@@ -15,22 +15,9 @@
     "output_dir": "output",
     "force_overwrite": false
   },
-  "input": {
-    "language": "vi",
-    "whisper_model": "small",
-    "keep_video": true,
-    "ai_fix": false,
-    "ai_api_key": ""
-  },
   "script": {
-    "source_language": "vi",
-    "whisper_model": "small",
-    "prefer_youtube_subs": true,
-    "keep_video": true,
     "api_key": "",
-    "model": "gemini-2.0-flash",
-    "target_languages": ["en"],
-    "prompt_template": ""
+    "model": "gemini-3.8-flash"
   },
   "tts": {
     "engine": "turbo",
@@ -87,6 +74,8 @@
     "showwaves": false,
     "chapter_titles": false,
     "subtitle_enabled": false,
+    "subtitle_srt": false,
+    "subtitle_file": "",
     "write_srt": false,
     "keep_temp": false
   },

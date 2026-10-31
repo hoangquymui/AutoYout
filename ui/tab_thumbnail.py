@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.ai_client import DEFAULT_MODEL
 from core.thumbnail import (
     TEMPLATES,
     attach_thumbnail,
@@ -260,7 +261,7 @@ class ThumbnailPanel(QWidget):
 
         self.api_key_edit = QLineEdit()
         self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_edit.setPlaceholderText("Để trống sẽ dùng key ở tab Kịch bản / Video")
+        self.api_key_edit.setPlaceholderText("Để trống sẽ dùng key ở tab Video")
         form.addRow("API key Gemini", self.api_key_edit)
 
         self.frame_spin = QDoubleSpinBox()
@@ -510,11 +511,11 @@ class ThumbnailPanel(QWidget):
         key = self._api_key()
         if not key:
             self._set_status(
-                "Thiếu API key Gemini — nhập ở tab Kịch bản hoặc ô API key bên dưới.",
+                "Thiếu API key Gemini — nhập ô API key bên dưới hoặc key ở tab Video.",
                 "warning")
             return
         self._title_worker = TitleWorker(
-            self._transcript, key, str(script.get("model") or "gemini-2.0-flash"),
+            self._transcript, key, str(script.get("model") or DEFAULT_MODEL),
             language, self)
         self._title_worker.done.connect(self._on_titles)
         self._title_worker.failed.connect(self._on_titles_failed)
@@ -780,7 +781,6 @@ class ThumbnailPanel(QWidget):
         settings = self._settings or {}
         return str(
             (settings.get("thumbnail") or {}).get("api_key")
-            or (settings.get("script") or {}).get("api_key")
             or (settings.get("video") or {}).get("ai_api_key")
             or "").strip()
 

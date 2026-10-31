@@ -15,12 +15,32 @@ from typing import Callable, List, Optional
 
 from core.languages import language_name, normalize_language
 
-DEFAULT_MODEL = "gemini-2.0-flash"
+DEFAULT_MODEL = "gemini-3.8-flash"
+MODEL_CHOICES = (
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+)
+# Retired IDs still stored in older settings files; remapped so requests keep working.
+LEGACY_MODEL_ALIASES = {
+    "gemini-1.5-flash": DEFAULT_MODEL,
+    "gemini-1.5-pro": DEFAULT_MODEL,
+    "gemini-2.0-flash": DEFAULT_MODEL,
+    "gemini-2.0-flash-lite": DEFAULT_MODEL,
+    "gemini-2.5-flash": DEFAULT_MODEL,
+}
 _ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 
 _CHUNK_LIMIT = 6000
+
+
+def normalize_model(model: str) -> str:
+    """Return a usable model ID, remapping retired ones to the default."""
+    name = str(model or "").strip()
+    return LEGACY_MODEL_ALIASES.get(name, name or DEFAULT_MODEL)
 
 
 class AIError(RuntimeError):
@@ -41,7 +61,7 @@ def gemini_generate(
     """Send one prompt to Gemini and return the concatenated answer text."""
     key = str(api_key or "").strip()
     if not key:
-        raise AIError("Thiếu API key Gemini. Nhập key ở tab Kịch bản hoặc tab Video.")
+        raise AIError("Thiếu API key Gemini. Nhập key ở tab Kịch bản hoặc Video.")
     body = str(prompt or "").strip()
     if not body:
         raise AIError("Prompt rỗng, không có gì để gửi AI.")
@@ -50,7 +70,7 @@ def gemini_generate(
         "generationConfig": {"temperature": float(temperature)},
     }
     request = urllib.request.Request(
-        _ENDPOINT.format(model=str(model or DEFAULT_MODEL)),
+        _ENDPOINT.format(model=normalize_model(model)),
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json", "x-goog-api-key": key},
         method="POST",
@@ -77,21 +97,38 @@ def build_translate_prompt(
     target_lang: str,
     style: str = "",
 ) -> str:
-    """Prompt that adapts a narration script into ``target_lang`` naturally."""
+    """Prompt that adapts a narration script into ``target_lang`` naturally.
+
+    When source and target match, the same prompt is used to clean/rework the
+    story in place instead of translating it.
+    """
     source = language_name(source_lang)
     target = language_name(target_lang)
-    lines = [
-        "Bạn là biên kịch kể chuyện chuyên nghiệp.",
-        f"Chuyển thể văn bản từ {source} sang {target}.",
-        "Giữ nguyên toàn bộ sự kiện, con số và chi tiết — KHÔNG thêm, bớt hay "
-        "diễn giải nội dung.",
-        "Viết thành lời kể tự nhiên để đọc thành tiếng: câu ngắn 8-20 từ, "
-        "không emoji, không markdown, không ghi chú, số nhỏ viết bằng chữ.",
-    ]
     extra = " ".join(str(style or "").split())
-    if extra:
-        lines.append(f"Yêu cầu thêm về phong cách: {extra}")
-    lines.append("Chỉ trả về bản dịch, không kèm giải thích.")
+    if normalize_language(source_lang) == normalize_language(target_lang):
+        lines = [
+            "Bạn là biên kịch kể chuyện chuyên nghiệp.",
+            f"Làm sạch và chuyển thể lại văn bản {target} dưới đây.",
+            "Giữ nguyên toàn bộ sự kiện, con số và chi tiết — KHÔNG thêm, bớt hay "
+            "diễn giải nội dung.",
+            "Viết thành lời kể tự nhiên để đọc thành tiếng: câu ngắn 8-20 từ, "
+            "không emoji, không markdown, không ghi chú, số nhỏ viết bằng chữ.",
+        ]
+        if extra:
+            lines.append(f"Yêu cầu thêm về phong cách: {extra}")
+        lines.append("Chỉ trả về văn bản đã làm sạch, không kèm giải thích.")
+    else:
+        lines = [
+            "Bạn là biên kịch kể chuyện chuyên nghiệp.",
+            f"Chuyển thể văn bản từ {source} sang {target}.",
+            "Giữ nguyên toàn bộ sự kiện, con số và chi tiết — KHÔNG thêm, bớt hay "
+            "diễn giải nội dung.",
+            "Viết thành lời kể tự nhiên để đọc thành tiếng: câu ngắn 8-20 từ, "
+            "không emoji, không markdown, không ghi chú, số nhỏ viết bằng chữ.",
+        ]
+        if extra:
+            lines.append(f"Yêu cầu thêm về phong cách: {extra}")
+        lines.append("Chỉ trả về bản dịch, không kèm giải thích.")
     lines.append("")
     lines.append("---")
     lines.append(str(text or "").strip())

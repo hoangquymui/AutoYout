@@ -4,12 +4,23 @@ from __future__ import annotations
 import pytest
 
 from core.ai_client import (
+    DEFAULT_MODEL,
+    MODEL_CHOICES,
     AIError,
     build_translate_prompt,
+    normalize_model,
     split_for_translation,
     translate_text,
 )
 from core.languages import language_name
+
+
+def test_normalize_model_remaps_retired_ids() -> None:
+    assert normalize_model("gemini-2.0-flash") == DEFAULT_MODEL
+    assert normalize_model("gemini-1.5-pro") == DEFAULT_MODEL
+    assert normalize_model("") == DEFAULT_MODEL
+    assert normalize_model("gemini-custom") == "gemini-custom"
+    assert DEFAULT_MODEL in MODEL_CHOICES
 
 
 def test_prompt_mentions_both_languages_and_style() -> None:
@@ -17,6 +28,14 @@ def test_prompt_mentions_both_languages_and_style() -> None:
     assert language_name("en") in prompt
     assert language_name("vi") in prompt
     assert "giọng kể hấp dẫn" in prompt
+    assert "Xin chào" in prompt
+
+
+def test_prompt_cleans_in_place_when_languages_match() -> None:
+    prompt = build_translate_prompt("Xin chào", "vi", "vi", "làm sạch")
+    assert "Làm sạch" in prompt
+    assert "Chuyển thể văn bản từ" not in prompt
+    assert "làm sạch" in prompt
     assert "Xin chào" in prompt
 
 

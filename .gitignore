@@ -9,6 +9,7 @@ preview/
 
 # Local secrets and per-user settings
 config/user_settings.json
+config/language_prompt.json
 config/youtube_credentials/
 
 # Belongs to an unrelated Electron project

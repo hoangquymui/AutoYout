@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 
 from PIL import Image, ImageDraw, ImageFont
 
-from core.ai_client import AIError, gemini_generate
+from core.ai_client import DEFAULT_MODEL, AIError, gemini_generate
 from core.ai_images import AIImageError, DEFAULT_MODEL as IMAGEN_MODEL, ImagenProvider
 from core.languages import language_name
 from utils.files import load_json, write_json_atomic
@@ -115,7 +115,7 @@ def build_title_prompt(transcript: str, language: str = "vi", limit: int = 5) ->
 def suggest_titles(
     transcript: str,
     api_key: str,
-    model: str = "gemini-2.0-flash",
+    model: str = DEFAULT_MODEL,
     language: str = "vi",
     generate_fn: Optional[Callable[[str, str, str], str]] = None,
     limit: int = 5,
@@ -126,7 +126,7 @@ def suggest_titles(
     generator = generate_fn or gemini_generate
     if generate_fn is None and not str(api_key or "").strip():
         raise AIError(
-            "Thiếu API key Gemini — nhập key ở tab Kịch bản hoặc tab Video.")
+            "Thiếu API key Gemini — nhập key ở tab Video.")
     raw = generator(build_title_prompt(transcript, language, limit), api_key, model)
     titles = parse_title_suggestions(raw, limit=limit)
     if not titles:
