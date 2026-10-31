@@ -35,6 +35,7 @@ from ui.components.page import PageHeader, icon_button, paint_status, wrap_scrol
 _IMAGE_FILTER = "Ảnh (*.png *.jpg *.jpeg *.webp *.bmp);;Tất cả (*)"
 _VIDEO_FILTER = "Video (*.mp4 *.mov *.mkv *.webm *.avi);;Tất cả (*)"
 _AUDIO_FILTER = "Âm thanh (*.mp3 *.wav *.m4a *.aac *.flac *.ogg);;Tất cả (*)"
+_SRT_FILTER = "Phụ đề (*.srt *.vtt);;Tất cả (*)"
 _EXE_FILTER = "Chương trình (*.exe);;Tất cả (*)"
 
 _ENCODER_LABELS = {
@@ -48,6 +49,7 @@ _ENCODER_LABELS = {
 
 class VideoConfigTab(QWidget):
     tools_changed = Signal()
+    run_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -57,17 +59,35 @@ class VideoConfigTab(QWidget):
         page.setContentsMargins(0, 0, 0, 0)
         content = QWidget()
         content.setObjectName("PageContent")
-        page.addWidget(wrap_scroll(content))
+        scroller = wrap_scroll(content)
+        # The two option columns need ~1500px; allow scrolling on smaller windows.
+        scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        page.addWidget(scroller)
 
         root = QVBoxLayout(content)
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(12)
-        root.addWidget(
-            PageHeader(
-                "Kết xuất Video",
-                "Ghép audio với hình nền, nhạc nền và encoder GPU/CPU.",
-            )
+        header = PageHeader(
+            "Kết xuất Video",
+            "Ghép audio với hình nền, nhạc nền và encoder GPU/CPU.",
         )
+        root.addWidget(header)
+
+        run_row = QHBoxLayout()
+        run_row.setSpacing(10)
+        self.run_button = QPushButton("Tạo video")
+        self.run_button.setObjectName("primaryButton")
+        set_icon(self.run_button, "film", "white", 15)
+        self.run_button.setToolTip(
+            "Chạy bước ghép video cho toàn bộ project (như nút “2. Tạo Video”).")
+        self.run_button.clicked.connect(self.run_requested.emit)
+        run_row.addWidget(self.run_button)
+        run_hint = QLabel(
+            "Chạy bước ghép video cho toàn bộ project, dùng đúng các tuỳ chọn bên dưới.")
+        run_hint.setObjectName("MutedLabel")
+        run_hint.setWordWrap(True)
+        run_row.addWidget(run_hint, 1)
+        root.addLayout(run_row)
 
         columns = QHBoxLayout()
         columns.setSpacing(12)
@@ -313,6 +333,7 @@ class VideoConfigTab(QWidget):
             "tự hạ xuống mức phần trăm bên dưới (ducking)."
         )
         bgm_hint.setObjectName("MutedLabel")
+        bgm_hint.setWordWrap(True)
         bgm_layout.addWidget(bgm_hint)
         left.addWidget(bgm_box)
         left.addStretch(1)
@@ -344,12 +365,39 @@ class VideoConfigTab(QWidget):
         self.ken_burns_check = QCheckBox("Ken Burns (zoom nhẹ)")
         self.showwaves_check = QCheckBox("Hiển thị sóng nhạc")
         self.chapters_check = QCheckBox("Hiện tiêu đề chương trên hình")
-        self.subtitle_check = QCheckBox("Hiện phụ đề (theo ngôn ngữ file)")
-        self.write_srt_check = QCheckBox("Xuất thêm phụ đề .srt cạnh video")
+        self.subtitle_check = QCheckBox("Hiện phụ đề (theo lời đọc, đúng ngôn ngữ file)")
+        self.srt_check = QCheckBox("Gắn phụ đề từ file .srt có sẵn")
+        self.srt_check.setToolTip(
+            "Ưu tiên file .srt ở ô bên dưới; nếu để trống sẽ tự tìm <tên>.srt "
+            "cạnh file audio hoặc file kịch bản.")
+        self.write_srt_check = QCheckBox("Xuất thêm phụ đề .srt cạnh video (từ lời đọc)")
         self.keep_temp_check = QCheckBox("Giữ thư mục tạm để kiểm tra")
         for check in (self.ken_burns_check, self.showwaves_check,
-                      self.chapters_check, self.subtitle_check,
-                      self.write_srt_check, self.keep_temp_check):
+                      self.chapters_check, self.subtitle_check, self.srt_check):
+            output_form.addRow("", check)
+
+        srt_row = QHBoxLayout()
+        srt_row.setSpacing(6)
+        self.srt_edit = QLineEdit()
+        self.srt_edit.setPlaceholderText("Để trống: tự tìm <tên>.srt cạnh audio")
+        srt_row.addWidget(self.srt_edit, 1)
+        self.srt_browse = icon_button(
+            "file", "Chọn file phụ đề .srt…", role="muted", size=15, side=30
+        )
+        self.srt_browse.clicked.connect(
+            lambda: self._browse_into(self.srt_edit, "Chọn file phụ đề", _SRT_FILTER)
+        )
+        srt_row.addWidget(self.srt_browse)
+        self.srt_clear = icon_button(
+            "x", "Bỏ file phụ đề đã chọn", role="muted", size=14, side=30
+        )
+        self.srt_clear.clicked.connect(lambda: self.srt_edit.setText(""))
+        srt_row.addWidget(self.srt_clear)
+        output_form.addRow("File .srt", self._wrap(srt_row))
+        self.srt_check.toggled.connect(self._set_srt_enabled)
+        self._set_srt_enabled(self.srt_check.isChecked())
+
+        for check in (self.write_srt_check, self.keep_temp_check):
             output_form.addRow("", check)
         right.addWidget(output_box)
 
@@ -397,8 +445,11 @@ class VideoConfigTab(QWidget):
         hint_box = QGroupBox("Gợi ý")
         hint_layout = QVBoxLayout(hint_box)
         hint = QLabel(
-            "• Ảnh tĩnh được scale/pad giữ đúng tỉ lệ, không méo hình.\n"
-            "• Trình chiếu và video nền tự lặp đến khi hết audio.\n"
+            "• Video luôn dài đúng bằng phần audio đã ghép (MP3).\n"
+            "• Ảnh nền nhận .png/.jpg/.webp; video nền và trình chiếu tự lặp "
+            "đến khi hết audio.\n"
+            "• Phụ đề: bật “Hiện phụ đề” để dùng lời đọc, hoặc “Gắn phụ đề từ "
+            "file .srt có sẵn” để chèn SRT của bạn.\n"
             "• Ảnh AI theo chương: chế độ Thủ công dùng ảnh có sẵn, "
             "Google Imagen tạo ảnh từ tiêu đề/nội dung chương.\n"
             "• Ảnh Imagen được lưu trong thư mục ảnh và tái dùng, không tính phí lại.\n"
@@ -460,6 +511,9 @@ class VideoConfigTab(QWidget):
         self.showwaves_check.setChecked(bool(video.get("showwaves", False)))
         self.chapters_check.setChecked(bool(video.get("chapter_titles", False)))
         self.subtitle_check.setChecked(bool(video.get("subtitle_enabled", False)))
+        self.srt_check.setChecked(bool(video.get("subtitle_srt", False)))
+        self.srt_edit.setText(str(video.get("subtitle_file") or ""))
+        self._set_srt_enabled(self.srt_check.isChecked())
         self.write_srt_check.setChecked(bool(video.get("write_srt", False)))
         self.keep_temp_check.setChecked(bool(video.get("keep_temp", False)))
         self.ffmpeg_edit.setText(str(paths.get("ffmpeg") or ""))
@@ -503,6 +557,8 @@ class VideoConfigTab(QWidget):
         video["showwaves"] = self.showwaves_check.isChecked()
         video["chapter_titles"] = self.chapters_check.isChecked()
         video["subtitle_enabled"] = self.subtitle_check.isChecked()
+        video["subtitle_srt"] = self.srt_check.isChecked()
+        video["subtitle_file"] = self.srt_edit.text().strip()
         video["write_srt"] = self.write_srt_check.isChecked()
         video["keep_temp"] = self.keep_temp_check.isChecked()
         paths["ffmpeg"] = self.ffmpeg_edit.text().strip() or "ffmpeg"
@@ -524,6 +580,10 @@ class VideoConfigTab(QWidget):
         self.ai_imagen_box.setVisible(imagen)
         self.ai_count_spin.setEnabled(imagen)
         self._sync_visual_height()
+
+    def _set_srt_enabled(self, enabled: bool) -> None:
+        for widget in (self.srt_edit, self.srt_browse, self.srt_clear):
+            widget.setEnabled(enabled)
 
     def _sync_visual_height(self) -> None:
         page = self.visual_stack.currentWidget()

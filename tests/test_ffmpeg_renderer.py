@@ -322,3 +322,89 @@ def test_render_with_subtitles_and_bgm_duck(tmp_path: Path, ffmpeg: str) -> None
     assert job is not None and job.state == VIDEO_DONE
     assert job.path.is_file() and job.path.stat().st_size > 2000
 
+
+# ── gắn file .srt có sẵn ──────────────────────────────────────────────────────
+def test_config_reads_srt_subtitle_settings() -> None:
+    cfg = VideoConfig.from_settings({
+        "video": {"subtitle_srt": True, "subtitle_file": "D:/subs/tap_1.srt"},
+    })
+    assert cfg.subtitle_srt is True
+    assert cfg.subtitle_file == "D:/subs/tap_1.srt"
+    defaults = VideoConfig.from_settings({})
+    assert defaults.subtitle_srt is False
+    assert defaults.subtitle_file == ""
+
+
+def test_srt_sources_find_sidecars_and_shift_events(tmp_path: Path) -> None:
+    manager = _manager(tmp_path, 2)
+    items = manager.get_items()
+    audio_srt = items[0].audio_path.with_suffix(".srt")
+    audio_srt.parent.mkdir(parents=True, exist_ok=True)
+    audio_srt.write_text(
+        "1\n00:00:00,500 --> 00:00:02,000\nXin chào\n", encoding="utf-8")
+    text_srt = items[1].text_file.with_suffix(".srt")
+    text_srt.write_text(
+        "1\n00:00:00,100 --> 00:00:01,500\nPhần hai\n", encoding="utf-8")
+
+    cfg = _config(tmp_path, subtitle_srt=True)
+    renderer = _renderer()
+    sources = renderer._srt_sources(manager, items, cfg)
+    assert [path.name for _item, path in sources] == ["tap_1.srt", "tap_2.srt"]
+
+    segments = [(items[0], 0.0, 8.0), (items[1], 8.0, 5.0)]
+    events = renderer._srt_events(manager, items, cfg, segments)
+    assert events[0] == (0.5, 2.0, "Xin chào")
+    assert events[1] == (8.1, 9.5, "Phần hai")
+
+
+def test_missing_explicit_srt_is_rejected(tmp_path: Path) -> None:
+    manager = _manager(tmp_path, 1)
+    cfg = _config(tmp_path, subtitle_srt=True,
+                  subtitle_file=str(tmp_path / "khong_co.srt"))
+    with pytest.raises(RenderError):
+        _renderer()._srt_sources(manager, manager.get_items(), cfg)
+
+
+def test_build_filter_burns_existing_srt_events(tmp_path: Path) -> None:
+    item = _item(tmp_path)
+    cfg = _config(tmp_path, subtitle_srt=True)
+    events = [(0.2, 1.8, "Phụ đề lấy từ file SRT")]
+    graph, vlabel, _alabel = _renderer()._build_filter(
+        cfg, {"kind": "image", "path": str(tmp_path / "bg.png")},
+        [], 3.0, tmp_path, has_bgm=False,
+        segments=[(item, 0.0, 3.0)], srt_events=events)
+    assert "subtitles=subs.ass:fontsdir=." in graph
+    assert f"[{vlabel}]null[vout]" in graph
+    ass = (tmp_path / "subs.ass").read_text(encoding="utf-8")
+    assert "Phụ đề lấy từ file SRT" in ass
+    assert "Style: Sub,Arial," in ass
+
+
+def test_run_encode_caps_length_and_loops_background(tmp_path: Path,
+                                                     monkeypatch) -> None:
+    cfg = _config(tmp_path)
+    renderer = _renderer()
+    monkeypatch.setattr(
+        renderer, "_build_filter",
+        lambda *args, **kwargs: ("[0:a]anull[aout]", "vbase", "aout"))
+    captured: dict = {}
+    monkeypatch.setattr(
+        renderer, "_run_process",
+        lambda cmd, *args, **kwargs: captured.update(cmd=cmd))
+
+    def run(visual: dict) -> list:
+        captured.clear()
+        renderer._run_encode(
+            cfg, tmp_path, tmp_path / "combined.wav", visual, [], 7.5,
+            tmp_path / "out.mp4", "libx264", None,
+            lambda *args: None, None, None)
+        return captured["cmd"]
+
+    image_cmd = run({"kind": "image", "path": str(tmp_path / "bg.png")})
+    assert image_cmd[image_cmd.index("-t") + 1] == "7.500"
+    assert image_cmd[image_cmd.index("-loop") + 1] == "1"
+
+    video_cmd = run({"kind": "video", "path": str(tmp_path / "bg.mp4")})
+    assert video_cmd[video_cmd.index("-stream_loop") + 1] == "-1"
+
+

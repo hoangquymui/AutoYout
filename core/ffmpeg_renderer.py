@@ -59,6 +59,7 @@ from core.project_manager import (
     VideoJob,
 )
 from core.settings import get_setting
+from core.subtitles import parse_srt, parse_vtt
 from utils.files import ensure_dir, natural_key, natural_sorted, safe_filename
 from utils.logger import get_logger
 from utils.media_probe import (
@@ -218,6 +219,8 @@ class VideoConfig:
     showwaves: bool = False
     chapter_titles: bool = False
     subtitle_enabled: bool = False
+    subtitle_srt: bool = False        # burn an existing .srt instead of narration
+    subtitle_file: str = ""           # explicit .srt; empty = auto-detect per item
     write_srt: bool = False
     keep_temp: bool = False
 
@@ -260,6 +263,8 @@ class VideoConfig:
             showwaves=bool(raw.get("showwaves", False)),
             chapter_titles=bool(raw.get("chapter_titles", False)),
             subtitle_enabled=bool(get_setting(settings, "video.subtitle_enabled", False)),
+            subtitle_srt=bool(raw.get("subtitle_srt", False)),
+            subtitle_file=str(raw.get("subtitle_file") or ""),
             write_srt=bool(raw.get("write_srt", False)),
             keep_temp=bool(raw.get("keep_temp", False)),
         )
@@ -602,6 +607,11 @@ class FFmpegRenderer:
                 items, temp_dir, cfg, report, cancel_cb)
             self._check_cancel(cancel_cb)
             entries = self._chapter_entries(segments, total)
+            srt_events: List[Tuple[float, float, str]] = []
+            if cfg.subtitle_srt:
+                srt_events = self._srt_events(manager, items, cfg, segments)
+                if not srt_events:
+                    raise RenderError("File phụ đề .srt không có dòng nào hợp lệ.")
             visual = self._prepare_visual(
                 manager, items, cfg, temp_dir, report, cancel_cb,
                 segments=segments, total=total)
@@ -611,7 +621,7 @@ class FFmpegRenderer:
             self._encode_with_fallback(
                 cfg, temp_dir, combined, visual, entries, total,
                 out_path, job, report, pause_cb, cancel_cb, manager,
-                segments=segments)
+                segments=segments, srt_events=srt_events)
 
             self._check_cancel(cancel_cb)
             report(99, "Đang hoàn tất...")
@@ -708,8 +718,14 @@ class FFmpegRenderer:
             raise RenderError("Chưa có audio cho: " + ", ".join(missing[:5]))
         if not self.has_filter("showwaves") and cfg.showwaves:
             raise RenderError("Bản ffmpeg này thiếu filter showwaves.")
-        if (cfg.chapter_titles or cfg.subtitle_enabled) and not self.has_filter("subtitles"):
+        if (cfg.chapter_titles or cfg.subtitle_enabled or cfg.subtitle_srt) \
+                and not self.has_filter("subtitles"):
             raise RenderError("Bản ffmpeg này thiếu filter subtitles (libass).")
+        if cfg.subtitle_srt and not self._srt_sources(manager, items, cfg):
+            raise RenderError(
+                "Không tìm thấy file phụ đề .srt. Đặt <tên>.srt cạnh file audio "
+                "hoặc chọn file .srt trong tab Video."
+            )
         if cfg.visual == "video":
             sources = self._video_sources(manager, cfg)
             if not sources:
@@ -1355,9 +1371,18 @@ class FFmpegRenderer:
                          total: float, temp_dir: Path, cfg: VideoConfig,
                          language: str = DEFAULT_LANGUAGE) -> bool:
         """Write ``subs.ass`` with the narration subtitles; False when empty."""
-        events = self._subtitle_events(segments, total)
+        return self._write_ass(
+            self._subtitle_events(segments, total), total, temp_dir, cfg, language)
+
+    def _write_ass(self, events: List[Tuple[float, float, str]], total: float,
+                   temp_dir: Path, cfg: VideoConfig,
+                   language: str = DEFAULT_LANGUAGE) -> bool:
+        """Write timed events as ``subs.ass``; False when there is nothing to show."""
         dialogues: List[str] = []
         for start, end, text in events:
+            if total > 0 and start >= total:
+                continue
+            end = min(end, total) if total > 0 else end
             if end - start < 0.3:
                 continue
             dialogues.append(
@@ -1437,6 +1462,70 @@ class FFmpegRenderer:
         path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
         return True
 
+    # ── existing SRT subtitles ────────────────────────────────────────────────
+    @staticmethod
+    def _item_srt_candidates(manager: ProjectManager, item: ProjectItem) -> List[Path]:
+        """Likely ``.srt`` locations for one item (audio sidecar first)."""
+        audio = item.audio_path
+        candidates: List[Path] = [audio.with_suffix(".srt"), audio.with_suffix(".vtt")]
+        if item.text_file is not None:
+            candidates += [item.text_file.with_suffix(".srt"),
+                           item.text_file.with_suffix(".vtt")]
+        for base in (manager.input_dir, manager.audio_dir, manager.project_dir):
+            candidates += [Path(base) / f"{item.base}.srt", Path(base) / f"{item.base}.vtt"]
+        seen: set[str] = set()
+        unique: List[Path] = []
+        for path in candidates:
+            key = str(path).casefold()
+            if key not in seen:
+                seen.add(key)
+                unique.append(path)
+        return unique
+
+    def _srt_sources(self, manager: ProjectManager, items: List[ProjectItem],
+                     cfg: VideoConfig) -> List[Tuple[Optional[ProjectItem], Path]]:
+        """Chosen SRT file, or the first sidecar found for each item."""
+        chosen = (cfg.subtitle_file or "").strip()
+        if chosen:
+            path = _resolve_user_path(chosen, manager)
+            if path is None or not path.is_file():
+                raise RenderError(f"Không tìm thấy file phụ đề: {chosen}")
+            return [(None, path)]
+        sources: List[Tuple[Optional[ProjectItem], Path]] = []
+        for item in items:
+            for candidate in self._item_srt_candidates(manager, item):
+                if candidate.is_file():
+                    sources.append((item, candidate))
+                    break
+        return sources
+
+    def _srt_events(self, manager: ProjectManager, items: List[ProjectItem],
+                    cfg: VideoConfig,
+                    segments: List[Tuple[ProjectItem, float, float]],
+                    ) -> List[Tuple[float, float, str]]:
+        """Timed events from SRT sidecars, shifted to each item's audio start."""
+        sources = self._srt_sources(manager, items, cfg)
+        if not sources:
+            return []
+        starts = {item.base: start for item, start, _duration in segments}
+        events: List[Tuple[float, float, str]] = []
+        for item, path in sources:
+            try:
+                raw = path.read_text(encoding="utf-8-sig", errors="replace")
+            except OSError as exc:
+                raise RenderError(f"Không đọc được phụ đề {path.name}: {exc}") from exc
+            cues = parse_vtt(raw) if path.suffix.lower() in (".vtt", ".webvtt") \
+                else parse_srt(raw)
+            offset = starts.get(item.base, 0.0) if item is not None else 0.0
+            for cue in cues:
+                text = " ".join(str(cue.text or "").split())
+                if text and cue.end > cue.start:
+                    events.append((cue.start + offset, cue.end + offset, text))
+            logger.info("Dùng phụ đề %s (%d dòng, lệch %.2fs)",
+                        path.name, len(cues), offset)
+        events.sort(key=lambda event: event[0])
+        return events
+
     # ── filter graph ─────────────────────────────────────────────────────────
     @staticmethod
     def _duck_expression(segments: List[Tuple[ProjectItem, float, float]],
@@ -1461,6 +1550,7 @@ class FFmpegRenderer:
                       entries: List[Tuple[float, str]], total: float,
                       temp_dir: Path, has_bgm: bool,
                       segments: Optional[List[Tuple[ProjectItem, float, float]]] = None,
+                      srt_events: Optional[List[Tuple[float, float, str]]] = None,
                       ) -> Tuple[str, str, str]:
         width, height = cfg.dimensions
         parts: List[str] = []
@@ -1495,7 +1585,13 @@ class FFmpegRenderer:
             parts.append(f"[{vlabel}]subtitles=chapters.ass:fontsdir=.[vsub]")
             vlabel = "vsub"
 
-        if cfg.subtitle_enabled and segments:
+        if cfg.subtitle_srt and srt_events:
+            if self._write_ass(srt_events, total, temp_dir, cfg, language):
+                parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
+                vlabel = "vsub2"
+            else:
+                logger.warning("Bật phụ đề .srt nhưng không có dòng nào hiển thị.")
+        elif cfg.subtitle_enabled and segments:
             if self._write_subtitles(segments, total, temp_dir, cfg, language):
                 parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
                 vlabel = "vsub2"
@@ -1570,6 +1666,7 @@ class FFmpegRenderer:
                               pause_cb: PauseCb, cancel_cb: CancelCb,
                               manager: ProjectManager,
                               segments: Optional[List[Tuple[ProjectItem, float, float]]] = None,
+                              srt_events: Optional[List[Tuple[float, float, str]]] = None,
                               ) -> str:
         bgm = self._bgm_path(cfg, manager)
         preferred = self.preferred_encoder(cfg)
@@ -1591,7 +1688,7 @@ class FFmpegRenderer:
             try:
                 self._run_encode(cfg, temp_dir, combined, visual, entries, total,
                                  out_path, encoder, bgm, report, pause_cb, cancel_cb,
-                                 segments=segments)
+                                 segments=segments, srt_events=srt_events)
                 if encoder == "libx264" or encoder == preferred:
                     self._resolved_encoder = encoder
                 return encoder
@@ -1620,11 +1717,12 @@ class FFmpegRenderer:
                     bgm: Optional[Path], report: Callable[[int, str], None],
                     pause_cb: PauseCb, cancel_cb: CancelCb,
                     segments: Optional[List[Tuple[ProjectItem, float, float]]] = None,
+                    srt_events: Optional[List[Tuple[float, float, str]]] = None,
                     ) -> None:
         width, height = cfg.dimensions
         filter_graph, _, audio_label = self._build_filter(
             cfg, visual, entries, total, temp_dir, bgm is not None,
-            segments=segments)
+            segments=segments, srt_events=srt_events)
         cmd: List[str] = [
             self.ffmpeg, "-y", "-hide_banner", "-nostdin", "-loglevel", "error",
             "-i", str(combined),
@@ -1650,6 +1748,7 @@ class FFmpegRenderer:
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
             *self._encoder_args(encoder, cfg),
             "-shortest",
+            "-t", f"{max(0.02, float(total)):.3f}",
             "-movflags", "+faststart",
             "-progress", "pipe:1", "-nostats",
             os.path.basename(str(out_path)),
