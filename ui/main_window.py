@@ -110,14 +110,31 @@ class MainWindow(QMainWindow):
         theme.set_mode(str((settings.get("app") or {}).get("theme") or theme.DEFAULT_MODE))
 
         self.setWindowTitle("AutoYout — Text → TTS → Video → YouTube")
-        self.setMinimumSize(1120, 780)
+        self.setMinimumSize(1000, 680)
         self.resize(1400, 920)
 
         self._build_ui()
         self._apply_theme(theme.current_mode())
+        self._apply_responsive_layout()
         self._load_settings_into_tabs()
         self._attach_logging()
         QTimer.singleShot(60, self._startup)
+
+    # ── responsive chrome ────────────────────────────────────────────────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().resizeEvent(event)
+        self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self) -> None:
+        if not hasattr(self, "badge_tts"):
+            return
+        width = self.width()
+        compact = width < 1240
+        self._brand_subtitle.setVisible(not compact)
+        self.btn_header_project.setText("Project" if compact else "Chọn Project")
+        for badge in (self.badge_tts, self.badge_ffmpeg, self.badge_youtube):
+            badge.set_compact(width < 1180)
+        self._pipeline_panel.setMinimumWidth(320 if compact else 350)
 
     # ── UI construction ──────────────────────────────────────────────────────
     def _build_ui(self) -> None:
@@ -155,7 +172,8 @@ class MainWindow(QMainWindow):
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(10)
         splitter.addWidget(self.tabs)
-        splitter.addWidget(self._build_pipeline_panel())
+        self._pipeline_panel = self._build_pipeline_panel()
+        splitter.addWidget(self._pipeline_panel)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
         splitter.setSizes([990, 380])
@@ -192,6 +210,7 @@ class MainWindow(QMainWindow):
         title.setObjectName("BrandTitle")
         subtitle = QLabel("Text → TTS → Video → YouTube")
         subtitle.setObjectName("BrandSubtitle")
+        self._brand_subtitle = subtitle
         brand.addWidget(title)
         brand.addWidget(subtitle)
         layout.addLayout(brand)
@@ -490,6 +509,7 @@ class MainWindow(QMainWindow):
                 return
             version = ffmpeg_version(self.renderer.ffmpeg)
             short = version.split("version ", 1)[-1].split(" ", 1)[0] if "version" in version else version
+            short = short.split("-", 1)[0] or short
             encoders = env.get("encoders") or []
             self.badge_ffmpeg.set_state("ok", short)
             self.badge_ffmpeg.setToolTip(
@@ -515,7 +535,7 @@ class MainWindow(QMainWindow):
                 self.badge_youtube.set_state("warn", "Chưa đăng nhập")
                 self.badge_youtube.setToolTip("Đã có client_secret — vào tab YouTube để đăng nhập.")
             else:
-                self.badge_youtube.set_state("warn", "Thiếu client_secret")
+                self.badge_youtube.set_state("warn", "Thiếu secret")
                 self.badge_youtube.setToolTip(
                     "Đặt client_secret.json vào config/youtube_credentials/ "
                     "hoặc dùng phương thức Browser Automation."

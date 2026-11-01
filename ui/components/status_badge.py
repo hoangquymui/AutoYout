@@ -14,6 +14,7 @@ class StatusBadge(QFrame):
         self.setMinimumWidth(96)
         self._state = "idle"
         self._text = "Đang kiểm tra…"
+        self._compact = False
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(9, 5, 10, 5)
@@ -55,6 +56,16 @@ class StatusBadge(QFrame):
         self.value_label.setStyleSheet(
             f"color:{theme.DANGER if self._state == 'error' else theme.TEXT};"
         )
+
+    def set_compact(self, compact: bool) -> None:
+        """Drop the caption in narrow windows so the header stays on one row."""
+        compact = bool(compact)
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self.title_label.setVisible(not compact)
+        self.setMinimumWidth(74 if compact else 96)
+        self.setMaximumWidth(132 if compact else 16777215)
 
     def apply_theme(self) -> None:
         self._paint()

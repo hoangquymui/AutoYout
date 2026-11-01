@@ -94,8 +94,8 @@ QTabBar {
 QTabBar::tab {
     background: transparent;
     color: $TAB_TEXT;
-    padding: 8px 16px;
-    margin-right: 4px;
+    padding: 8px 13px;
+    margin-right: 3px;
     border: 1px solid transparent;
     border-radius: 8px;
 }

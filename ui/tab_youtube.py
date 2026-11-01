@@ -29,7 +29,13 @@ from PySide6.QtWidgets import (
 from core.youtube_uploader import YouTubeUploader
 from ui import theme
 from ui.components.icons import icon, set_icon
-from ui.components.page import PageHeader, icon_button, paint_status, wrap_scroll
+from ui.components.page import (
+    PageHeader,
+    icon_button,
+    paint_status,
+    stack_columns,
+    wrap_scroll,
+)
 from ui.tab_thumbnail import ThumbnailPanel
 from utils.logger import get_logger
 
@@ -142,6 +148,7 @@ class YouTubeConfigTab(QWidget):
 
         columns = QHBoxLayout()
         columns.setSpacing(12)
+        self._columns = columns
         root.addLayout(columns, 1)
 
         left = QVBoxLayout()
@@ -397,6 +404,10 @@ class YouTubeConfigTab(QWidget):
         self.thumbnail_panel = ThumbnailPanel()
         self.thumbnail_panel.thumbnail_saved.connect(self.thumbnail_saved.emit)
         self.sub_tabs.addTab(self.thumbnail_panel, "Hình thu nhỏ")
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        stack_columns(self, self._columns, 980)
 
     @staticmethod
     def _wrap(layout) -> QWidget:

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -51,9 +52,18 @@ def wrap_scroll(content: QWidget) -> QScrollArea:
     area.setObjectName("PageScroll")
     area.setWidgetResizable(True)
     area.setFrameShape(QFrame.Shape.NoFrame)
-    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     area.setWidget(content)
     return area
+
+
+def stack_columns(owner: QWidget, layout: QBoxLayout, breakpoint: int) -> None:
+    """Stack a two-column layout vertically once the page is narrower than ``breakpoint``."""
+    direction = (QBoxLayout.Direction.TopToBottom
+                 if owner.width() < breakpoint
+                 else QBoxLayout.Direction.LeftToRight)
+    if layout.direction() != direction:
+        layout.setDirection(direction)
 
 
 def scroll_page(inner: QWidget, margins: int = 14, spacing: int = 12) -> QWidget:
