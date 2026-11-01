@@ -79,6 +79,20 @@
     "write_srt": false,
     "keep_temp": false
   },
+  "frame": {
+    "enabled": false,
+    "subtitle_x": 0.5,
+    "subtitle_y": 0.9,
+    "subtitle_scale": 1.0,
+    "waveform": false,
+    "wave_x": 0.06,
+    "wave_y": 0.74,
+    "wave_w": 0.88,
+    "wave_h": 0.08,
+    "wave_color": "#4FC3F7",
+    "preview": "",
+    "images": []
+  },
   "youtube": {
     "method": "api",
     "channel": "",

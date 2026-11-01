@@ -42,6 +42,7 @@ from core.ai_images import (
     ensure_images,
     resolve_ai_dir,
 )
+from core.frame_layout import FrameImage, FrameLayout, color_ffmpeg
 from core.languages import (
     DEFAULT_LANGUAGE,
     font_candidates,
@@ -222,6 +223,7 @@ class VideoConfig:
     subtitle_srt: bool = False        # burn an existing .srt instead of narration
     subtitle_file: str = ""           # explicit .srt; empty = auto-detect per item
     write_srt: bool = False
+    frame: FrameLayout = field(default_factory=FrameLayout)
     keep_temp: bool = False
 
     @classmethod
@@ -266,6 +268,7 @@ class VideoConfig:
             subtitle_srt=bool(raw.get("subtitle_srt", False)),
             subtitle_file=str(raw.get("subtitle_file") or ""),
             write_srt=bool(raw.get("write_srt", False)),
+            frame=FrameLayout.from_settings(settings),
             keep_temp=bool(raw.get("keep_temp", False)),
         )
 
@@ -615,13 +618,15 @@ class FFmpegRenderer:
             visual = self._prepare_visual(
                 manager, items, cfg, temp_dir, report, cancel_cb,
                 segments=segments, total=total)
+            frame_images = self._frame_images(manager, cfg)
             report(24, "Đang dựng video...")
 
             out_path = temp_dir / "out.mp4"
             self._encode_with_fallback(
                 cfg, temp_dir, combined, visual, entries, total,
                 out_path, job, report, pause_cb, cancel_cb, manager,
-                segments=segments, srt_events=srt_events)
+                segments=segments, srt_events=srt_events,
+                frame_images=frame_images)
 
             self._check_cancel(cancel_cb)
             report(99, "Đang hoàn tất...")
@@ -716,7 +721,7 @@ class FFmpegRenderer:
         missing = [item.base for item in items if not manager.audio_exists(item)]
         if missing:
             raise RenderError("Chưa có audio cho: " + ", ".join(missing[:5]))
-        if not self.has_filter("showwaves") and cfg.showwaves:
+        if not self.has_filter("showwaves") and (cfg.showwaves or cfg.frame.wave_active):
             raise RenderError("Bản ffmpeg này thiếu filter showwaves.")
         if (cfg.chapter_titles or cfg.subtitle_enabled or cfg.subtitle_srt) \
                 and not self.has_filter("subtitles"):
@@ -726,6 +731,7 @@ class FFmpegRenderer:
                 "Không tìm thấy file phụ đề .srt. Đặt <tên>.srt cạnh file audio "
                 "hoặc chọn file .srt trong tab Video."
             )
+        self._frame_images(manager, cfg)
         if cfg.visual == "video":
             sources = self._video_sources(manager, cfg)
             if not sources:
@@ -1378,6 +1384,12 @@ class FFmpegRenderer:
                    temp_dir: Path, cfg: VideoConfig,
                    language: str = DEFAULT_LANGUAGE) -> bool:
         """Write timed events as ``subs.ass``; False when there is nothing to show."""
+        width, height = cfg.dimensions
+        frame = cfg.frame if cfg.frame.enabled else None
+        pos_tag = ""
+        if frame is not None:
+            px, py = frame.subtitle_pos(width, height)
+            pos_tag = f"\\pos({px},{py})"
         dialogues: List[str] = []
         for start, end, text in events:
             if total > 0 and start >= total:
@@ -1387,18 +1399,19 @@ class FFmpegRenderer:
                 continue
             dialogues.append(
                 f"Dialogue: 0,{self._ass_time(start)},{self._ass_time(end)},"
-                f"Sub,,0,0,0,,{{\\fad(120,180)}}{self._ass_text(text)}"
+                f"Sub,,0,0,0,,{{\\fad(120,180){pos_tag}}}{self._ass_text(text)}"
             )
         if not dialogues:
             return False
-        width, height = cfg.dimensions
-        font_size = max(24, int(round(44 * height / 1080)))
-        margin_v = max(40, int(round(70 * height / 1080)))
+        scale = frame.subtitle_scale if frame is not None else 1.0
+        font_size = max(24, int(round(44 * scale * height / 1080)))
+        margin_v = 0 if frame is not None else max(40, int(round(70 * height / 1080)))
+        alignment = 5 if frame is not None else 2
         style = (
             f"Style: Sub,{subtitle_font(language)},{font_size},"
             f"&H00FFFFFF,&H000000FF,&H00000000,"
-            f"&H96000000,0,0,0,0,100,100,0,0,1,{max(2, font_size // 14)},1,2,"
-            f"20,20,{margin_v},1"
+            f"&H96000000,0,0,0,0,100,100,0,0,1,{max(2, font_size // 14)},1,"
+            f"{alignment},20,20,{margin_v},1"
         )
         lines = [
             "[Script Info]",
@@ -1526,6 +1539,21 @@ class FFmpegRenderer:
         events.sort(key=lambda event: event[0])
         return events
 
+    def _frame_images(self, manager: ProjectManager,
+                      cfg: VideoConfig) -> List[Tuple[FrameImage, Path]]:
+        """Resolve the frame template's overlay images; raises when missing."""
+        layout = cfg.frame
+        if not layout.enabled:
+            return []
+        resolved: List[Tuple[FrameImage, Path]] = []
+        for image in layout.images:
+            path = _resolve_user_path(image.path, manager)
+            if path is None or not path.is_file():
+                raise RenderError(
+                    f"Không tìm thấy ảnh lớp phủ: {image.path or '(chưa chọn ảnh)'}")
+            resolved.append((image, path))
+        return resolved
+
     # ── filter graph ─────────────────────────────────────────────────────────
     @staticmethod
     def _duck_expression(segments: List[Tuple[ProjectItem, float, float]],
@@ -1551,6 +1579,8 @@ class FFmpegRenderer:
                       temp_dir: Path, has_bgm: bool,
                       segments: Optional[List[Tuple[ProjectItem, float, float]]] = None,
                       srt_events: Optional[List[Tuple[float, float, str]]] = None,
+                      frame_images: Optional[List[Tuple[int, FrameImage]]] = None,
+                      bgm_index: int = 2,
                       ) -> Tuple[str, str, str]:
         width, height = cfg.dimensions
         parts: List[str] = []
@@ -1598,19 +1628,44 @@ class FFmpegRenderer:
             else:
                 logger.warning("Bật phụ đề nhưng không có nội dung để hiển thị.")
 
-        if cfg.showwaves:
-            wave_h = max(90, min(height // 4, int(round(180 * height / 1080))))
+        frame = cfg.frame if cfg.frame.enabled else None
+        wave_active = bool(cfg.showwaves or (frame is not None and frame.waveform))
+        if wave_active:
+            if frame is not None:
+                wave_x, wave_y, wave_w, wave_h = frame.wave_rect(width, height)
+                wave_color = color_ffmpeg(frame.wave_color)
+            else:
+                wave_w = width
+                wave_h = max(90, min(height // 4, int(round(180 * height / 1080))))
+                wave_x, wave_y = 0, height - wave_h
+                wave_color = "0x4FC3F7"
             audio_head = "[0:a]asplit=2[a_main][a_wave]"
             parts.append(audio_head)
             parts.append(
-                f"[a_wave]showwaves=s={width}x{wave_h}:mode=cline:rate={cfg.fps}:"
-                f"colors=0x4FC3F7:scale=sqrt:draw=full[waves]"
+                f"[a_wave]showwaves=s={_even(wave_w)}x{_even(wave_h)}:mode=cline:"
+                f"rate={cfg.fps}:colors={wave_color}:scale=sqrt:draw=full[waves]"
             )
-            parts.append(f"[{vlabel}][waves]overlay=0:H-h:format=auto[vout]")
+            parts.append(f"[{vlabel}][waves]overlay={wave_x}:{wave_y}:format=auto[vwave]")
+            vlabel = "vwave"
         else:
             audio_head = "[0:a]anull[a_main]"
             parts.append(audio_head)
-            parts.append(f"[{vlabel}]null[vout]")
+
+        for index, (input_index, image) in enumerate(frame_images or []):
+            image_w = _even(max(2, int(round(image.width * width))))
+            chain = f"[{input_index}:v]scale={image_w}:-1,format=rgba"
+            if image.opacity < 0.999:
+                chain += f",colorchannelmixer=aa={image.opacity:.3f}"
+            parts.append(chain + f"[frameimg{index}]")
+            image_x = max(0, min(width - 1, int(round(image.x * width))))
+            image_y = max(0, min(height - 1, int(round(image.y * height))))
+            parts.append(
+                f"[{vlabel}][frameimg{index}]overlay={image_x}:{image_y}:"
+                f"format=auto[vframe{index}]"
+            )
+            vlabel = f"vframe{index}"
+
+        parts.append(f"[{vlabel}]null[vout]")
 
         parts.append("[a_main]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[voice]")
         if has_bgm:
@@ -1618,12 +1673,12 @@ class FFmpegRenderer:
             duck = self._duck_expression(segments or [], cfg.bgm_duck)
             if duck:
                 parts.append(
-                    f"[2:a]volume={db}dB,volume='{duck}':eval=frame,aresample=48000,"
+                    f"[{bgm_index}:a]volume={db}dB,volume='{duck}':eval=frame,aresample=48000,"
                     f"aformat=sample_fmts=fltp:channel_layouts=stereo[bgm]"
                 )
             else:
                 parts.append(
-                    f"[2:a]volume={db}dB,aresample=48000,"
+                    f"[{bgm_index}:a]volume={db}dB,aresample=48000,"
                     f"aformat=sample_fmts=fltp:channel_layouts=stereo[bgm]"
                 )
             parts.append(
@@ -1667,6 +1722,7 @@ class FFmpegRenderer:
                               manager: ProjectManager,
                               segments: Optional[List[Tuple[ProjectItem, float, float]]] = None,
                               srt_events: Optional[List[Tuple[float, float, str]]] = None,
+                              frame_images: Optional[List[Tuple[FrameImage, Path]]] = None,
                               ) -> str:
         bgm = self._bgm_path(cfg, manager)
         preferred = self.preferred_encoder(cfg)
@@ -1688,7 +1744,8 @@ class FFmpegRenderer:
             try:
                 self._run_encode(cfg, temp_dir, combined, visual, entries, total,
                                  out_path, encoder, bgm, report, pause_cb, cancel_cb,
-                                 segments=segments, srt_events=srt_events)
+                                 segments=segments, srt_events=srt_events,
+                                 frame_images=frame_images)
                 if encoder == "libx264" or encoder == preferred:
                     self._resolved_encoder = encoder
                 return encoder
@@ -1718,11 +1775,16 @@ class FFmpegRenderer:
                     pause_cb: PauseCb, cancel_cb: CancelCb,
                     segments: Optional[List[Tuple[ProjectItem, float, float]]] = None,
                     srt_events: Optional[List[Tuple[float, float, str]]] = None,
+                    frame_images: Optional[List[Tuple[FrameImage, Path]]] = None,
                     ) -> None:
         width, height = cfg.dimensions
+        overlays = list(frame_images or [])
+        frame_inputs = [(2 + index, image) for index, (image, _path) in enumerate(overlays)]
+        bgm_index = 2 + len(overlays)
         filter_graph, _, audio_label = self._build_filter(
             cfg, visual, entries, total, temp_dir, bgm is not None,
-            segments=segments, srt_events=srt_events)
+            segments=segments, srt_events=srt_events,
+            frame_images=frame_inputs, bgm_index=bgm_index)
         cmd: List[str] = [
             self.ffmpeg, "-y", "-hide_banner", "-nostdin", "-loglevel", "error",
             "-i", str(combined),
@@ -1740,6 +1802,8 @@ class FFmpegRenderer:
                 cmd += ["-stream_loop", "-1", "-i", source]
             else:
                 cmd += ["-i", source]
+        for _image, path in overlays:
+            cmd += ["-loop", "1", "-framerate", str(cfg.fps), "-i", str(path)]
         if bgm is not None:
             cmd += ["-stream_loop", "-1", "-i", str(bgm)]
         cmd += [

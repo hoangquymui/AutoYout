@@ -9,6 +9,7 @@ import pytest
 
 from conftest import requires_ffmpeg
 from core.ffmpeg_renderer import FFmpegRenderer, RenderError, VideoConfig
+from core.frame_layout import FrameImage, FrameLayout
 from core.project_manager import ProjectItem, ProjectManager, VIDEO_DONE
 from core.settings import load_settings
 
@@ -23,7 +24,7 @@ def _manager(tmp_path: Path, count: int = 3) -> ProjectManager:
     return manager
 
 
-def _config(tmp_path: Path, **overrides) -> VideoConfig:
+def _config(tmp_path: Path, *, frame=None, **overrides) -> VideoConfig:
     raw = {
         "grouping": "one",
         "group_size": 2,
@@ -36,7 +37,10 @@ def _config(tmp_path: Path, **overrides) -> VideoConfig:
         "gap": 0.2,
     }
     raw.update(overrides)
-    return VideoConfig.from_settings({"video": raw})
+    settings = {"video": raw}
+    if frame is not None:
+        settings["frame"] = frame
+    return VideoConfig.from_settings(settings)
 
 
 def _renderer() -> FFmpegRenderer:
@@ -408,3 +412,135 @@ def test_run_encode_caps_length_and_loops_background(tmp_path: Path,
     assert video_cmd[video_cmd.index("-stream_loop") + 1] == "-1"
 
 
+def test_config_reads_frame_settings(tmp_path: Path) -> None:
+    cfg = VideoConfig.from_settings({
+        "video": {},
+        "frame": {"enabled": True, "subtitle_y": 0.7, "waveform": True,
+                  "wave_color": "ff0000",
+                  "images": [{"path": "logo.png", "opacity": 0.4}]},
+    })
+    assert cfg.frame.enabled is True
+    assert cfg.frame.subtitle_y == 0.7
+    assert cfg.frame.wave_active is True
+    assert cfg.frame.wave_color == "#FF0000"
+    assert cfg.frame.images[0].opacity == 0.4
+
+
+def test_write_ass_uses_frame_position(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.frame = FrameLayout(enabled=True, subtitle_x=0.25, subtitle_y=0.75,
+                            subtitle_scale=1.5)
+    renderer = _renderer()
+    assert renderer._write_ass([(0.5, 2.0, "Xin chào")], 3.0, tmp_path, cfg)
+    ass = (tmp_path / "subs.ass").read_text(encoding="utf-8")
+    assert "\\pos(160,270)" in ass
+    style = next(line for line in ass.splitlines() if line.startswith("Style: Sub,"))
+    assert style.endswith(",5,20,20,0,1")
+
+
+def test_build_filter_places_frame_waveform_and_overlay(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    cfg.frame = FrameLayout(
+        enabled=True, waveform=True, wave_x=0.1, wave_y=0.8,
+        wave_w=0.5, wave_h=0.1, wave_color="#FF0000",
+        images=[FrameImage(path="logo.png", x=0.5, y=0.25, width=0.2,
+                           opacity=0.5)],
+    )
+    image = cfg.frame.images[0]
+    graph, vlabel, _audio = _renderer()._build_filter(
+        cfg, {"kind": "image", "path": str(tmp_path / "bg.png")},
+        [], 5.0, tmp_path, has_bgm=True, segments=[],
+        frame_images=[(2, image)], bgm_index=3)
+    assert "colors=0xFF0000" in graph
+    assert "showwaves=s=320x36" in graph
+    assert "overlay=64:288" in graph
+    assert "[2:v]scale=128:-1,format=rgba,colorchannelmixer=aa=0.500[frameimg0]" in graph
+    assert "overlay=320:90:format=auto[vframe0]" in graph
+    assert "[3:a]volume=-18.0dB" in graph
+    assert vlabel == "vframe0"
+    assert "[vframe0]null[vout]" in graph
+
+
+def test_missing_frame_overlay_is_rejected(tmp_path: Path) -> None:
+    manager = _manager(tmp_path, 1)
+    cfg = _config(tmp_path)
+    assert _renderer()._frame_images(manager, cfg) == []
+    cfg.frame = FrameLayout(enabled=True,
+                            images=[FrameImage(path="missing.png")])
+    with pytest.raises(RenderError):
+        _renderer()._frame_images(manager, cfg)
+
+
+def test_run_encode_adds_overlay_inputs_before_bgm(tmp_path: Path,
+                                                   monkeypatch) -> None:
+    cfg = _config(tmp_path)
+    image = FrameImage(path=str(tmp_path / "logo.png"), x=0.5)
+    cfg.frame = FrameLayout(enabled=True, images=[image])
+    renderer = _renderer()
+    captured: dict = {}
+    monkeypatch.setattr(
+        renderer, "_build_filter",
+        lambda *args, **kwargs: captured.update(filter_kwargs=kwargs)
+        or ("[0:a]anull[aout]", "vbase", "aout"))
+    monkeypatch.setattr(
+        renderer, "_run_process",
+        lambda cmd, *args, **kwargs: captured.update(cmd=cmd))
+
+    logo = tmp_path / "logo.png"
+    bgm = tmp_path / "bgm.mp3"
+    renderer._run_encode(
+        cfg, tmp_path, tmp_path / "combined.wav",
+        {"kind": "image", "path": str(tmp_path / "bg.png")}, [], 7.5,
+        tmp_path / "out.mp4", "libx264", bgm,
+        lambda *args: None, None, None,
+        frame_images=[(image, logo)])
+    cmd = captured["cmd"]
+    inputs = [cmd[index + 1] for index, part in enumerate(cmd) if part == "-i"]
+    assert inputs[0] == str(tmp_path / "combined.wav")
+    assert inputs.index(str(logo)) < inputs.index(str(bgm))
+    assert captured["filter_kwargs"]["bgm_index"] == 3
+    assert captured["filter_kwargs"]["frame_images"] == [(2, image)]
+
+
+
+
+@requires_ffmpeg
+def test_render_with_frame_template(tmp_path: Path, ffmpeg: str) -> None:
+    _manager(tmp_path, 1)
+    image = _make_media(tmp_path, ffmpeg)
+    overlay = tmp_path / "logo.png"
+    subprocess.run(
+        [ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", "color=c=0xFF0000:s=64x64:d=1", "-frames:v", "1", str(overlay)],
+        check=True,
+    )
+    manager = ProjectManager(tmp_path)
+    manager.scan()
+    cfg = _config(
+        tmp_path,
+        image=str(image),
+        subtitle_enabled=True,
+        frame={
+            "enabled": True,
+            "subtitle_y": 0.8,
+            "subtitle_scale": 1.2,
+            "waveform": True,
+            "wave_x": 0.1,
+            "wave_y": 0.6,
+            "wave_w": 0.8,
+            "wave_h": 0.1,
+            "wave_color": "#FF0000",
+            "images": [{
+                "path": str(overlay), "x": 0.1, "y": 0.1,
+                "width": 0.2, "opacity": 0.8,
+            }],
+        },
+    )
+
+    jobs, errors = _renderer().render_all(manager, cfg, force=True)
+
+    assert errors == []
+    assert len(jobs) == 1
+    job = manager.get_video("one::tap_1")
+    assert job is not None and job.state == VIDEO_DONE
+    assert job.path.is_file() and job.path.stat().st_size > 3000

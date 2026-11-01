@@ -7,6 +7,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
+from PySide6.QtCore import QEvent  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 import ui.main_window as main_window  # noqa: E402
@@ -33,14 +34,17 @@ def window(app, monkeypatch, tmp_path: Path):
     yield win
     win.close()
     win.deleteLater()
+    # Without an event loop the delete request would linger and every new
+    # window would re-polish all previous ones (quadratic test runtime).
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     QApplication.processEvents()
 
 
 def test_window_builds_all_tabs(window) -> None:
-    assert window.tabs.count() == 5
+    assert window.tabs.count() == 6
     labels = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-    assert labels == ["Dự án && Dữ liệu", "Kịch bản",
-                      "Lồng tiếng", "Video (FFmpeg)", "YouTube"]
+    assert labels == ["Dự án", "Kịch bản",
+                      "Lồng tiếng", "Video", "Video Frame", "YouTube"]
     assert window.btn_tts.text().startswith("1. Lồng tiếng")
     assert window.btn_video.text().startswith("2. Tạo Video")
     assert window.btn_upload.text().startswith("3. Upload YouTube")
@@ -203,6 +207,8 @@ def test_video_pool_settings_roundtrip(window) -> None:
 
 def test_srt_file_roundtrip(window) -> None:
     tab = window.video_tab
+    tab.srt_check.setChecked(False)
+    tab.srt_edit.setText("")
     assert tab.srt_edit.isEnabled() is False
     tab.srt_check.setChecked(True)
     assert tab.srt_edit.isEnabled() is True
@@ -219,6 +225,39 @@ def test_srt_file_roundtrip(window) -> None:
     assert tab.srt_check.isChecked() is True
     assert tab.srt_edit.text() == "D:/subs/tap_1.srt"
     assert tab.srt_edit.isEnabled() is True
+
+
+def test_frame_tab_roundtrip(window, tmp_path: Path) -> None:
+    from core.frame_layout import FrameImage
+
+    tab = window.frame_tab
+    # user_settings.json may already contain a frame template; start clean.
+    window.settings["frame"] = {}
+    tab.load_from(window.settings)
+    tab._layout.enabled = True
+    tab._layout.subtitle_x = 0.42
+    tab._layout.subtitle_y = 0.74
+    tab._layout.subtitle_scale = 1.3
+    tab._layout.waveform = True
+    tab._layout.wave_x = 0.12
+    tab._layout.wave_color = "#FF8800"
+    tab._layout.images.append(FrameImage(
+        path=str(tmp_path / "logo.png"), x=0.6, y=0.1, width=0.2, opacity=0.6))
+    tab.apply_to(window.settings)
+
+    frame = window.settings["frame"]
+    assert frame["enabled"] is True
+    assert frame["subtitle_x"] == 0.42
+    assert frame["subtitle_scale"] == 1.3
+    assert frame["wave_color"] == "#FF8800"
+    assert frame["images"][0]["opacity"] == 0.6
+
+    tab._reset()
+    assert tab._layout.enabled is False
+    tab.load_from(window.settings)
+    assert tab._layout.enabled is True
+    assert tab._layout.subtitle_y == 0.74
+    assert tab._layout.images[0].path.endswith("logo.png")
 
 
 def test_video_tab_run_button_starts_video_pipeline(window, monkeypatch) -> None:
@@ -336,3 +375,40 @@ def test_language_dialogs_collect_and_edit_values(app) -> None:
     assert [(p.language, p.prompt, p.id) for p in profiles] == [
         ("en", "prompt mới", "id1")]
 
+
+
+def test_frame_canvas_drag_moves_subtitle(app) -> None:
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    from core.frame_layout import FrameLayout
+    from ui.tab_frame import FrameCanvas
+
+    layout = FrameLayout(enabled=True)
+    canvas = FrameCanvas(layout)
+    canvas.resize(800, 450)
+    canvas.show()
+    app.processEvents()
+
+    start = canvas._subtitle_box().center()
+    press = QMouseEvent(
+        QMouseEvent.Type.MouseButtonPress, start, start,
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier)
+    canvas.mousePressEvent(press)
+    target = QPointF(start.x() + 60, start.y() - 24)
+    move = QMouseEvent(
+        QMouseEvent.Type.MouseMove, target, target,
+        Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier)
+    canvas.mouseMoveEvent(move)
+    release = QMouseEvent(
+        QMouseEvent.Type.MouseButtonRelease, target, target,
+        Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier)
+    canvas.mouseReleaseEvent(release)
+
+    assert canvas.selection() == ("subtitle", -1)
+    assert layout.subtitle_x > 0.5
+    assert layout.subtitle_y < 0.9
+    canvas.hide()

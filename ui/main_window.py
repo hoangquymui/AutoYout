@@ -48,6 +48,7 @@ from ui.styles import app_stylesheet
 from ui.tab_project import ProjectTab
 from ui.tab_script import ScriptTab
 from ui.tab_dubbing import DubbingTab
+from ui.tab_frame import FrameTab
 from ui.tab_video import VideoConfigTab
 from ui.tab_youtube import YouTubeConfigTab
 from utils.logger import (
@@ -138,11 +139,13 @@ class MainWindow(QMainWindow):
         self.script_tab = ScriptTab()
         self.tts_tab = DubbingTab()
         self.video_tab = VideoConfigTab()
+        self.frame_tab = FrameTab()
         self.youtube_tab = YouTubeConfigTab()
-        self.tabs.addTab(self.project_tab, icon("folder", theme.TEXT_DIM, 15), "Dự án && Dữ liệu")
+        self.tabs.addTab(self.project_tab, icon("folder", theme.TEXT_DIM, 15), "Dự án")
         self.tabs.addTab(self.script_tab, icon("file", theme.TEXT_DIM, 15), "Kịch bản")
         self.tabs.addTab(self.tts_tab, icon("mic", theme.TEXT_DIM, 15), "Lồng tiếng")
-        self.tabs.addTab(self.video_tab, icon("film", theme.TEXT_DIM, 15), "Video (FFmpeg)")
+        self.tabs.addTab(self.video_tab, icon("film", theme.TEXT_DIM, 15), "Video")
+        self.tabs.addTab(self.frame_tab, icon("image", theme.TEXT_DIM, 15), "Video Frame")
         self.tabs.addTab(self.youtube_tab, icon("youtube", theme.TEXT_DIM, 15), "YouTube")
         self.tabs.currentChanged.connect(self._update_tab_icons)
         self._update_tab_icons()
@@ -406,6 +409,7 @@ class MainWindow(QMainWindow):
         self.script_tab.load_from(self.settings)
         self.tts_tab.load_from(self.settings)
         self.video_tab.load_from(self.settings)
+        self.frame_tab.load_from(self.settings)
         self.youtube_tab.load_from(self.settings)
 
     def _collect_all(self) -> None:
@@ -413,6 +417,7 @@ class MainWindow(QMainWindow):
         self.script_tab.apply_to(self.settings)
         self.tts_tab.apply_to(self.settings)
         self.video_tab.apply_to(self.settings)
+        self.frame_tab.apply_to(self.settings)
         self.youtube_tab.apply_to(self.settings)
         save_settings(self.settings)
 
@@ -826,7 +831,7 @@ class MainWindow(QMainWindow):
 
     # ── theme ────────────────────────────────────────────────────────────────
     def _update_tab_icons(self, index: int | None = None) -> None:
-        names = ("folder", "file", "mic", "film", "youtube")
+        names = ("folder", "file", "mic", "film", "image", "youtube")
         current = self.tabs.currentIndex() if index is None else index
         for position, name in enumerate(names):
             color = theme.ACCENT_SOFT if position == current else theme.TEXT_DIM
@@ -858,6 +863,7 @@ class MainWindow(QMainWindow):
             badge.apply_theme()
         self.project_tab.apply_theme()
         self.tts_tab.apply_theme()
+        self.frame_tab.apply_theme()
         self.youtube_tab.apply_theme()
         self._sync_theme_button()
         self._paint_status_colors()
