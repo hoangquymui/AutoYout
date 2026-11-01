@@ -4,6 +4,7 @@ from __future__ import annotations
 from core.text_processor import (
     chunk_text,
     normalize_text,
+    split_by_words,
     split_sentences,
     text_preview,
 )
@@ -55,3 +56,28 @@ def test_text_preview_truncates() -> None:
     assert text_preview("  a   b  ", limit=10) == "a b"
     preview = text_preview("x" * 50, limit=10)
     assert len(preview) == 10 and preview.endswith("…")
+
+
+def test_split_by_words_respects_range_and_sentence_ends() -> None:
+    text = " ".join(
+        f"Câu số {i} với vài từ để kiểm tra việc cắt theo số từ." for i in range(30))
+    pieces = split_by_words(text, min_words=8, max_words=20)
+    assert len(pieces) > 1
+    assert all(len(piece.split()) <= 20 for piece in pieces)
+    # Every piece must end at a sentence boundary (a period), except the last.
+    for piece in pieces[:-1]:
+        assert piece.strip().endswith(".")
+    assert "".join("".join(piece.split()) for piece in pieces) == "".join(text.split())
+
+
+def test_split_by_words_single_long_sentence_falls_back_to_words() -> None:
+    words = " ".join(f"từ{i}" for i in range(50))
+    pieces = split_by_words(words, min_words=10, max_words=12)
+    assert len(pieces) > 1
+    assert all(len(piece.split()) <= 12 for piece in pieces)
+    assert "".join("".join(piece.split()) for piece in pieces) == "".join(words.split())
+
+
+def test_split_by_words_empty_input() -> None:
+    assert split_by_words("") == []
+    assert split_by_words("   ") == []

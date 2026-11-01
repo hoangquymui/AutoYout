@@ -29,10 +29,9 @@ from core.subtitles import (
     cues_to_text,
     parse_srt,
     parse_vtt,
-    text_to_cues,
     write_srt,
 )
-from core.text_processor import split_for_tts
+from core.text_processor import split_by_words
 from core.tts_engine import SynthesisCancelled, TTSEngine
 from utils.files import load_json, read_text_smart, safe_filename, write_json_atomic
 from utils.logger import get_logger
@@ -202,22 +201,34 @@ def import_srt(manager, srt_path: str | os.PathLike) -> str:
     return base
 
 
-def import_txt(manager, txt_path: str | os.PathLike, max_chars: int = 350) -> str:
-    """Import plain text as cues with evenly distributed timings."""
+def _cues_from_pieces(pieces: Iterable[str]) -> List[CueJob]:
+    """Build evenly-timed cues from plain-text pieces (no real timeline)."""
+    rate = 0.065  # seconds per character, matching subtitles.text_to_cues
+    cues: List[CueJob] = []
+    cursor = 0.0
+    for position, piece in enumerate(pieces, 1):
+        piece = str(piece or "").strip()
+        if not piece:
+            continue
+        duration = max(0.6, len(piece) * rate)
+        cues.append(CueJob(position, cursor, cursor + duration, piece))
+        cursor += duration
+    return cues
+
+
+def import_txt(manager, txt_path: str | os.PathLike,
+               min_words: int = 15, max_words: int = 30) -> str:
+    """Import plain text as cues, splitting into a word range at sentence ends."""
     source = Path(txt_path)
     if not source.is_file():
         raise DubbingError(f"Không tìm thấy file văn bản: {source}")
     text = read_text_smart(source)
-    cues = text_to_cues(text, 0.0)
-    if not cues:
+    pieces = split_by_words(text, min_words, max_words)
+    if not pieces:
         raise DubbingError(f"{source.name} không có nội dung để lồng tiếng.")
     base = safe_filename(source.stem, "script")
     _ensure_input_text(manager, base, text, source.stem)
-    jobs = [
-        CueJob(index, cue.start, cue.end, cue.text)
-        for index, cue in enumerate(cues, 1)
-    ]
-    jobs = split_long_cues(jobs, max_chars)
+    jobs = _cues_from_pieces(pieces)
     save_cues(manager, base, jobs)
     _mark_dubbing(manager, base)
     logger.info("Import TXT %s → %d cue.", source.name, len(jobs))
@@ -225,27 +236,29 @@ def import_txt(manager, txt_path: str | os.PathLike, max_chars: int = 350) -> st
 
 
 def apply_import_options(cues: List[CueJob], auto_split: bool = True,
-                         max_chars: int = 350, merge_short: bool = False) -> List[CueJob]:
+                         min_words: int = 15, max_words: int = 30,
+                         merge_short: bool = False) -> List[CueJob]:
     """Run the optional split/merge import passes in a predictable order."""
     result = list(cues)
     if merge_short:
         result = merge_short_cues(result)
     if auto_split:
-        result = split_long_cues(result, max_chars)
+        result = split_cues_by_words(result, min_words, max_words)
     return reindex(result)
 
 
-def split_long_cues(cues: Iterable[CueJob], max_chars: int = 350) -> List[CueJob]:
-    """Split over-long cues at sentence boundaries, keeping the total duration."""
-    limit = max(80, int(max_chars or 350))
+def split_cues_by_words(cues: Iterable[CueJob], min_words: int = 15,
+                        max_words: int = 30) -> List[CueJob]:
+    """Split over-long cues at sentence ends, keeping the total duration."""
+    lo = max(1, int(min_words or 15))
+    hi = max(lo + 1, int(max_words or 30))
     out: List[CueJob] = []
     for cue in cues:
         text = str(cue.text or "").strip()
-        if len(text) <= limit:
+        if not text or len(text.split()) <= hi:
             out.append(cue)
             continue
-        pieces = [piece for piece in split_for_tts(text, max_chars=limit)
-                  if piece.strip()]
+        pieces = [piece for piece in split_by_words(text, lo, hi) if piece.strip()]
         if len(pieces) <= 1:
             out.append(cue)
             continue

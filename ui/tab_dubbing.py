@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -194,8 +195,9 @@ class DubbingTab(QWidget):
         root.setSpacing(8)
         root.addWidget(
             PageHeader(
-                "Lồng tiếng theo phụ đề",
-                "Nhập SRT/TXT, tạo audio cho từng cue, rồi ghép thành MP3 + SRT.",
+                "Lồng tiếng từ văn bản",
+                "Nhập TXT, tách cue theo khoảng số từ (cắt ở dấu chấm gần nhất), "
+                "tạo audio từng cue rồi ghép thành MP3 + SRT.",
             )
         )
 
@@ -216,14 +218,15 @@ class DubbingTab(QWidget):
         layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(8)
 
-        row1 = QHBoxLayout()
-        row1.setSpacing(6)
+        row1 = QGridLayout()
+        row1.setHorizontalSpacing(6)
+        row1.setVerticalSpacing(6)
         self.file_label = QLabel("File")
         self.file_combo = QComboBox()
         self.file_combo.setMinimumWidth(220)
         self.file_combo.currentIndexChanged.connect(self._on_base_changed)
-        row1.addWidget(self.file_label)
-        row1.addWidget(self.file_combo)
+        row1.addWidget(self.file_label, 0, 0)
+        row1.addWidget(self.file_combo, 0, 1, 1, 2)
 
         self.start_btn = QPushButton("Start")
         self.start_btn.setObjectName("primaryButton")
@@ -235,9 +238,9 @@ class DubbingTab(QWidget):
         self.stop_btn = QPushButton("Stop")
         set_icon(self.stop_btn, "stop", "danger", 13)
         self.stop_btn.clicked.connect(self._stop)
-        self.import_btn = QPushButton("Import SRT")
+        self.import_btn = QPushButton("Import TXT")
         set_icon(self.import_btn, "file", "accent", 14)
-        self.import_btn.clicked.connect(self._import_srt)
+        self.import_btn.clicked.connect(self._import_txt)
         self.import_dir_btn = QPushButton("Import Folder")
         set_icon(self.import_dir_btn, "folder", "accent", 14)
         self.import_dir_btn.clicked.connect(self._import_folder)
@@ -247,26 +250,46 @@ class DubbingTab(QWidget):
         self.join_btn = QPushButton("Ghép MP3 && Xuất SRT")
         set_icon(self.join_btn, "music", "accent", 14)
         self.join_btn.clicked.connect(self._start_join)
-        for button in (
-            self.start_btn, self.pause_btn, self.stop_btn, self.import_btn,
-            self.import_dir_btn, self.open_btn, self.join_btn,
-        ):
-            row1.addWidget(button)
-        row1.addStretch(1)
+        row1.addWidget(self.start_btn, 0, 3)
+        row1.addWidget(self.pause_btn, 0, 4)
+        row1.addWidget(self.stop_btn, 0, 5)
+        row1.addWidget(self.import_btn, 1, 1)
+        row1.addWidget(self.import_dir_btn, 1, 2)
+        row1.addWidget(self.open_btn, 1, 3)
+        row1.addWidget(self.join_btn, 1, 4, 1, 2)
+        row1.setColumnStretch(1, 2)
         layout.addLayout(row1)
 
         row2 = QHBoxLayout()
         row2.setSpacing(8)
         self.auto_split_chk = QCheckBox("Auto Split")
         self.auto_split_chk.setChecked(True)
-        self.auto_split_chk.setToolTip("Tách cue dài hơn giới hạn ký tự khi import.")
-        self.max_chars_spin = QSpinBox()
-        self.max_chars_spin.setRange(80, 800)
-        self.max_chars_spin.setSingleStep(10)
-        self.max_chars_spin.setSuffix(" ký tự")
-        self.max_chars_spin.setValue(350)
+        self.auto_split_chk.setToolTip("Tách cue khi import theo khoảng số từ bên cạnh.")
+        self.min_words_spin = QSpinBox()
+        self.min_words_spin.setRange(1, 400)
+        self.min_words_spin.setSuffix(" từ")
+        self.min_words_spin.setValue(15)
+        self.min_words_spin.setToolTip("Số từ tối thiểu cho mỗi cue.")
+        self.max_words_spin = QSpinBox()
+        self.max_words_spin.setRange(2, 500)
+        self.max_words_spin.setSuffix(" từ")
+        self.max_words_spin.setValue(30)
+        self.max_words_spin.setToolTip(
+            "Số từ tối đa mỗi cue — gặp dấu chấm gần nhất thì cắt.")
         self.merge_chk = QCheckBox("Gộp cue ngắn")
         self.merge_chk.setToolTip("Gộp cue ngắn vào cue kế khi khoảng hở rất nhỏ.")
+        row2.addWidget(self.auto_split_chk)
+        row2.addWidget(QLabel("Từ"))
+        row2.addWidget(self.min_words_spin)
+        row2.addWidget(QLabel("–"))
+        row2.addWidget(self.max_words_spin)
+        row2.addSpacing(8)
+        row2.addWidget(self.merge_chk)
+        row2.addStretch(1)
+        layout.addLayout(row2)
+
+        row3 = QHBoxLayout()
+        row3.setSpacing(8)
         mode_label = QLabel("Chế độ ghép")
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("Giữ timing gốc", "timeline")
@@ -279,18 +302,14 @@ class DubbingTab(QWidget):
         self.gap_spin.setValue(0.15)
         self.stats_label = QLabel("0 cue")
         self.stats_label.setObjectName("MutedLabel")
-        row2.addWidget(self.auto_split_chk)
-        row2.addWidget(self.max_chars_spin)
-        row2.addSpacing(8)
-        row2.addWidget(self.merge_chk)
-        row2.addSpacing(8)
-        row2.addWidget(mode_label)
-        row2.addWidget(self.mode_combo)
-        row2.addWidget(QLabel("Gap"))
-        row2.addWidget(self.gap_spin)
-        row2.addStretch(1)
-        row2.addWidget(self.stats_label)
-        layout.addLayout(row2)
+        row3.addWidget(mode_label)
+        row3.addWidget(self.mode_combo)
+        row3.addSpacing(8)
+        row3.addWidget(QLabel("Gap"))
+        row3.addWidget(self.gap_spin)
+        row3.addStretch(1)
+        row3.addWidget(self.stats_label)
+        layout.addLayout(row3)
 
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
@@ -325,7 +344,7 @@ class DubbingTab(QWidget):
         bottom.addWidget(self.audio_preview, 1)
         layout.addLayout(bottom)
 
-        self.status_label = QLabel("Sẵn sàng. Hãy chọn project và nhập phụ đề.")
+        self.status_label = QLabel("Sẵn sàng. Hãy chọn project và import văn bản TXT.")
         self.status_label.setObjectName("MutedLabel")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
@@ -339,7 +358,8 @@ class DubbingTab(QWidget):
         self.tts_page.load_from(settings)
         dub = settings.get("dubbing") or {}
         self.auto_split_chk.setChecked(bool(dub.get("auto_split", True)))
-        self.max_chars_spin.setValue(int(dub.get("max_chars", 350) or 350))
+        self.min_words_spin.setValue(int(dub.get("min_words", 15) or 15))
+        self.max_words_spin.setValue(int(dub.get("max_words", 30) or 30))
         self.merge_chk.setChecked(bool(dub.get("merge_short", False)))
         index = self.mode_combo.findData(str(dub.get("timing_mode") or "timeline"))
         if index >= 0:
@@ -352,7 +372,8 @@ class DubbingTab(QWidget):
         dub["timing_mode"] = self.mode_combo.currentData() or "timeline"
         dub["gap"] = round(float(self.gap_spin.value()), 2)
         dub["auto_split"] = self.auto_split_chk.isChecked()
-        dub["max_chars"] = int(self.max_chars_spin.value())
+        dub["min_words"] = int(self.min_words_spin.value())
+        dub["max_words"] = int(self.max_words_spin.value())
         dub["merge_short"] = self.merge_chk.isChecked()
         self._settings = settings
 
@@ -784,13 +805,13 @@ class DubbingTab(QWidget):
             return Path(self._manager.input_dir)
         return Path.home()
 
-    def _import_srt(self) -> None:
+    def _import_txt(self) -> None:
         if self._manager is None:
             self._set_status("Hãy chọn project trước.", "warning")
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "Chọn phụ đề", str(self._browse_dir()),
-            "Phụ đề (*.srt *.vtt);;Tất cả (*)")
+            self, "Chọn văn bản", str(self._browse_dir()),
+            "Văn bản (*.txt);;Tất cả (*)")
         if not path:
             return
         self._import_files([Path(path)])
@@ -800,24 +821,15 @@ class DubbingTab(QWidget):
             self._set_status("Hãy chọn project trước.", "warning")
             return
         folder = QFileDialog.getExistingDirectory(
-            self, "Chọn thư mục phụ đề/văn bản", str(self._browse_dir()))
+            self, "Chọn thư mục văn bản", str(self._browse_dir()))
         if not folder:
             return
         directory = Path(folder)
-        subtitles: List[Path] = []
-        stems = set()
-        for pattern in ("*.srt", "*.vtt"):
-            for path in sorted(directory.glob(pattern)):
-                subtitles.append(path)
-                stems.add(path.stem.casefold())
-        texts = [
-            path for path in sorted(directory.glob("*.txt"))
-            if path.stem.casefold() not in stems
-        ]
-        if not subtitles and not texts:
-            self._set_status("Thư mục không có file .srt/.vtt/.txt nào.", "warning")
+        texts = sorted(directory.glob("*.txt"))
+        if not texts:
+            self._set_status("Thư mục không có file .txt nào.", "warning")
             return
-        self._import_files(subtitles + texts)
+        self._import_files(list(texts))
 
     def _import_files(self, paths: List[Path]) -> None:
         if self._manager is None:
@@ -826,11 +838,10 @@ class DubbingTab(QWidget):
         errors: List[str] = []
         for path in paths:
             try:
-                if path.suffix.lower() in (".srt", ".vtt"):
-                    base = dubbing.import_srt(self._manager, path)
-                else:
-                    base = dubbing.import_txt(
-                        self._manager, path, int(self.max_chars_spin.value()))
+                base = dubbing.import_txt(
+                    self._manager, path,
+                    min_words=int(self.min_words_spin.value()),
+                    max_words=int(self.max_words_spin.value()))
                 self._apply_import_options(base)
                 imported.append(base)
             except DubbingError as exc:
@@ -856,7 +867,8 @@ class DubbingTab(QWidget):
         cues = dubbing.apply_import_options(
             cues,
             auto_split=self.auto_split_chk.isChecked(),
-            max_chars=int(self.max_chars_spin.value()),
+            min_words=int(self.min_words_spin.value()),
+            max_words=int(self.max_words_spin.value()),
             merge_short=self.merge_chk.isChecked(),
         )
         save_cues(self._manager, base, cues)

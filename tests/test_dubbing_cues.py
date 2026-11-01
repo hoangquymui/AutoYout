@@ -8,10 +8,11 @@ from core.dubbing import (
     CueJob,
     apply_import_options,
     import_srt,
+    import_txt,
     load_cues,
     merge_short_cues,
     reindex,
-    split_long_cues,
+    split_cues_by_words,
 )
 from core.project_manager import ProjectManager
 
@@ -43,14 +44,14 @@ def test_cue_job_swaps_reversed_timing() -> None:
     assert cue.duration == 3.0
 
 
-def test_split_long_cues_keeps_total_duration() -> None:
+def test_split_cues_by_words_keeps_total_duration() -> None:
     text = ("Đây là một câu rất dài cần được chia nhỏ để tổng hợp giọng đọc ổn định. " * 6).strip()
     cue = _cue(1, 10.0, 46.0, text)
 
-    pieces = split_long_cues([cue], max_chars=120)
+    pieces = split_cues_by_words([cue], min_words=3, max_words=6)
 
     assert len(pieces) > 1
-    assert all(len(piece.text) <= 120 for piece in pieces)
+    assert all(len(piece.text.split()) <= 6 for piece in pieces)
     assert pieces[0].start == 10.0
     assert pieces[-1].end == 46.0
     for previous, following in zip(pieces, pieces[1:]):
@@ -58,14 +59,15 @@ def test_split_long_cues_keeps_total_duration() -> None:
     assert [piece.id for piece in pieces] == list(range(1, len(pieces) + 1))
 
 
-def test_split_long_cues_resets_status_and_voice() -> None:
+def test_split_cues_by_words_resets_status_and_voice() -> None:
     cue = _cue(1, 0.0, 10.0, ("Aaa " * 100).strip())
     cue.voice = "Nam"
     cue.status = "DONE"
 
-    pieces = split_long_cues([cue], max_chars=100)
+    pieces = split_cues_by_words([cue], min_words=3, max_words=10)
 
     assert len(pieces) > 1
+    assert all(len(piece.text.split()) <= 10 for piece in pieces)
     assert all(piece.voice == "Nam" for piece in pieces)
     assert all(piece.status == STATUS_PENDING for piece in pieces)
 
@@ -92,7 +94,8 @@ def test_apply_import_options_reindexes() -> None:
         _cue(9, 0.0, 1.0, "Một"),
         _cue(9, 1.1, 5.0, "Hai " * 100),
     ]
-    result = apply_import_options(cues, auto_split=True, max_chars=120, merge_short=False)
+    result = apply_import_options(cues, auto_split=True, min_words=3,
+                                  max_words=6, merge_short=False)
     assert [cue.id for cue in result] == list(range(1, len(result) + 1))
 
 
@@ -123,3 +126,25 @@ def test_import_srt_creates_input_text(tmp_path: Path) -> None:
 def test_reindex_renumbers() -> None:
     cues = [_cue(5, 0, 1, "a"), _cue(8, 1, 2, "b")]
     assert [cue.id for cue in reindex(cues)] == [1, 2]
+
+
+def test_import_txt_splits_by_word_range(tmp_path: Path) -> None:
+    txt = tmp_path / "Câu chuyện.txt"
+    txt.write_text(
+        ("Câu một. Câu hai. Câu ba. Câu bốn. " * 12).strip(),
+        encoding="utf-8",
+    )
+    manager = ProjectManager(tmp_path / "project")
+
+    base = import_txt(manager, txt, min_words=3, max_words=6)
+
+    assert base == "Câu chuyện"
+    cues = load_cues(manager, base)
+    assert len(cues) > 1
+    assert all(len(cue.text.split()) <= 6 for cue in cues)
+    assert cues[0].start == 0.0
+    for previous, following in zip(cues, cues[1:]):
+        assert abs(previous.end - following.start) < 1e-6
+    manager.scan()
+    item = manager.get_item(base)
+    assert item is not None and item.dub_mode == "srt"

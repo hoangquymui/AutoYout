@@ -174,6 +174,56 @@ def split_for_tts(text: str, max_chars: int = 350) -> List[str]:
     return [c.text for c in chunk_text(text, max_chars=max_chars)]
 
 
+def split_by_words(text: str, min_words: int = 15, max_words: int = 30) -> List[str]:
+    """Split text into chunks that each stay within a word-count range.
+
+    Sentences are packed until the buffer reaches ``min_words``; a chunk never
+    exceeds ``max_words`` because the buffer is flushed at the sentence
+    boundary *before* the limit is crossed (cắt ở dấu chấm gần nhất). A single
+    sentence longer than ``max_words`` falls back to a plain word split.
+    """
+    max_words = max(2, int(max_words))
+    min_words = max(1, min(int(min_words), max_words - 1))
+    text = normalize_text(text)
+    if not text:
+        return []
+
+    sentences: List[str] = []
+    for paragraph in re.split(r"\n\s*\n", text):
+        if paragraph.strip():
+            sentences.extend(split_sentences(paragraph))
+
+    chunks: List[str] = []
+    buffer: List[str] = []
+    buffer_words = 0
+
+    def flush() -> None:
+        nonlocal buffer, buffer_words
+        if buffer:
+            chunks.append(" ".join(buffer))
+            buffer = []
+            buffer_words = 0
+
+    for sentence in sentences:
+        words = _WORD_BREAK.split(sentence.strip())
+        count = len(words)
+        if buffer and buffer_words + count > max_words:
+            flush()
+        if count > max_words:
+            flush()
+            for start in range(0, count, max_words):
+                piece = " ".join(words[start:start + max_words]).strip()
+                if piece:
+                    chunks.append(piece)
+            continue
+        buffer.append(sentence.strip())
+        buffer_words += count
+        if buffer_words >= min_words:
+            flush()
+    flush()
+    return chunks
+
+
 def text_preview(text: str, limit: int = 140) -> str:
     clean = re.sub(r"\s+", " ", normalize_text(text)).strip()
     return clean if len(clean) <= limit else clean[: limit - 1].rstrip() + "…"

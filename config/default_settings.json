@@ -36,12 +36,13 @@
     "timing_mode": "timeline",
     "gap": 0.15,
     "auto_split": true,
-    "max_chars": 350,
+    "min_words": 15,
+    "max_words": 30,
     "merge_short": false,
     "retries_per_cue": 1,
     "edge_parallel": 3,
     "voices_by_role": {},
-    "glob": "*.srt"
+    "glob": "*.txt"
   },
   "video": {
     "grouping": "one",
