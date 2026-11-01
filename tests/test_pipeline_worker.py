@@ -101,6 +101,7 @@ def test_video_stage_completes(app, tmp_path: Path, ffmpeg: str) -> None:
         "resolution": "640x360", "encoder": "libx264", "crf": 30,
         "fps": 24, "gap": 0.2, "showwaves": False, "ken_burns": False,
         "chapter_titles": False, "bgm": "",
+        "subtitle_enabled": False, "subtitle_srt": False, "subtitle_file": "",
     })
     settings["app"]["stop_on_error"] = False
 
