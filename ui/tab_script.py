@@ -1,13 +1,13 @@
-"""Script tab: YouTube transcript → editable cues → multi-language adaptations.
+"""Script tab: YouTube transcript → merged plain text → multi-language adaptations.
 
 The heavy work happens in :class:`ScriptWorker` (a ``QThread``): fetching the
-existing YouTube captions and translating with Gemini. The tab only collects
-parameters, edits cues and writes the resulting input files.
+existing YouTube captions and translating with Gemini. The tab merges the
+captions into a single text (no timestamps), saves it as ``.txt`` and then
+adapts it into other languages.
 """
 from __future__ import annotations
 
 import threading
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -15,7 +15,6 @@ from PySide6.QtCore import QThread, Signal, Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QComboBox,
     QDialog,
     QFormLayout,
@@ -55,17 +54,9 @@ from core.languages import (
     language_name,
     normalize_language,
 )
-from core.subtitles import (
-    Cue,
-    cues_from_dicts,
-    cues_to_dicts,
-    cues_to_text,
-    format_timestamp,
-    text_to_cues,
-    write_srt,
-)
+from core.subtitles import cues_to_dicts
 from ui.components.icons import set_icon
-from ui.components.page import PageHeader, paint_status, wrap_scroll
+from ui.components.page import PageHeader, paint_status, stack_columns, wrap_scroll
 from ui import theme
 from utils.files import safe_filename, write_json_atomic
 from utils.logger import get_logger
@@ -279,14 +270,13 @@ class ScriptTab(QWidget):
         super().__init__(parent)
         self._settings: Dict[str, Any] = {}
         self._worker: Optional[ScriptWorker] = None
-        self._cues: List[Cue] = []
+        self._script_text: str = ""
         self._meta: Dict[str, Any] = {}
         self._translations: Dict[str, str] = {}
         self._result_rows: Dict[str, int] = {}
         self._profiles: List[LanguageProfile] = []
         self._input_dir: Optional[Path] = None
         self._script_dir: Optional[Path] = None
-        self._loading = False
 
         page = QVBoxLayout(self)
         page.setContentsMargins(0, 0, 0, 0)
@@ -299,19 +289,24 @@ class ScriptTab(QWidget):
         root.setSpacing(12)
         root.addWidget(PageHeader(
             "Kịch bản",
-            "Dán link YouTube → lấy transcript có timestamp → sửa → chuyển thể "
-            "sang nhiều ngôn ngữ và lưu thành file INPUT cho pipeline.",
+            "Dán link YouTube → lấy transcript → gộp thành văn bản (bỏ thời gian) "
+            "→ lưu TXT → chuyển thể sang nhiều ngôn ngữ cho pipeline.",
         ))
         root.addWidget(self._build_source_box())
 
         columns = QHBoxLayout()
         columns.setSpacing(12)
+        self._columns = columns
         columns.addWidget(self._build_transcript_box(), 3)
         columns.addWidget(self._build_translate_box(), 2)
         root.addLayout(columns, 1)
 
         self._set_busy(False)
         self._set_actions_enabled(False)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        stack_columns(self, self._columns, 800)
 
     # ── construction ─────────────────────────────────────────────────────────
     def _build_source_box(self) -> QGroupBox:
@@ -351,55 +346,27 @@ class ScriptTab(QWidget):
         return box
 
     def _build_transcript_box(self) -> QGroupBox:
-        box = QGroupBox("Transcript")
+        box = QGroupBox("Script (đã gộp, không kèm thời gian)")
         layout = QVBoxLayout(box)
         layout.setSpacing(8)
 
         toolbar = QHBoxLayout()
         toolbar.setSpacing(6)
-        self.btn_delete = QPushButton("Xoá cue")
-        set_icon(self.btn_delete, "trash", "muted", 13)
-        self.btn_delete.clicked.connect(self._delete_selected)
-        self.btn_merge = QPushButton("Gộp cue")
-        set_icon(self.btn_merge, "list", "muted", 13)
-        self.btn_merge.clicked.connect(self._merge_selected)
-        self.btn_save_srt = QPushButton("Lưu SRT")
-        set_icon(self.btn_save_srt, "download", "muted", 13)
-        self.btn_save_srt.clicked.connect(self._save_srt)
-        toolbar.addWidget(self.btn_delete)
-        toolbar.addWidget(self.btn_merge)
-        toolbar.addWidget(self.btn_save_srt)
+        self.btn_save_txt = QPushButton("Lưu TXT")
+        set_icon(self.btn_save_txt, "download", "accent", 14)
+        self.btn_save_txt.clicked.connect(self._save_txt)
+        toolbar.addWidget(self.btn_save_txt)
         toolbar.addStretch(1)
-        self.count_label = QLabel("0 cue · 0 ký tự")
+        self.count_label = QLabel("0 từ")
         self.count_label.setObjectName("MutedLabel")
         toolbar.addWidget(self.count_label)
         layout.addLayout(toolbar)
 
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["#", "Thời gian", "Nội dung"])
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(
-            QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.table.setEditTriggers(
-            QAbstractItemView.EditTrigger.DoubleClicked
-            | QAbstractItemView.EditTrigger.EditKeyPressed)
-        self.table.verticalHeader().setVisible(False)
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.table.setMinimumHeight(230)
-        self.table.itemChanged.connect(self._on_cell_changed)
-        layout.addWidget(self.table, 1)
-
-        self.fulltext_check = QCheckBox("Sửa toàn văn (dựng lại timing khi tắt)")
-        self.fulltext_check.toggled.connect(self._toggle_fulltext)
-        layout.addWidget(self.fulltext_check)
-        self.full_edit = QPlainTextEdit()
-        self.full_edit.setPlaceholderText("Toàn bộ lời kể…")
-        self.full_edit.setMinimumHeight(110)
-        self.full_edit.setVisible(False)
-        layout.addWidget(self.full_edit)
+        self.script_edit = QPlainTextEdit()
+        self.script_edit.setPlaceholderText(
+            "Lấy transcript xong, nội dung sẽ được gộp ở đây (không kèm thời gian).")
+        self.script_edit.textChanged.connect(self._on_script_edited)
+        layout.addWidget(self.script_edit, 1)
         return box
 
     def _build_translate_box(self) -> QGroupBox:
@@ -610,6 +577,7 @@ class ScriptTab(QWidget):
 
     def _set_actions_enabled(self, enabled: bool) -> None:
         self.fetch_button.setEnabled(enabled)
+        self.btn_save_txt.setEnabled(enabled)
         self.translate_button.setEnabled(enabled)
         self.save_all_button.setEnabled(enabled)
 
@@ -655,14 +623,33 @@ class ScriptTab(QWidget):
 
     def _on_transcript(self, cues: List[dict], meta: dict) -> None:
         self._meta = dict(meta or {})
-        self._cues = cues_from_dicts(cues)
         self._reload_targets(keep=False)
-        self._reload_table()
-        self.full_edit.setPlainText(cues_to_text(self._cues))
+        self._script_text = self._merge_cues_to_text(cues)
+        self.script_edit.setPlainText(self._script_text)
         title = self._meta.get("title") or self._meta.get("video_id") or "video"
         paint_status(self.status_label, "success")
         self.status_label.setText(
-            f"Đã lấy {len(self._cues)} cue từ phụ đề YouTube: {title}")
+            f"Đã gộp {len(cues)} dòng phụ đề thành văn bản: {title}")
+
+    @staticmethod
+    def _merge_cues_to_text(cues: List[dict]) -> str:
+        """Join captions into paragraphs, dropping timestamps at topic breaks."""
+        paragraphs: List[str] = []
+        buffer: List[str] = []
+        previous_end: Optional[float] = None
+        for cue in cues:
+            text = " ".join(str(cue.get("text") or "").split())
+            if not text:
+                continue
+            start = float(cue.get("start") or 0.0)
+            if buffer and previous_end is not None and start - previous_end > 2.0:
+                paragraphs.append(" ".join(buffer))
+                buffer = []
+            buffer.append(text)
+            previous_end = float(cue.get("end") or 0.0)
+        if buffer:
+            paragraphs.append(" ".join(buffer))
+        return "\n\n".join(paragraphs)
 
     def _on_translated(self, language: str, text: str, error: str) -> None:
         row = self._result_rows.get(language)
@@ -726,83 +713,10 @@ class ScriptTab(QWidget):
         paint_status(self.status_label, "warning")
         self.status_label.setText(message)
 
-    # ── cue editing ──────────────────────────────────────────────────────────
-    def _reload_table(self) -> None:
-        self._loading = True
-        try:
-            self.table.setRowCount(len(self._cues))
-            for row, cue in enumerate(self._cues):
-                number = QTableWidgetItem(str(row + 1))
-                number.setFlags(Qt.ItemFlag.ItemIsEnabled)
-                stamp = QTableWidgetItem(
-                    f"{format_timestamp(cue.start)} → {format_timestamp(cue.end)}")
-                stamp.setFlags(Qt.ItemFlag.ItemIsEnabled)
-                text = QTableWidgetItem(cue.text)
-                self.table.setItem(row, 0, number)
-                self.table.setItem(row, 1, stamp)
-                self.table.setItem(row, 2, text)
-        finally:
-            self._loading = False
-        self._refresh_counts()
-
-    def _on_cell_changed(self, item: QTableWidgetItem) -> None:
-        if self._loading or item.column() != 2:
-            return
-        row = item.row()
-        if 0 <= row < len(self._cues):
-            self._cues[row].text = item.text().strip()
-            self._refresh_counts()
-
-    def _refresh_counts(self) -> None:
-        count = len(self._cues)
-        chars = sum(len(cue.text) for cue in self._cues)
-        self.count_label.setText(f"{count} cue · {chars} ký tự")
-
-    def _selected_rows(self) -> List[int]:
-        return sorted({index.row() for index in self.table.selectedIndexes()},
-                      reverse=True)
-
-    def _delete_selected(self) -> None:
-        rows = self._selected_rows()
-        if not rows:
-            self._warn("Hãy chọn cue cần xoá.")
-            return
-        for row in rows:
-            if 0 <= row < len(self._cues):
-                self._cues.pop(row)
-        self._reload_table()
-
-    def _merge_selected(self) -> None:
-        rows = sorted(self._selected_rows())
-        if len(rows) < 2:
-            self._warn("Chọn từ 2 cue liền kề để gộp.")
-            return
-        cues = [self._cues[row] for row in rows if 0 <= row < len(self._cues)]
-        merged = Cue(
-            index=cues[0].index,
-            start=min(cue.start for cue in cues),
-            end=max(cue.end for cue in cues),
-            text=" ".join(cue.text.strip() for cue in cues if cue.text.strip()),
-        )
-        for row in reversed(rows):
-            if 0 <= row < len(self._cues):
-                self._cues.pop(row)
-        self._cues.insert(min(rows), merged)
-        for position, cue in enumerate(self._cues, 1):
-            cue.index = position
-        self._reload_table()
-
-    def _toggle_fulltext(self, checked: bool) -> None:
-        self.full_edit.setVisible(checked)
-        if checked:
-            self.full_edit.setPlainText(cues_to_text(self._cues))
-            return
-        text = self.full_edit.toPlainText().strip()
-        if not text:
-            return
-        total = self._cues[-1].end if self._cues else 0.0
-        self._cues = text_to_cues(text, total)
-        self._reload_table()
+    def _on_script_edited(self) -> None:
+        self._script_text = self.script_edit.toPlainText()
+        words = len(self._script_text.split())
+        self.count_label.setText(f"{words} từ · {len(self._script_text)} ký tự")
 
     # ── saving ───────────────────────────────────────────────────────────────
     def _base_name(self) -> str:
@@ -812,31 +726,25 @@ class ScriptTab(QWidget):
         video_id = str(self._meta.get("video_id") or "").strip()
         return safe_filename(video_id or "script", "script")
 
-    def _save_srt(self) -> None:
-        if not self._cues:
-            self._warn("Chưa có transcript để lưu.")
+    def _save_txt(self) -> None:
+        text = self.script_edit.toPlainText().strip()
+        if not text:
+            self._warn("Chưa có nội dung script để lưu.")
             return
-        if self._script_dir is None:
+        if self._input_dir is None:
             self._warn("Chưa chọn project — chọn project trước.")
             return
         base = self._base_name()
+        target = unique_text_path(self._input_dir, base)
         try:
-            target = write_srt(self._cues, self._script_dir / f"{base}.srt")
-            write_json_atomic(self._script_dir / f"{base}.json", {
-                "title": str(self._meta.get("title") or base),
-                "url": str(self._meta.get("url") or ""),
-                "video_id": str(self._meta.get("video_id") or ""),
-                "source_language": str(self._meta.get("source_language") or ""),
-                "origin": str(self._meta.get("origin") or ""),
-                "segments": cues_to_dicts(self._cues),
-                "updated_at": datetime.now().isoformat(timespec="seconds"),
-            })
+            target.write_text(text + "\n", encoding="utf-8", newline="\n")
         except OSError as exc:
             paint_status(self.status_label, "error")
-            self.status_label.setText(f"Không lưu được SRT: {exc}")
+            self.status_label.setText(f"Không lưu được {target.name}: {exc}")
             return
         paint_status(self.status_label, "success")
-        self.status_label.setText(f"Đã lưu {target.name} và JSON kịch bản.")
+        self.status_label.setText(f"Đã lưu {target.name} vào INPUT.")
+        self.reload_requested.emit()
 
     def _translate(self) -> None:
         if self._worker is not None:
@@ -844,8 +752,8 @@ class ScriptTab(QWidget):
         if self._input_dir is None:
             self._warn("Chưa chọn project — chọn project trước.")
             return
-        if not self._cues:
-            self._warn("Chưa có transcript — lấy transcript trước.")
+        if not self._script_text.strip():
+            self._warn("Chưa có script — lấy transcript trước.")
             return
         if not self._profiles:
             self._warn("Chưa có ngôn ngữ đích — bấm “Thêm ngôn ngữ” trước.")
@@ -865,7 +773,7 @@ class ScriptTab(QWidget):
                 button.setEnabled(False)
         spec = {
             "kind": "translate",
-            "text": cues_to_text(self._cues),
+            "text": self._script_text,
             "api_key": api_key,
             "model": self.model_combo.currentText().strip() or DEFAULT_MODEL,
             "source_lang": source,
