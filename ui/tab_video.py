@@ -5,7 +5,9 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -13,6 +15,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -21,6 +24,8 @@ from PySide6.QtWidgets import (
     QSlider,
     QSpinBox,
     QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -94,6 +99,10 @@ class VideoConfigTab(QWidget):
         run_hint.setWordWrap(True)
         run_row.addWidget(run_hint, 1)
         root.addLayout(run_row)
+
+        self._manager = None
+        self.files_box = self._build_files_box()
+        root.addWidget(self.files_box)
 
         columns = QHBoxLayout()
         columns.setSpacing(12)
@@ -396,9 +405,9 @@ class VideoConfigTab(QWidget):
             "cạnh file audio hoặc file kịch bản.")
         self.write_srt_check = QCheckBox("Xuất thêm phụ đề .srt cạnh video (từ lời đọc)")
         self.keep_temp_check = QCheckBox("Giữ thư mục tạm để kiểm tra")
-        for check in (self.ken_burns_check, self.showwaves_check,
-                      self.chapters_check, self.subtitle_check, self.srt_check):
-            output_form.addRow("", check)
+
+        output_form.addRow("", self.showwaves_check)
+        output_form.addRow("", self.srt_check)
 
         srt_row = QHBoxLayout()
         srt_row.setSpacing(6)
@@ -421,8 +430,6 @@ class VideoConfigTab(QWidget):
         self.srt_check.toggled.connect(self._set_srt_enabled)
         self._set_srt_enabled(self.srt_check.isChecked())
 
-        for check in (self.write_srt_check, self.keep_temp_check):
-            output_form.addRow("", check)
         right.addWidget(output_box)
 
         tools_box = QGroupBox("Công cụ FFmpeg")
@@ -512,6 +519,115 @@ class VideoConfigTab(QWidget):
             self.group_hint.setText(
                 "• Ghép theo nhóm: Chia dự án thành các phần video, mỗi video gồm số file quy định bên trên."
             )
+
+    def _build_files_box(self) -> QGroupBox:
+        box = QGroupBox("Danh sách file tạo video")
+        layout = QVBoxLayout(box)
+        layout.setSpacing(8)
+        layout.setContentsMargins(12, 10, 12, 10)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
+        self.files_summary = QLabel("Chưa mở project.")
+        self.files_summary.setObjectName("FieldLabel")
+        top_row.addWidget(self.files_summary, 1)
+
+        self.btn_refresh_files = QPushButton("Làm mới danh sách")
+        set_icon(self.btn_refresh_files, "rotate-cw", "accent", 13)
+        self.btn_refresh_files.clicked.connect(self.refresh_files)
+        top_row.addWidget(self.btn_refresh_files)
+
+        layout.addLayout(top_row)
+
+        self.files_table = QTableWidget(0, 5)
+        self.files_table.setHorizontalHeaderLabels([
+            "STT", "Tên file kịch bản / audio", "Ngôn ngữ", "File Audio", "Trạng thái Video"
+        ])
+        self.files_table.verticalHeader().setVisible(False)
+        self.files_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.files_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.files_table.setAlternatingRowColors(True)
+        self.files_table.setMinimumHeight(140)
+        self.files_table.setMaximumHeight(230)
+
+        header = self.files_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+
+        layout.addWidget(self.files_table)
+        return box
+
+    def set_project(self, manager: Any) -> None:
+        self._manager = manager
+        self.refresh_files()
+
+    def refresh_files(self) -> None:
+        self.files_table.setRowCount(0)
+        if not self._manager:
+            self.files_summary.setText("Chưa mở project.")
+            return
+
+        items = list(self._manager.items.values()) if hasattr(self._manager, "items") else []
+        ready_count = 0
+        self.files_table.setRowCount(len(items))
+
+        for row, item in enumerate(items):
+            stt_item = QTableWidgetItem(str(row + 1))
+            stt_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.files_table.setItem(row, 0, stt_item)
+
+            name = getattr(item, "name", "") or getattr(item, "base", "")
+            name_item = QTableWidgetItem(name)
+            self.files_table.setItem(row, 1, name_item)
+
+            lang = (getattr(item, "language", "") or "vi").upper()
+            lang_item = QTableWidgetItem(lang)
+            lang_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.files_table.setItem(row, 2, lang_item)
+
+            has_audio = bool(getattr(item, "has_audio", False))
+            if not has_audio and hasattr(item, "audio_path") and item.audio_path:
+                try:
+                    has_audio = Path(item.audio_path).is_file()
+                except Exception:
+                    pass
+
+            if has_audio:
+                ready_count += 1
+                audio_item = QTableWidgetItem("✓ Sẵn sàng")
+                audio_item.setForeground(QColor("#22C55E"))
+            else:
+                audio_item = QTableWidgetItem("Chưa có audio")
+                audio_item.setForeground(QColor("#94A3B8"))
+            audio_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.files_table.setItem(row, 3, audio_item)
+
+            video_done = False
+            video_id = getattr(item, "video_id", "")
+            if video_id and hasattr(self._manager, "videos") and video_id in self._manager.videos:
+                vjob = self._manager.videos[video_id]
+                video_done = bool(vjob.path and Path(vjob.path).is_file())
+
+            if video_done:
+                video_item = QTableWidgetItem("✓ Đã tạo")
+                video_item.setForeground(QColor("#3B82F6"))
+            elif has_audio:
+                video_item = QTableWidgetItem("Chờ tạo")
+                video_item.setForeground(QColor("#F59E0B"))
+            else:
+                video_item = QTableWidgetItem("—")
+                video_item.setForeground(QColor("#94A3B8"))
+            video_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.files_table.setItem(row, 4, video_item)
+
+        total = len(items)
+        if total == 0:
+            self.files_summary.setText("Chưa có file kịch bản hoặc audio nào trong project.")
+        else:
+            self.files_summary.setText(f"{ready_count}/{total} file audio sẵn sàng tạo video")
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)

@@ -61,6 +61,9 @@ class FrameImage:
     y: float = 0.05
     width: float = 0.18
     opacity: float = 1.0
+    rotation: float = 0.0
+    flip_h: bool = False
+    flip_v: bool = False
 
     @property
     def name(self) -> str:
@@ -73,17 +76,29 @@ class FrameImage:
                               1.0 - self.width), 4)
         self.y = round(_clamp(_as_float(self.y, 0.05), 0.0, 1.0), 4)
         self.opacity = round(_clamp(_as_float(self.opacity, 1.0), 0.05, 1.0), 3)
+        self.rotation = round((_as_float(self.rotation, 0.0) % 360), 1)
+        if self.rotation > 180:
+            self.rotation -= 360
+        self.flip_h = bool(self.flip_h)
+        self.flip_v = bool(self.flip_v)
         return self
 
     def to_dict(self) -> Dict[str, Any]:
         self.clamp()
-        return {
+        d: Dict[str, Any] = {
             "path": self.path,
             "x": self.x,
             "y": self.y,
             "width": self.width,
             "opacity": self.opacity,
         }
+        if self.rotation != 0.0:
+            d["rotation"] = self.rotation
+        if self.flip_h:
+            d["flip_h"] = True
+        if self.flip_v:
+            d["flip_v"] = True
+        return d
 
     @classmethod
     def from_dict(cls, raw: Dict[str, Any], base: Optional[str] = "") -> "FrameImage":
@@ -99,6 +114,9 @@ class FrameImage:
             y=_as_float(raw.get("y"), 0.05),
             width=_as_float(raw.get("width"), 0.18),
             opacity=_as_float(raw.get("opacity"), 1.0),
+            rotation=_as_float(raw.get("rotation"), 0.0),
+            flip_h=bool(raw.get("flip_h")),
+            flip_v=bool(raw.get("flip_v")),
         ).clamp()
 
 

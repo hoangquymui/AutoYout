@@ -1,15 +1,16 @@
-"""Video Frame tab: drag-and-drop template editor for the rendered video.
+"""Video Frame tab: CapCut-inspired drag-and-drop template editor.
 
-The canvas draws a 16:9 preview with the subtitle anchor, the waveform box and
-any PNG overlays from :mod:`core.frame_layout`.  Dragging changes the shared
-normalised coordinates; the FFmpeg renderer applies the same layout when the
-template is enabled.
+Layout
+------
+* Left Column: Assets / Layers & Preset Stickers library.
+* Center Column: 16:9 interactive canvas player with playback & view controls.
+* Right Column: Inspector panel (Transform: Scale, Pos X/Y, Rotate, Alignment, Flip, Opacity).
 """
 from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
@@ -25,18 +26,25 @@ from PySide6.QtGui import (
     QRadialGradient,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QBoxLayout,
     QCheckBox,
     QColorDialog,
+    QComboBox,
     QFileDialog,
+    QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
     QSizePolicy,
     QSlider,
+    QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -60,7 +68,7 @@ def _qcolor(value: str, alpha: int = 255) -> QColor:
 
 
 class FrameCanvas(QWidget):
-    """16:9 interactive preview. Reads/writes a shared :class:`FrameLayout`."""
+    """Interactive preview canvas. Reads/writes a shared :class:`FrameLayout`."""
 
     layout_changed = Signal()
     selection_changed = Signal(str, int)
@@ -76,12 +84,19 @@ class FrameCanvas(QWidget):
         self._pixmaps: Dict[str, QPixmap] = {}
         self._preview: Optional[QPixmap] = None
         self._phase = 0.0
+
+        # View options
+        self.show_grid = True
+        self.show_safe_area = True
+        self.aspect_ratio_mode = "16:9"
+
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
         self.setMinimumSize(360, 240)
         policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         policy.setHeightForWidth(True)
         self.setSizePolicy(policy)
+
         self._timer = QTimer(self)
         self._timer.setInterval(55)
         self._timer.timeout.connect(self._tick)
@@ -131,9 +146,10 @@ class FrameCanvas(QWidget):
     def _load_assets(self) -> None:
         self._pixmaps.clear()
         for image in self._layout.images:
-            self._pixmaps[image.path] = QPixmap(image.path)
+            if Path(image.path).is_file():
+                self._pixmaps[image.path] = QPixmap(image.path)
         self._preview = None
-        if self._layout.preview:
+        if self._layout.preview and Path(self._layout.preview).is_file():
             pixmap = QPixmap(self._layout.preview)
             if not pixmap.isNull():
                 self._preview = pixmap
@@ -143,13 +159,23 @@ class FrameCanvas(QWidget):
         return True
 
     def heightForWidth(self, width: int) -> int:  # noqa: N802 (Qt override)
+        if self.aspect_ratio_mode == "9:16":
+            return int(round(max(1, width - 24) * 16 / 9)) + 24
+        elif self.aspect_ratio_mode == "1:1":
+            return int(round(max(1, width - 24))) + 24
         return int(round(max(1, width - 24) * 9 / 16)) + 24
 
     def _frame_rect(self) -> QRectF:
         rect = QRectF(self.rect()).adjusted(12, 12, -12, -12)
         if rect.width() <= 0 or rect.height() <= 0:
             return QRectF()
-        ratio = 16 / 9
+        if self.aspect_ratio_mode == "9:16":
+            ratio = 9.0 / 16.0
+        elif self.aspect_ratio_mode == "1:1":
+            ratio = 1.0
+        else:
+            ratio = 16.0 / 9.0
+
         width = min(rect.width(), rect.height() * ratio)
         height = width / ratio
         return QRectF(
@@ -220,6 +246,79 @@ class FrameCanvas(QWidget):
         return QRectF(box.right() - _HANDLE / 2, box.bottom() - _HANDLE / 2,
                       _HANDLE, _HANDLE)
 
+    # ── alignments & transforms ──────────────────────────────────────────────
+    def align_selected(self, mode: str) -> None:
+        kind, index = self.selection()
+        if kind == "image" and 0 <= index < len(self._layout.images):
+            image = self._layout.images[index]
+            box = self._image_box(index)
+            frame = self._frame_rect()
+            norm_w = image.width
+            norm_h = (box.height() / frame.height()) if frame.height() > 0 else norm_w
+            if mode == "left":
+                image.x = 0.04
+            elif mode == "center_x":
+                image.x = max(0.0, round((1.0 - norm_w) / 2.0, 4))
+            elif mode == "right":
+                image.x = max(0.0, round(1.0 - norm_w - 0.04, 4))
+            elif mode == "top":
+                image.y = 0.04
+            elif mode == "center_y":
+                image.y = max(0.0, round((1.0 - norm_h) / 2.0, 4))
+            elif mode == "bottom":
+                image.y = max(0.0, round(1.0 - norm_h - 0.04, 4))
+            image.clamp()
+        elif kind == "subtitle":
+            if mode == "left":
+                self._layout.subtitle_x = 0.25
+            elif mode == "center_x":
+                self._layout.subtitle_x = 0.5
+            elif mode == "right":
+                self._layout.subtitle_x = 0.75
+            elif mode == "top":
+                self._layout.subtitle_y = 0.12
+            elif mode == "center_y":
+                self._layout.subtitle_y = 0.5
+            elif mode == "bottom":
+                self._layout.subtitle_y = 0.88
+            self._layout.clamp()
+        elif kind == "wave":
+            if mode == "left":
+                self._layout.wave_x = 0.05
+            elif mode == "center_x":
+                self._layout.wave_x = max(0.0, round((1.0 - self._layout.wave_w) / 2.0, 4))
+            elif mode == "right":
+                self._layout.wave_x = max(0.0, round(1.0 - self._layout.wave_w - 0.05, 4))
+            elif mode == "top":
+                self._layout.wave_y = 0.05
+            elif mode == "center_y":
+                self._layout.wave_y = max(0.0, round((1.0 - self._layout.wave_h) / 2.0, 4))
+            elif mode == "bottom":
+                self._layout.wave_y = max(0.0, round(1.0 - self._layout.wave_h - 0.05, 4))
+            self._layout.clamp()
+
+        self.layout_changed.emit()
+        self.update()
+
+    def rotate_selected(self, deg: float) -> None:
+        kind, index = self.selection()
+        if kind == "image" and 0 <= index < len(self._layout.images):
+            self._layout.images[index].rotation = round(deg, 1)
+            self._layout.images[index].clamp()
+            self.layout_changed.emit()
+            self.update()
+
+    def flip_selected(self, horizontal: bool = True) -> None:
+        kind, index = self.selection()
+        if kind == "image" and 0 <= index < len(self._layout.images):
+            image = self._layout.images[index]
+            if horizontal:
+                image.flip_h = not getattr(image, "flip_h", False)
+            else:
+                image.flip_v = not getattr(image, "flip_v", False)
+            self.layout_changed.emit()
+            self.update()
+
     # ── painting ─────────────────────────────────────────────────────────────
     def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
         painter = QPainter(self)
@@ -234,8 +333,10 @@ class FrameCanvas(QWidget):
         path.addRoundedRect(frame, 12, 12)
         painter.setClipPath(path)
         self._paint_preview(painter, frame)
-        self._paint_grid(painter, frame)
-        self._paint_safe_area(painter, frame)
+        if self.show_grid:
+            self._paint_grid(painter, frame)
+        if self.show_safe_area:
+            self._paint_safe_area(painter, frame)
         self._paint_wave(painter)
         for index in range(len(self._layout.images)):
             self._paint_image(painter, index)
@@ -298,35 +399,39 @@ class FrameCanvas(QWidget):
 
     def _paint_safe_area(self, painter: QPainter, frame: QRectF) -> None:
         inset = frame.width() * 0.05
-        pen = QPen(_qcolor(theme.ACCENT, 110))
-        pen.setWidthF(1.2)
+        safe = frame.adjusted(inset, inset, -inset, -inset)
+        pen = QPen(_qcolor(theme.BLUE, 80))
+        pen.setWidthF(1.0)
         pen.setStyle(Qt.PenStyle.DashLine)
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(frame.adjusted(inset, inset, -inset, -inset), 8, 8)
+        painter.drawRoundedRect(safe, 8, 8)
 
     def _paint_wave(self, painter: QPainter) -> None:
-        box = self._wave_box()
-        if box.isEmpty():
+        if not self._layout.waveform:
             return
+        box = self._wave_box()
         color = _qcolor(self._layout.wave_color)
-        fill = QColor(color)
-        fill.setAlpha(32 if self._layout.waveform else 14)
-        painter.setPen(QPen(color, 1.4))
-        painter.setBrush(fill)
+        bg = QColor(color)
+        bg.setAlpha(35)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(bg)
         painter.drawRoundedRect(box, 8, 8)
-        bars = 48
-        widths = box.width() / bars
-        for index in range(bars):
-            wave = abs(math.sin(index * 0.55 + self._phase)
-                       * math.cos(index * 0.17 - self._phase * 0.6))
-            height = box.height() * (0.18 + 0.62 * wave)
-            x = box.left() + index * widths + widths * 0.2
-            bar = QRectF(x, box.center().y() - height / 2,
-                         max(1.4, widths * 0.55), height)
+        bars = max(8, int(box.width() / 14))
+        bar_w = box.width() / bars
+        mid = box.center().y()
+        painter.setPen(Qt.PenStyle.NoPen)
+        for i in range(bars):
+            phase = self._phase + i * 0.35
+            norm = (math.sin(phase) + 1.0) * 0.5
+            amp = (0.15 + 0.85 * norm) * (box.height() * 0.42)
+            top = mid - amp
+            h = amp * 2.0
+            x = box.left() + i * bar_w + bar_w * 0.2
+            w = max(2.0, bar_w * 0.6)
+            bar = QRectF(x, top, w, h)
             bar_color = QColor(color)
-            bar_color.setAlpha(170 if self._layout.waveform else 70)
-            painter.setPen(Qt.PenStyle.NoPen)
+            bar_color.setAlpha(int(140 + 115 * norm))
             painter.setBrush(bar_color)
             painter.drawRoundedRect(bar, 1.5, 1.5)
         if self._selected_kind == "wave":
@@ -343,11 +448,22 @@ class FrameCanvas(QWidget):
         if box.isEmpty():
             return
         pixmap = self._pixmaps.get(image.path)
+
         painter.save()
         painter.setOpacity(max(0.05, image.opacity))
+        center = box.center()
+        painter.translate(center)
+        rot = getattr(image, "rotation", 0.0)
+        if rot:
+            painter.rotate(rot)
+        sx = -1.0 if getattr(image, "flip_h", False) else 1.0
+        sy = -1.0 if getattr(image, "flip_v", False) else 1.0
+        if sx != 1.0 or sy != 1.0:
+            painter.scale(sx, sy)
+        painter.translate(-center)
+
         if pixmap is not None and not pixmap.isNull():
-            painter.drawPixmap(box, pixmap,
-                               QRectF(pixmap.rect()))
+            painter.drawPixmap(box, pixmap, QRectF(pixmap.rect()))
         else:
             painter.setPen(QPen(_qcolor(theme.WARNING, 180), 1.4,
                                 Qt.PenStyle.DashLine))
@@ -355,6 +471,7 @@ class FrameCanvas(QWidget):
             painter.drawRoundedRect(box, 4, 4)
             self._paint_caption(painter, box, "Thiếu ảnh")
         painter.restore()
+
         if self._selected_kind == "image" and self._selected_index == index:
             self._paint_selection(painter, box, image.name)
 
@@ -425,7 +542,7 @@ class FrameCanvas(QWidget):
         font.setPixelSize(10)
         font.setBold(True)
         painter.setFont(font)
-        text = "16:9 · 1920×1080"
+        text = f"{self.aspect_ratio_mode} · Player"
         metrics = QFontMetricsF(font)
         width = metrics.horizontalAdvance(text) + 16
         chip = QRectF(frame.right() - width - 10, frame.top() + 10, width, 20)
@@ -490,13 +607,13 @@ class FrameCanvas(QWidget):
     def mouseMoveEvent(self, event) -> None:  # noqa: N802 (Qt override)
         pos = event.position()
         if not self._drag_mode:
-            kind, _index = self._hit_test(pos)
-            if kind and self._resize_handle().contains(pos):
+            frame = self._frame_rect()
+            if frame.contains(pos) and self._resize_handle().contains(pos):
                 self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-            elif kind:
+            elif frame.contains(pos) and self._hit_test(pos)[0]:
                 self.setCursor(Qt.CursorShape.SizeAllCursor)
             else:
-                self.unsetCursor()
+                self.setCursor(Qt.CursorShape.ArrowCursor)
             return
         frame = self._frame_rect()
         if frame.isEmpty():
@@ -569,11 +686,11 @@ class FrameCanvas(QWidget):
         self.update()
 
     def sizeHint(self) -> QSize:  # noqa: N802 (Qt override)
-        return QSize(840, 460)
+        return QSize(720, 440)
 
 
 class FrameTab(QWidget):
-    """Editor page for the video frame template."""
+    """CapCut-style Video Frame editor: 3 columns (Library, Player, Inspector)."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -591,9 +708,10 @@ class FrameTab(QWidget):
         root = QVBoxLayout(content)
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(12)
+
         header = PageHeader(
-            "Video Frame",
-            "Kéo thả khung mẫu: vị trí phụ đề, sóng âm và ảnh lớp phủ PNG.",
+            "Video Frame (Trình chỉnh sửa CapCut)",
+            "Chỉnh sửa bố cục lớp phủ, sóng nhạc, phụ đề và sticker mẫu trên video.",
         )
         self._enabled = QCheckBox("Bật khung mẫu")
         self._enabled.setToolTip(
@@ -601,37 +719,27 @@ class FrameTab(QWidget):
         header.add_action(self._enabled)
         root.addWidget(header)
 
-        row = QBoxLayout(QBoxLayout.Direction.LeftToRight)
-        row.setSpacing(8)
-        self._row = row
+        # 3 Columns Layout: Left Library | Center Player | Right Inspector
+        cols = QHBoxLayout()
+        cols.setSpacing(12)
+        self._cols = cols
+
         self._canvas = FrameCanvas(self._layout)
-        canvas_col = QVBoxLayout()
-        canvas_col.setContentsMargins(0, 0, 0, 0)
-        canvas_col.setSpacing(0)
-        canvas_col.addStretch(1)
-        canvas_col.addWidget(self._canvas)
-        canvas_col.addStretch(1)
-        row.addLayout(canvas_col, 1)
 
-        panel = QWidget()
-        panel.setMinimumWidth(270)
-        panel.setMaximumWidth(330)
-        self._panel = panel
-        panel_col = QVBoxLayout(panel)
-        panel_col.setContentsMargins(0, 0, 0, 0)
-        panel_col.setSpacing(10)
-        panel_col.addWidget(self._build_subtitle_group())
-        panel_col.addWidget(self._build_wave_group())
-        panel_col.addWidget(self._build_layers_group(), 1)
-        row.addWidget(panel, 0)
-        root.addLayout(row, 1)
+        # 1. Left Library & Layers Panel
+        self._left_panel = self._build_left_library_panel()
+        cols.addWidget(self._left_panel, 0)
 
-        hint = QLabel(
-            "Kéo vật thể để di chuyển · kéo chấm ở góc để đổi kích thước · "
-            "Delete để xoá ảnh. Phụ đề chỉ hiện khi bật “Hiện phụ đề” ở tab Video.")
-        hint.setObjectName("MutedLabel")
-        hint.setWordWrap(True)
-        root.addWidget(hint)
+        # 2. Center Player Panel
+        self._center_panel = self._build_center_player_panel()
+        cols.addWidget(self._center_panel, 1)
+
+        # 3. Right Inspector Panel
+        self._right_panel = self._build_right_inspector_panel()
+        cols.addWidget(self._right_panel, 0)
+
+        root.addLayout(cols, 1)
+
         self._status = QLabel("Khung mẫu đang tắt — bật “Bật khung mẫu” để áp dụng.")
         self._status.setObjectName("MutedLabel")
         self._status.setWordWrap(True)
@@ -642,108 +750,337 @@ class FrameTab(QWidget):
         self._canvas.selection_changed.connect(self._on_selection)
         self._sync_controls()
 
-    # ── panel construction ───────────────────────────────────────────────────
-    def _build_subtitle_group(self) -> QGroupBox:
-        box = QGroupBox("Phụ đề")
-        column = QVBoxLayout(box)
-        column.setSpacing(6)
-        self._scale = QSlider(Qt.Orientation.Horizontal)
-        self._scale.setRange(50, 200)
-        self._scale.setValue(100)
-        self._scale.setToolTip("Cỡ chữ phụ đề khi burn vào video.")
-        self._scale_label = QLabel("Cỡ chữ 100%")
-        self._scale_label.setObjectName("MutedLabel")
-        self._scale.valueChanged.connect(self._on_scale)
-        column.addWidget(self._scale_label)
-        column.addWidget(self._scale)
-        return box
+    # ── 1. Left Library Panel (Layers & Stickers) ───────────────────────────
+    def _build_left_library_panel(self) -> QWidget:
+        panel = QWidget()
+        panel.setMinimumWidth(260)
+        panel.setMaximumWidth(300)
+        vbox = QVBoxLayout(panel)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(8)
 
-    def _build_wave_group(self) -> QGroupBox:
-        box = QGroupBox("Sóng âm thanh")
-        column = QVBoxLayout(box)
-        column.setSpacing(8)
-        self._wave = QCheckBox("Hiện sóng âm")
-        self._wave.setToolTip("Vẽ waveform từ audio của video tại vị trí đã đặt.")
-        self._wave.toggled.connect(self._on_wave_toggled)
-        column.addWidget(self._wave)
-        self._color_button = QPushButton("Màu sóng")
-        self._color_button.setToolTip("Chọn màu cho sóng âm.")
-        self._color_button.clicked.connect(self._pick_color)
-        column.addWidget(self._color_button)
-        return box
+        tabs = QTabWidget()
+        vbox.addWidget(tabs, 1)
 
-    def _build_layers_group(self) -> QGroupBox:
-        box = QGroupBox("Ảnh lớp phủ (PNG)")
-        column = QVBoxLayout(box)
-        column.setSpacing(7)
-        tools = QHBoxLayout()
-        tools.setSpacing(6)
+        # Tab 1: Layers
+        layers_tab = QWidget()
+        l_box = QVBoxLayout(layers_tab)
+        l_box.setContentsMargins(8, 8, 8, 8)
+        l_box.setSpacing(8)
+
+        layer_actions = QHBoxLayout()
+        layer_actions.setSpacing(6)
         self._add_button = QPushButton("Thêm PNG")
-        set_icon(self._add_button, "plus", "accent", 14)
+        set_icon(self._add_button, "plus", "accent", 13)
         self._add_button.clicked.connect(self._add_image)
-        tools.addWidget(self._add_button, 1)
-        self._remove_button = icon_button("trash", "Xoá ảnh đang chọn", role="danger")
-        self._remove_button.clicked.connect(self._remove_image)
-        tools.addWidget(self._remove_button)
-        column.addLayout(tools)
+        layer_actions.addWidget(self._add_button, 1)
 
-        self._preview_row = QHBoxLayout()
-        self._preview_row.setSpacing(6)
-        self._preview_button = QPushButton("Nền xem trước")
-        set_icon(self._preview_button, "image", "accent", 14)
-        self._preview_button.setToolTip(
-            "Chọn ảnh nền để xem trước khung (không được đưa vào video).")
-        self._preview_button.clicked.connect(self._pick_preview)
-        self._preview_row.addWidget(self._preview_button, 1)
-        self._preview_clear = icon_button("x", "Bỏ ảnh nền xem trước")
-        self._preview_clear.clicked.connect(self._clear_preview)
-        self._preview_row.addWidget(self._preview_clear)
-        column.addLayout(self._preview_row)
+        self._remove_button = icon_button("trash", "Xoá layer", role="danger", size=14, side=30)
+        self._remove_button.clicked.connect(self._remove_image)
+        layer_actions.addWidget(self._remove_button)
+        l_box.addLayout(layer_actions)
 
         self._image_list = QListWidget()
-        self._image_list.setMinimumHeight(110)
-        self._image_list.setToolTip("Chọn một ảnh để chỉnh độ đậm và độ rộng.")
+        self._image_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._image_list.currentRowChanged.connect(self._on_list_row)
-        column.addWidget(self._image_list, 1)
+        l_box.addWidget(self._image_list, 1)
 
-        self._opacity = QSlider(Qt.Orientation.Horizontal)
-        self._opacity.setRange(10, 100)
-        self._opacity.setValue(100)
-        self._opacity_label = QLabel("Độ đậm 100%")
-        self._opacity_label.setObjectName("MutedLabel")
-        self._opacity.valueChanged.connect(self._on_opacity)
-        column.addWidget(self._opacity_label)
-        column.addWidget(self._opacity)
+        bg_group = QGroupBox("Nền xem trước")
+        bg_form = QVBoxLayout(bg_group)
+        bg_form.setSpacing(6)
+        bg_row = QHBoxLayout()
+        bg_row.setSpacing(6)
+        self._preview_button = QPushButton("Chọn nền")
+        set_icon(self._preview_button, "image", "accent", 13)
+        self._preview_button.clicked.connect(self._pick_preview)
+        bg_row.addWidget(self._preview_button, 1)
+        self._preview_clear = icon_button("x", "Bỏ ảnh nền", size=13, side=28)
+        self._preview_clear.clicked.connect(self._clear_preview)
+        bg_row.addWidget(self._preview_clear)
+        bg_form.addLayout(bg_row)
+        l_box.addWidget(bg_group)
 
+        tabs.addTab(layers_tab, "Danh sách lớp")
+
+        # Tab 2: Preset Stickers
+        stickers_tab = QWidget()
+        s_box = QVBoxLayout(stickers_tab)
+        s_box.setContentsMargins(8, 8, 8, 8)
+        s_box.setSpacing(8)
+
+        s_hint = QLabel("Bấm để chèn sticker mẫu nhanh:")
+        s_hint.setObjectName("MutedLabel")
+        s_box.addWidget(s_hint)
+
+        stickers_grid = QGridLayout()
+        stickers_grid.setSpacing(6)
+
+        presets = [
+            ("🔴 Subscribe", "assets/stickers/subscribe.png", 0, 0),
+            ("👍 Like & Share", "assets/stickers/like.png", 0, 1),
+            ("🔔 Chuông", "assets/stickers/bell.png", 1, 0),
+            ("🔥 Hot", "assets/stickers/hot.png", 1, 1),
+            ("🐱 Webcam Cat", "assets/stickers/cat_avatar.png", 2, 0),
+            ("⚠️ Chú ý", "assets/stickers/warning.png", 2, 1),
+        ]
+        for title, path, r, c in presets:
+            btn = QPushButton(title)
+            btn.setStyleSheet("text-align: left; padding: 6px 8px; font-weight: 600;")
+            btn.clicked.connect(lambda _c=False, p=path: self._insert_preset(p))
+            stickers_grid.addWidget(btn, r, c)
+
+        s_box.addLayout(stickers_grid)
+        s_box.addStretch(1)
+        tabs.addTab(stickers_tab, "Kho Sticker")
+
+        return panel
+
+    def _insert_preset(self, path: str) -> None:
+        p = Path(path)
+        if not p.is_file():
+            return
+        index = len(self._layout.images)
+        offset = 0.03 * (index % 5)
+        self._layout.images.append(FrameImage(
+            path=str(p.resolve()), x=0.35 + offset, y=0.35 + offset, width=0.22))
+        self._layout.enabled = True
+        self._enabled.setChecked(True)
+        self._canvas.reload_assets()
+        self._rebuild_list(index)
+        self._canvas.set_selection("image", index)
+        self._canvas.update()
+
+    # ── 2. Center Player Panel (Canvas & Controls) ──────────────────────────
+    def _build_center_player_panel(self) -> QWidget:
+        panel = QWidget()
+        vbox = QVBoxLayout(panel)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(8)
+
+        top_bar = QHBoxLayout()
+        top_bar.setSpacing(8)
+        lbl = QLabel("Màn hình xem trước (Player)")
+        lbl.setObjectName("FieldLabel")
+        top_bar.addWidget(lbl)
+        top_bar.addStretch(1)
+
+        self._ratio_combo = QComboBox()
+        self._ratio_combo.addItem("16:9 (Ngang)", "16:9")
+        self._ratio_combo.addItem("9:16 (Dọc Shorts)", "9:16")
+        self._ratio_combo.addItem("1:1 (Vuông)", "1:1")
+        self._ratio_combo.currentIndexChanged.connect(self._on_ratio_changed)
+        top_bar.addWidget(self._ratio_combo)
+
+        vbox.addLayout(top_bar)
+        vbox.addWidget(self._canvas, 1)
+
+        # Player Bottom Controls (CapCut playback bar)
+        bottom_bar = QHBoxLayout()
+        bottom_bar.setSpacing(8)
+
+        self._play_btn = icon_button("play", "Bật/Tắt mô phỏng sóng nhạc", size=15, side=32)
+        self._play_btn.clicked.connect(self._toggle_playback)
+        bottom_bar.addWidget(self._play_btn)
+
+        timecode = QLabel("00:00:02 / 00:00:10")
+        timecode.setObjectName("MutedLabel")
+        bottom_bar.addWidget(timecode)
+
+        bottom_bar.addStretch(1)
+
+        self._btn_grid = icon_button("grid", "Bật/Tắt đường lưới", size=14, side=30)
+        self._btn_grid.clicked.connect(self._toggle_grid)
+        bottom_bar.addWidget(self._btn_grid)
+
+        self._btn_safe = icon_button("maximize-2", "Bật/Tắt vùng an toàn", size=14, side=30)
+        self._btn_safe.clicked.connect(self._toggle_safe)
+        bottom_bar.addWidget(self._btn_safe)
+
+        self._reset_btn = QPushButton("Đặt lại")
+        set_icon(self._reset_btn, "rotate-ccw", "muted", 13)
+        self._reset_btn.setToolTip("Khôi phục toàn bộ khung mẫu về mặc định.")
+        self._reset_btn.clicked.connect(self._reset)
+        bottom_bar.addWidget(self._reset_btn)
+
+        vbox.addLayout(bottom_bar)
+        return panel
+
+    def _toggle_playback(self) -> None:
+        if self._canvas._timer.isActive():
+            self._canvas._timer.stop()
+            set_icon(self._play_btn, "play", "accent", 15)
+        else:
+            self._canvas._timer.start()
+            set_icon(self._play_btn, "pause", "accent", 15)
+
+    def _toggle_grid(self) -> None:
+        self._canvas.show_grid = not self._canvas.show_grid
+        self._canvas.update()
+
+    def _toggle_safe(self) -> None:
+        self._canvas.show_safe_area = not self._canvas.show_safe_area
+        self._canvas.update()
+
+    def _on_ratio_changed(self) -> None:
+        mode = str(self._ratio_combo.currentData() or "16:9")
+        self._canvas.aspect_ratio_mode = mode
+        self._canvas.updateGeometry()
+        self._canvas.update()
+
+    # ── 3. Right Inspector Panel (Transform / Opacity / Custom) ──────────────
+    def _build_right_inspector_panel(self) -> QWidget:
+        panel = QWidget()
+        panel.setMinimumWidth(300)
+        panel.setMaximumWidth(340)
+        vbox = QVBoxLayout(panel)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(10)
+
+        # Selected Target Title
+        self._inspector_title = QLabel("Chọn một đối tượng để chỉnh sửa")
+        self._inspector_title.setObjectName("FieldLabel")
+        self._inspector_title.setStyleSheet("font-weight: 700; color: #4FC3F7;")
+        vbox.addWidget(self._inspector_title)
+
+        # Group 1: Transform (Kích thước, Vị trí, Xoay, Căn lề, Lật)
+        trans_box = QGroupBox("Biến đổi (Transform)")
+        t_layout = QVBoxLayout(trans_box)
+        t_layout.setSpacing(6)
+
+        # Scale / Kích thước
+        self._width_label = QLabel("Kích thước (Scale) 18%")
+        self._width_label.setObjectName("MutedLabel")
+        t_layout.addWidget(self._width_label)
         self._width = QSlider(Qt.Orientation.Horizontal)
         self._width.setRange(5, 100)
         self._width.setValue(18)
-        self._width_label = QLabel("Độ rộng 18%")
-        self._width_label.setObjectName("MutedLabel")
         self._width.valueChanged.connect(self._on_width)
-        column.addWidget(self._width_label)
-        column.addWidget(self._width)
+        t_layout.addWidget(self._width)
 
-        reset = QPushButton("Đặt lại khung mẫu")
-        set_icon(reset, "rotate-ccw", "muted", 14)
-        reset.clicked.connect(self._reset)
-        column.addWidget(reset)
-        return box
+        # Position X
+        self._pos_x_label = QLabel("Vị trí X: 5%")
+        self._pos_x_label.setObjectName("MutedLabel")
+        t_layout.addWidget(self._pos_x_label)
+        x_row = QHBoxLayout()
+        x_row.setSpacing(6)
+        self._pos_x = QSlider(Qt.Orientation.Horizontal)
+        self._pos_x.setRange(0, 100)
+        self._pos_x.setValue(5)
+        self._pos_x.valueChanged.connect(self._on_pos_x)
+        x_row.addWidget(self._pos_x, 1)
+        btn_center_x = icon_button("minimize-2", "Căn giữa X (50%)", size=13, side=28)
+        btn_center_x.clicked.connect(lambda: self._canvas.align_selected("center_x"))
+        x_row.addWidget(btn_center_x)
+        t_layout.addLayout(x_row)
 
-    # ── responsive reflow ────────────────────────────────────────────────────
-    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
-        super().resizeEvent(event)
-        narrow = self.width() < 880
-        direction = (QBoxLayout.Direction.TopToBottom if narrow
-                     else QBoxLayout.Direction.LeftToRight)
-        if self._row.direction() != direction:
-            self._row.setDirection(direction)
-        if narrow:
-            self._panel.setMinimumWidth(0)
-            self._panel.setMaximumWidth(16777215)
-        else:
-            self._panel.setMinimumWidth(270)
-            self._panel.setMaximumWidth(330)
+        # Position Y
+        self._pos_y_label = QLabel("Vị trí Y: 5%")
+        self._pos_y_label.setObjectName("MutedLabel")
+        t_layout.addWidget(self._pos_y_label)
+        y_row = QHBoxLayout()
+        y_row.setSpacing(6)
+        self._pos_y = QSlider(Qt.Orientation.Horizontal)
+        self._pos_y.setRange(0, 100)
+        self._pos_y.setValue(5)
+        self._pos_y.valueChanged.connect(self._on_pos_y)
+        y_row.addWidget(self._pos_y, 1)
+        btn_center_y = icon_button("minimize-2", "Căn giữa Y (50%)", size=13, side=28)
+        btn_center_y.clicked.connect(lambda: self._canvas.align_selected("center_y"))
+        y_row.addWidget(btn_center_y)
+        t_layout.addLayout(y_row)
+
+        # Rotate (Góc xoay)
+        self._rotate_label = QLabel("Góc xoay (Rotate): 0°")
+        self._rotate_label.setObjectName("MutedLabel")
+        t_layout.addWidget(self._rotate_label)
+        rot_row = QHBoxLayout()
+        rot_row.setSpacing(6)
+        self._rotate = QSlider(Qt.Orientation.Horizontal)
+        self._rotate.setRange(-180, 180)
+        self._rotate.setValue(0)
+        self._rotate.valueChanged.connect(self._on_rotate)
+        rot_row.addWidget(self._rotate, 1)
+        btn_reset_rot = icon_button("rotate-ccw", "Về 0°", size=12, side=28)
+        btn_reset_rot.clicked.connect(lambda: self._canvas.rotate_selected(0.0))
+        rot_row.addWidget(btn_reset_rot)
+        t_layout.addLayout(rot_row)
+
+        # Fast Alignment (6 buttons)
+        align_label = QLabel("Căn lề nhanh (Alignment)")
+        align_label.setObjectName("MutedLabel")
+        t_layout.addWidget(align_label)
+        align_grid = QGridLayout()
+        align_grid.setSpacing(4)
+        alignments = [
+            ("Trái", "left", 0, 0),
+            ("Giữa X", "center_x", 0, 1),
+            ("Phải", "right", 0, 2),
+            ("Trên", "top", 1, 0),
+            ("Giữa Y", "center_y", 1, 1),
+            ("Dưới", "bottom", 1, 2),
+        ]
+        for name, mode, r, c in alignments:
+            btn = QPushButton(name)
+            btn.setStyleSheet("font-size: 11px; padding: 4px;")
+            btn.clicked.connect(lambda _c=False, m=mode: self._canvas.align_selected(m))
+            align_grid.addWidget(btn, r, c)
+        t_layout.addLayout(align_grid)
+
+        # Flip Horizontal / Vertical
+        flip_row = QHBoxLayout()
+        flip_row.setSpacing(6)
+        self._flip_h_btn = QPushButton("Lật ngang (Flip H)")
+        self._flip_h_btn.setStyleSheet("font-size: 11px; padding: 4px;")
+        self._flip_h_btn.clicked.connect(lambda: self._canvas.flip_selected(True))
+        flip_row.addWidget(self._flip_h_btn)
+
+        self._flip_v_btn = QPushButton("Lật dọc (Flip V)")
+        self._flip_v_btn.setStyleSheet("font-size: 11px; padding: 4px;")
+        self._flip_v_btn.clicked.connect(lambda: self._canvas.flip_selected(False))
+        flip_row.addWidget(self._flip_v_btn)
+        t_layout.addLayout(flip_row)
+
+        vbox.addWidget(trans_box)
+
+        # Group 2: Opacity & Blend
+        blend_box = QGroupBox("Độ đậm & Trong suốt (Opacity)")
+        b_layout = QVBoxLayout(blend_box)
+        b_layout.setSpacing(6)
+        self._opacity_label = QLabel("Độ đậm 100%")
+        self._opacity_label.setObjectName("MutedLabel")
+        b_layout.addWidget(self._opacity_label)
+        self._opacity = QSlider(Qt.Orientation.Horizontal)
+        self._opacity.setRange(10, 100)
+        self._opacity.setValue(100)
+        self._opacity.valueChanged.connect(self._on_opacity)
+        b_layout.addWidget(self._opacity)
+        vbox.addWidget(blend_box)
+
+        # Group 3: Custom Properties (Subtitle Font / Wave Color)
+        custom_box = QGroupBox("Thuộc tính riêng (Custom)")
+        c_layout = QVBoxLayout(custom_box)
+        c_layout.setSpacing(8)
+
+        self._scale_label = QLabel("Cỡ chữ phụ đề: 100%")
+        self._scale_label.setObjectName("MutedLabel")
+        c_layout.addWidget(self._scale_label)
+        self._scale = QSlider(Qt.Orientation.Horizontal)
+        self._scale.setRange(50, 200)
+        self._scale.setValue(100)
+        self._scale.valueChanged.connect(self._on_scale)
+        c_layout.addWidget(self._scale)
+
+        self._wave = QCheckBox("Hiện sóng âm thanh")
+        self._wave.toggled.connect(self._on_wave_toggled)
+        c_layout.addWidget(self._wave)
+
+        self._color_button = QPushButton("Màu sóng âm")
+        self._color_button.clicked.connect(self._pick_color)
+        c_layout.addWidget(self._color_button)
+
+        vbox.addWidget(custom_box)
+        vbox.addStretch(1)
+        return panel
 
     # ── settings API ─────────────────────────────────────────────────────────
     def load_from(self, settings: Dict[str, Any]) -> None:
@@ -772,70 +1109,133 @@ class FrameTab(QWidget):
         self._wave.setChecked(self._layout.waveform)
         self._scale.setValue(int(round(self._layout.subtitle_scale * 100)))
         self._scale_label.setText(
-            f"Cỡ chữ {int(round(self._layout.subtitle_scale * 100))}%")
-        self._opacity.setEnabled(False)
-        self._width.setEnabled(False)
-        self._remove_button.setEnabled(False)
+            f"Cỡ chữ phụ đề: {int(round(self._layout.subtitle_scale * 100))}%")
         self._preview_clear.setEnabled(bool(self._layout.preview))
         self._color_button.setEnabled(self._layout.waveform)
         self._block = False
         self._paint_color_button()
+        self._on_selection(*self._canvas.selection())
 
     def _rebuild_list(self, select: int = -1) -> None:
         self._block = True
         self._image_list.clear()
-        for image in self._layout.images:
-            item = QListWidgetItem(image.name)
+
+        # Item 0: Subtitle
+        item_sub = QListWidgetItem("📝 Phụ đề (Subtitle)")
+        self._image_list.addItem(item_sub)
+
+        # Item 1: Waveform
+        item_wave = QListWidgetItem("🌊 Sóng âm thanh (Waveform)")
+        self._image_list.addItem(item_wave)
+
+        # Image items
+        for idx, image in enumerate(self._layout.images):
+            item = QListWidgetItem(f"🖼️ {image.name}")
             item.setToolTip(image.path)
             self._image_list.addItem(item)
-        if 0 <= select < self._image_list.count():
-            self._image_list.setCurrentRow(select)
-        self._block = False
-        self._update_image_sliders(select)
 
-    def _update_image_sliders(self, index: int) -> None:
-        valid = 0 <= index < len(self._layout.images)
-        self._opacity.setEnabled(valid)
-        self._width.setEnabled(valid)
-        self._remove_button.setEnabled(valid)
-        if not valid:
-            return
-        image = self._layout.images[index]
-        self._block = True
-        self._opacity.setValue(int(round(image.opacity * 100)))
-        self._width.setValue(int(round(image.width * 100)))
+        target_row = select + 2 if select >= 0 else -1
+        if 0 <= target_row < self._image_list.count():
+            self._image_list.setCurrentRow(target_row)
         self._block = False
-        self._opacity_label.setText(f"Độ đậm {int(round(image.opacity * 100))}%")
-        self._width_label.setText(f"Độ rộng {int(round(image.width * 100))}%")
+        self._update_inspector()
+
+    def _on_list_row(self, row: int) -> None:
+        if self._block or row < 0:
+            return
+        if row == 0:
+            self._canvas.set_selection("subtitle", -1)
+        elif row == 1:
+            self._canvas.set_selection("wave", -1)
+        else:
+            self._canvas.set_selection("image", row - 2)
 
     def _on_selection(self, kind: str, index: int) -> None:
-        if kind != "image":
-            self._opacity.setEnabled(False)
-            self._width.setEnabled(False)
-            self._remove_button.setEnabled(False)
-            self._block = True
-            self._image_list.setCurrentRow(-1)
-            self._block = False
-            return
         self._block = True
-        self._image_list.setCurrentRow(index)
+        if kind == "subtitle":
+            self._image_list.setCurrentRow(0)
+        elif kind == "wave":
+            self._image_list.setCurrentRow(1)
+        elif kind == "image" and 0 <= index < len(self._layout.images):
+            self._image_list.setCurrentRow(index + 2)
+        else:
+            self._image_list.setCurrentRow(-1)
         self._block = False
-        self._update_image_sliders(index)
+        self._update_inspector()
+
+    def _update_inspector(self) -> None:
+        kind, index = self._canvas.selection()
+        valid_img = (kind == "image" and 0 <= index < len(self._layout.images))
+        self._remove_button.setEnabled(valid_img)
+        self._flip_h_btn.setEnabled(valid_img)
+        self._flip_v_btn.setEnabled(valid_img)
+        self._rotate.setEnabled(valid_img)
+
+        self._block = True
+        if valid_img:
+            image = self._layout.images[index]
+            self._inspector_title.setText(f"Đang chỉnh sửa: 🖼️ {image.name}")
+            self._width.setEnabled(True)
+            self._width.setValue(int(round(image.width * 100)))
+            self._width_label.setText(f"Kích thước (Scale) {int(round(image.width * 100))}%")
+
+            self._pos_x.setEnabled(True)
+            self._pos_x.setValue(int(round(image.x * 100)))
+            self._pos_x_label.setText(f"Vị trí X: {int(round(image.x * 100))}%")
+
+            self._pos_y.setEnabled(True)
+            self._pos_y.setValue(int(round(image.y * 100)))
+            self._pos_y_label.setText(f"Vị trí Y: {int(round(image.y * 100))}%")
+
+            self._rotate.setValue(int(round(getattr(image, "rotation", 0.0))))
+            self._rotate_label.setText(f"Góc xoay (Rotate): {int(round(getattr(image, 'rotation', 0.0)))}°")
+
+            self._opacity.setEnabled(True)
+            self._opacity.setValue(int(round(image.opacity * 100)))
+            self._opacity_label.setText(f"Độ đậm {int(round(image.opacity * 100))}%")
+            self._scale.setEnabled(False)
+        elif kind == "subtitle":
+            self._inspector_title.setText("Đang chỉnh sửa: 📝 Phụ đề (Subtitle)")
+            self._width.setEnabled(False)
+            self._pos_x.setEnabled(True)
+            self._pos_x.setValue(int(round(self._layout.subtitle_x * 100)))
+            self._pos_x_label.setText(f"Vị trí X: {int(round(self._layout.subtitle_x * 100))}%")
+            self._pos_y.setEnabled(True)
+            self._pos_y.setValue(int(round(self._layout.subtitle_y * 100)))
+            self._pos_y_label.setText(f"Vị trí Y: {int(round(self._layout.subtitle_y * 100))}%")
+            self._rotate.setValue(0)
+            self._opacity.setEnabled(False)
+            self._scale.setEnabled(True)
+            self._scale.setValue(int(round(self._layout.subtitle_scale * 100)))
+            self._scale_label.setText(f"Cỡ chữ phụ đề: {int(round(self._layout.subtitle_scale * 100))}%")
+        elif kind == "wave":
+            self._inspector_title.setText("Đang chỉnh sửa: 🌊 Sóng âm thanh")
+            self._width.setEnabled(True)
+            self._width.setValue(int(round(self._layout.wave_w * 100)))
+            self._width_label.setText(f"Độ rộng sóng {int(round(self._layout.wave_w * 100))}%")
+            self._pos_x.setEnabled(True)
+            self._pos_x.setValue(int(round(self._layout.wave_x * 100)))
+            self._pos_x_label.setText(f"Vị trí X: {int(round(self._layout.wave_x * 100))}%")
+            self._pos_y.setEnabled(True)
+            self._pos_y.setValue(int(round(self._layout.wave_y * 100)))
+            self._pos_y_label.setText(f"Vị trí Y: {int(round(self._layout.wave_y * 100))}%")
+            self._rotate.setValue(0)
+            self._opacity.setEnabled(False)
+            self._scale.setEnabled(False)
+        else:
+            self._inspector_title.setText("Chọn một đối tượng để chỉnh sửa")
+            self._width.setEnabled(False)
+            self._pos_x.setEnabled(False)
+            self._pos_y.setEnabled(False)
+            self._rotate.setEnabled(False)
+            self._opacity.setEnabled(False)
+            self._scale.setEnabled(False)
+        self._block = False
 
     def _on_layout_changed(self) -> None:
         if not self._layout.enabled:
             self._enabled.setChecked(True)
-        kind, index = self._canvas.selection()
-        if kind == "image":
-            self._update_image_sliders(index)
-            if 0 <= index < self._image_list.count():
-                self._image_list.item(index).setText(self._layout.images[index].name)
-        self._block = True
-        if kind == "subtitle":
-            self._scale.setValue(int(round(self._layout.subtitle_scale * 100)))
-            self._scale_label.setText(
-                f"Cỡ chữ {int(round(self._layout.subtitle_scale * 100))}%")
-        self._block = False
+        self._update_inspector()
 
     # ── actions ──────────────────────────────────────────────────────────────
     def _on_enabled(self, checked: bool) -> None:
@@ -862,7 +1262,7 @@ class FrameTab(QWidget):
         if self._block:
             return
         self._layout.subtitle_scale = value / 100.0
-        self._scale_label.setText(f"Cỡ chữ {value}%")
+        self._scale_label.setText(f"Cỡ chữ phụ đề: {value}%")
         self._canvas.update()
 
     def _on_opacity(self, value: int) -> None:
@@ -879,20 +1279,60 @@ class FrameTab(QWidget):
         if self._block:
             return
         kind, index = self._canvas.selection()
-        if kind != "image" or not (0 <= index < len(self._layout.images)):
-            return
-        self._layout.images[index].width = value / 100.0
-        self._layout.images[index].clamp()
-        self._width_label.setText(f"Độ rộng {value}%")
-        self._canvas.update()
+        if kind == "image" and 0 <= index < len(self._layout.images):
+            self._layout.images[index].width = value / 100.0
+            self._layout.images[index].clamp()
+            self._width_label.setText(f"Kích thước (Scale) {value}%")
+            self._canvas.update()
+        elif kind == "wave":
+            self._layout.wave_w = value / 100.0
+            self._layout.clamp()
+            self._width_label.setText(f"Độ rộng sóng {value}%")
+            self._canvas.update()
 
-    def _on_list_row(self, row: int) -> None:
+    def _on_pos_x(self, value: int) -> None:
         if self._block:
             return
-        if row < 0:
-            self._canvas.set_selection("", -1)
+        kind, index = self._canvas.selection()
+        norm = value / 100.0
+        if kind == "image" and 0 <= index < len(self._layout.images):
+            self._layout.images[index].x = norm
+            self._layout.images[index].clamp()
+        elif kind == "subtitle":
+            self._layout.subtitle_x = norm
+            self._layout.clamp()
+        elif kind == "wave":
+            self._layout.wave_x = norm
+            self._layout.clamp()
+        self._pos_x_label.setText(f"Vị trí X: {value}%")
+        self._canvas.update()
+
+    def _on_pos_y(self, value: int) -> None:
+        if self._block:
             return
-        self._canvas.set_selection("image", row)
+        kind, index = self._canvas.selection()
+        norm = value / 100.0
+        if kind == "image" and 0 <= index < len(self._layout.images):
+            self._layout.images[index].y = norm
+            self._layout.images[index].clamp()
+        elif kind == "subtitle":
+            self._layout.subtitle_y = norm
+            self._layout.clamp()
+        elif kind == "wave":
+            self._layout.wave_y = norm
+            self._layout.clamp()
+        self._pos_y_label.setText(f"Vị trí Y: {value}%")
+        self._canvas.update()
+
+    def _on_rotate(self, value: int) -> None:
+        if self._block:
+            return
+        kind, index = self._canvas.selection()
+        if kind == "image" and 0 <= index < len(self._layout.images):
+            self._layout.images[index].rotation = float(value)
+            self._layout.images[index].clamp()
+            self._rotate_label.setText(f"Góc xoay (Rotate): {value}°")
+            self._canvas.update()
 
     def _add_image(self) -> None:
         path, _filter = QFileDialog.getOpenFileName(

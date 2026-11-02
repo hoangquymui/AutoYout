@@ -1654,6 +1654,13 @@ class FFmpegRenderer:
         for index, (input_index, image) in enumerate(frame_images or []):
             image_w = _even(max(2, int(round(image.width * width))))
             chain = f"[{input_index}:v]scale={image_w}:-1,format=rgba"
+            if getattr(image, "flip_h", False):
+                chain += ",hflip"
+            if getattr(image, "flip_v", False):
+                chain += ",vflip"
+            if getattr(image, "rotation", 0.0):
+                angle_rad = -image.rotation * math.pi / 180.0
+                chain += f",rotate={angle_rad:.5f}:ow=rotw({angle_rad:.5f}):oh=roth({angle_rad:.5f}):c=none"
             if image.opacity < 0.999:
                 chain += f",colorchannelmixer=aa={image.opacity:.3f}"
             parts.append(chain + f"[frameimg{index}]")

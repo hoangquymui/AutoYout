@@ -445,6 +445,7 @@ class MainWindow(QMainWindow):
             self.project_tab.set_manager(None)
             self.script_tab.set_project(None)
             self.tts_tab.set_project(None)
+            self.video_tab.set_project(None)
             self.youtube_tab.set_project(None)
             return
         path = Path(project)
@@ -453,6 +454,7 @@ class MainWindow(QMainWindow):
             self._set_status(f"Thư mục project không tồn tại: {project}", error=True)
             self.script_tab.set_project(None)
             self.tts_tab.set_project(None)
+            self.video_tab.set_project(None)
             self.youtube_tab.set_project(None)
             if not silent:
                 QMessageBox.warning(self, "Project", f"Không tìm thấy thư mục:\n{project}")
@@ -483,6 +485,7 @@ class MainWindow(QMainWindow):
         self.project_tab.set_manager(manager)
         self.script_tab.set_project(manager)
         self.tts_tab.set_project(manager)
+        self.video_tab.set_project(manager)
         self.youtube_tab.set_project(manager)
         self.project_label.setText(str(path))
         self.settings.setdefault("project", {})["last_project"] = str(path)
@@ -634,6 +637,7 @@ class MainWindow(QMainWindow):
         if worker is not None:
             worker.deleteLater()
         self.project_tab.refresh()
+        self.video_tab.refresh_files()
         self.tts_tab.set_busy(False)
         self.youtube_tab.set_pipeline_busy(False)
         self._set_pause_ui(False)
