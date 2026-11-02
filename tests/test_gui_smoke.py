@@ -41,6 +41,8 @@ def window(app, monkeypatch, tmp_path: Path):
 
 
 def test_window_builds_all_tabs(window) -> None:
+    assert window.windowTitle().startswith("AutoYout")
+    assert not window.windowIcon().isNull()
     assert window.tabs.count() == 7
     labels = [window.tabs.tabText(i) for i in range(window.tabs.count())]
     assert labels == ["Dự án", "Kịch bản",
@@ -473,3 +475,18 @@ def test_frame_canvas_drag_moves_subtitle(app) -> None:
     assert layout.subtitle_x > 0.5
     assert layout.subtitle_y < 0.9
     canvas.hide()
+
+
+def test_dubbing_tab_ui_layout_and_labels(window) -> None:
+    dub = window.tts_tab
+    assert dub.import_btn.text() == "Nhập TXT"
+    assert dub.import_dir_btn.text() == "Nhập thư mục"
+    assert dub.start_btn.text() == "Bắt đầu"
+    assert dub.pause_btn.text() == "Tạm dừng"
+    assert dub.stop_btn.text() == "Dừng"
+    assert dub.open_btn.text() == "Mở thư mục xuất"
+    assert dub.inner_tabs.tabText(0) == "Bảng đoạn"
+    headers = [dub.table.horizontalHeaderItem(i).text() for i in range(6)]
+    assert headers == ["STT", "Thời gian", "Nội dung", "Giọng", "Trạng thái", "File xuất"]
+    assert "0 đoạn · Xong 0" in dub.stats_label.text()
+

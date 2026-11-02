@@ -109,7 +109,7 @@ class DubbingWorker(QThread):
         cues = load_cues(self._manager, self._base)
         item = self._manager.get_item(self._base)
         if item is None or not cues:
-            self.done.emit(False, "Không có cue để lồng tiếng.")
+            self.done.emit(False, "Không có đoạn để lồng tiếng.")
             return
         engine = DubbingEngine(self._settings)
         try:
@@ -133,9 +133,9 @@ class DubbingWorker(QThread):
         else:
             failed = sum(1 for cue in cues if cue.status == STATUS_ERROR)
             ok = len(cues) - failed
-            message = f"Xong {ok}/{len(cues)} cue."
+            message = f"Xong {ok}/{len(cues)} đoạn."
             if failed:
-                message += f" {failed} cue lỗi."
+                message += f" {failed} đoạn lỗi."
             self.progress.emit(100, message)
             self.done.emit(failed == 0, message)
 
@@ -158,7 +158,7 @@ class JoinWorker(QThread):
         cues = load_cues(self._manager, self._base)
         item = self._manager.get_item(self._base)
         if item is None or not cues:
-            self.done.emit(False, "Không có cue để ghép.", "", 0.0)
+            self.done.emit(False, "Không có đoạn để ghép.", "", 0.0)
             return
         try:
             engine = DubbingEngine(self._settings)
@@ -196,8 +196,8 @@ class DubbingTab(QWidget):
         root.addWidget(
             PageHeader(
                 "Lồng tiếng từ văn bản",
-                "Nhập TXT, tách cue theo khoảng số từ (cắt ở dấu chấm gần nhất), "
-                "tạo audio từng cue rồi ghép thành MP3 + SRT.",
+                "Nhập TXT, chia đoạn theo khoảng số từ (cắt ở dấu chấm gần nhất), "
+                "tạo audio từng đoạn rồi ghép thành MP3 + SRT.",
             )
         )
 
@@ -208,7 +208,7 @@ class DubbingTab(QWidget):
         self.tts_page = TTSConfigTab()
         self.tts_page.busy_changed.connect(self.busy_changed.emit)
         self.tts_page.engine_reload_requested.connect(self.engine_reload_requested.emit)
-        self.inner_tabs.addTab(self._build_cue_page(), "Bảng cue")
+        self.inner_tabs.addTab(self._build_cue_page(), "Bảng đoạn")
         self.inner_tabs.addTab(self.tts_page, "Engine && giọng")
 
     # ── construction ─────────────────────────────────────────────────────────
@@ -218,10 +218,22 @@ class DubbingTab(QWidget):
         layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(8)
 
-        # Row 1: File & Actions (canh trái toàn bộ)
+        # Row 1: Nhập TXT, Thư mục, File & Các thao tác (canh trái toàn bộ)
         row1 = QHBoxLayout()
         row1.setSpacing(6)
         row1.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.import_btn = QPushButton("Nhập TXT")
+        set_icon(self.import_btn, "file", "accent", 14)
+        self.import_btn.clicked.connect(self._import_txt)
+        row1.addWidget(self.import_btn)
+
+        self.import_dir_btn = QPushButton("Nhập thư mục")
+        set_icon(self.import_dir_btn, "folder", "accent", 14)
+        self.import_dir_btn.clicked.connect(self._import_folder)
+        row1.addWidget(self.import_dir_btn)
+
+        row1.addSpacing(6)
 
         self.file_label = QLabel("File:")
         self.file_combo = QComboBox()
@@ -231,19 +243,9 @@ class DubbingTab(QWidget):
         row1.addWidget(self.file_label)
         row1.addWidget(self.file_combo)
 
-        self.import_btn = QPushButton("Import TXT")
-        set_icon(self.import_btn, "file", "accent", 14)
-        self.import_btn.clicked.connect(self._import_txt)
-        row1.addWidget(self.import_btn)
-
-        self.import_dir_btn = QPushButton("Import Folder")
-        set_icon(self.import_dir_btn, "folder", "accent", 14)
-        self.import_dir_btn.clicked.connect(self._import_folder)
-        row1.addWidget(self.import_dir_btn)
-
         row1.addSpacing(6)
 
-        self.start_btn = QPushButton("Start")
+        self.start_btn = QPushButton("Bắt đầu")
         self.start_btn.setObjectName("primaryButton")
         set_icon(self.start_btn, "play", "white", 14)
         self.start_btn.clicked.connect(self._start)
@@ -254,7 +256,7 @@ class DubbingTab(QWidget):
         self.pause_btn.clicked.connect(self._toggle_pause)
         row1.addWidget(self.pause_btn)
 
-        self.stop_btn = QPushButton("Stop")
+        self.stop_btn = QPushButton("Dừng")
         set_icon(self.stop_btn, "stop", "danger", 13)
         self.stop_btn.clicked.connect(self._stop)
         row1.addWidget(self.stop_btn)
@@ -266,7 +268,7 @@ class DubbingTab(QWidget):
         self.join_btn.clicked.connect(self._start_join)
         row1.addWidget(self.join_btn)
 
-        self.open_btn = QPushButton("Open Output")
+        self.open_btn = QPushButton("Mở thư mục xuất")
         set_icon(self.open_btn, "folder-open", "muted", 14)
         self.open_btn.clicked.connect(self._open_output)
         row1.addWidget(self.open_btn)
@@ -274,22 +276,33 @@ class DubbingTab(QWidget):
         row1.addStretch(1)
         layout.addLayout(row1)
 
-        # Row 2: Tách cue & Chế độ ghép (canh trái toàn bộ)
+        # Row 2: Chia đoạn & thống kê (canh trái toàn bộ)
         row2 = QHBoxLayout()
         row2.setSpacing(6)
         row2.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
-        self.auto_split_chk = QCheckBox("Auto Split")
+        # Giữ các widget không hiển thị để tương thích load_from / apply_to / options
+        self.auto_split_chk = QCheckBox("Chia đoạn")
         self.auto_split_chk.setChecked(True)
-        self.auto_split_chk.setToolTip("Tách cue khi import theo khoảng số từ bên cạnh.")
-        row2.addWidget(self.auto_split_chk)
+        self.merge_chk = QCheckBox("Gộp đoạn ngắn")
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("Timing tự nhiên", "natural")
+        self.mode_combo.addItem("Giữ timing gốc", "timeline")
+        self.gap_spin = QDoubleSpinBox()
+        self.gap_spin.setRange(0.0, 3.0)
+        self.gap_spin.setSingleStep(0.05)
+        self.gap_spin.setDecimals(2)
+        self.gap_spin.setSuffix(" giây")
+        self.gap_spin.setValue(0.15)
+
+        row2.addWidget(QLabel("Chia đoạn:"))
 
         row2.addWidget(QLabel("Từ:"))
         self.min_words_spin = QSpinBox()
         self.min_words_spin.setRange(1, 400)
         self.min_words_spin.setSuffix(" từ")
         self.min_words_spin.setValue(15)
-        self.min_words_spin.setToolTip("Số từ tối thiểu cho mỗi cue.")
+        self.min_words_spin.setToolTip("Số từ tối thiểu cho mỗi đoạn.")
         row2.addWidget(self.min_words_spin)
 
         row2.addWidget(QLabel("–"))
@@ -298,35 +311,12 @@ class DubbingTab(QWidget):
         self.max_words_spin.setSuffix(" từ")
         self.max_words_spin.setValue(30)
         self.max_words_spin.setToolTip(
-            "Số từ tối đa mỗi cue — gặp dấu chấm gần nhất thì cắt.")
+            "Số từ tối đa mỗi đoạn — gặp dấu chấm gần nhất thì cắt.")
         row2.addWidget(self.max_words_spin)
-
-        row2.addSpacing(4)
-        self.merge_chk = QCheckBox("Gộp cue ngắn")
-        self.merge_chk.setToolTip("Gộp cue ngắn vào cue kế khi khoảng hở rất nhỏ.")
-        row2.addWidget(self.merge_chk)
-
-        row2.addSpacing(10)
-
-        mode_label = QLabel("Chế độ ghép:")
-        row2.addWidget(mode_label)
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItem("Timing tự nhiên", "natural")
-        self.mode_combo.addItem("Giữ timing gốc", "timeline")
-        row2.addWidget(self.mode_combo)
-
-        row2.addWidget(QLabel("Gap:"))
-        self.gap_spin = QDoubleSpinBox()
-        self.gap_spin.setRange(0.0, 3.0)
-        self.gap_spin.setSingleStep(0.05)
-        self.gap_spin.setDecimals(2)
-        self.gap_spin.setSuffix(" giây")
-        self.gap_spin.setValue(0.15)
-        row2.addWidget(self.gap_spin)
 
         row2.addStretch(1)
 
-        self.stats_label = QLabel("0 cue · Done 0 · Lỗi 0 · 0s")
+        self.stats_label = QLabel("0 đoạn · Xong 0 · Lỗi 0 · 0s")
         self.stats_label.setObjectName("MutedLabel")
         row2.addWidget(self.stats_label)
 
@@ -334,7 +324,7 @@ class DubbingTab(QWidget):
 
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
-            ["Id", "Timing", "Nội dung", "Giọng", "Trạng thái", "Output"])
+            ["STT", "Thời gian", "Nội dung", "Giọng", "Trạng thái", "File xuất"])
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -365,7 +355,7 @@ class DubbingTab(QWidget):
         bottom.addWidget(self.audio_preview, 1)
         layout.addLayout(bottom)
 
-        self.status_label = QLabel("Sẵn sàng. Hãy chọn project và import văn bản TXT.")
+        self.status_label = QLabel("Sẵn sàng. Hãy chọn project và nhập văn bản TXT.")
         self.status_label.setObjectName("MutedLabel")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
@@ -592,9 +582,9 @@ class DubbingTab(QWidget):
             return
         cue = self._cues[row]
         menu = QMenu(self)
-        play = menu.addAction("Phát cue")
-        rerun = menu.addAction("Chạy lại cue này")
-        assign = menu.addMenu("Gán giọng cho cue đang chọn")
+        play = menu.addAction("Phát đoạn")
+        rerun = menu.addAction("Chạy lại đoạn này")
+        assign = menu.addMenu("Gán giọng cho đoạn đang chọn")
         assign_all = menu.addMenu("Gán giọng cho tất cả")
         voices = self.tts_page.voice_names()
         default_action = assign.addAction("— Mặc định —")
@@ -609,7 +599,7 @@ class DubbingTab(QWidget):
             all_action.triggered.connect(
                 lambda _checked=False, n=name: self._assign_voice_all(n))
         menu.addSeparator()
-        remove = menu.addAction("Xoá cue")
+        remove = menu.addAction("Xoá đoạn")
         chosen = menu.exec(self.table.viewport().mapToGlobal(position))
         if chosen is play:
             self._play_cue(cue)
@@ -642,7 +632,7 @@ class DubbingTab(QWidget):
             return
         self._save_cues()
         self._fill_table()
-        self.status_label.setText(f"Đã gán giọng cho {len(self._cues)} cue.")
+        self.status_label.setText(f"Đã gán giọng cho {len(self._cues)} đoạn.")
 
     def _rerun_cue(self, row: int) -> None:
         cue = self._cues[row]
@@ -666,7 +656,7 @@ class DubbingTab(QWidget):
         failed = sum(1 for cue in self._cues if cue.status == STATUS_ERROR)
         span = max((cue.end for cue in self._cues), default=0.0)
         self.stats_label.setText(
-            f"{len(self._cues)} cue · Done {done} · Lỗi {failed} · {format_duration(span)}")
+            f"{len(self._cues)} đoạn · Xong {done} · Lỗi {failed} · {format_duration(span)}")
 
     def _set_status(self, message: str, level: str = "muted") -> None:
         self._status_level = level
@@ -695,10 +685,10 @@ class DubbingTab(QWidget):
         if self._worker is not None or self._join is not None:
             return
         if self._manager is None or not self._base:
-            self._set_status("Hãy chọn project và import phụ đề trước.", "warning")
+            self._set_status("Hãy chọn project và nhập văn bản trước.", "warning")
             return
         if not self._cues:
-            self._set_status("Không có cue nào để lồng tiếng.", "warning")
+            self._set_status("Không có đoạn nào để lồng tiếng.", "warning")
             return
         if self._external_busy:
             self._set_status("Pipeline đang chạy, hãy dừng hoặc chờ xong.", "warning")
@@ -728,13 +718,13 @@ class DubbingTab(QWidget):
         else:
             worker.pause()
             self.pause_btn.setText("Tiếp tục")
-            self._set_status("Đã tạm dừng sau cue hiện tại.", "warning")
+            self._set_status("Đã tạm dừng sau đoạn hiện tại.", "warning")
 
     def _stop(self) -> None:
         if self._worker is not None:
             self._worker.cancel()
             self.stop_btn.setEnabled(False)
-            self._set_status("Đang dừng sau cue hiện tại…", "warning")
+            self._set_status("Đang dừng sau đoạn hiện tại…", "warning")
 
     def _on_progress(self, percent: int, message: str) -> None:
         if percent >= 0:
@@ -770,7 +760,7 @@ class DubbingTab(QWidget):
         if self._join is not None or self._worker is not None:
             return
         if self._manager is None or not self._base:
-            self._set_status("Hãy chọn project và import phụ đề trước.", "warning")
+            self._set_status("Hãy chọn project và nhập văn bản trước.", "warning")
             return
         if self._external_busy:
             self._set_status("Pipeline đang chạy, hãy dừng hoặc chờ xong.", "warning")
@@ -874,10 +864,10 @@ class DubbingTab(QWidget):
             self._refresh_file_list()
             self._reload_from_disk()
             self._set_status(
-                f"Đã import {len(imported)} file, {len(self._cues)} cue.", "success")
+                f"Đã nhập {len(imported)} file, {len(self._cues)} đoạn.", "success")
             self.reload_requested.emit()
         if errors:
-            QMessageBox.warning(self, "Import", "\n".join(errors[:10]))
+            QMessageBox.warning(self, "Nhập file", "\n".join(errors[:10]))
 
     def _apply_import_options(self, base: str) -> None:
         if self._manager is None:
