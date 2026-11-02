@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Nền Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#151F33"/>
+      <stop offset="50%" stop-color="#0E1626"/>
+      <stop offset="100%" stop-color="#0A0F1C"/>
+    </linearGradient>
+
+    <!-- Viền Squircle Glow -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B7CFF"/>
+      <stop offset="50%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#FF2E4D"/>
+    </linearGradient>
+
+    <!-- Nút Play Gradient -->
+    <linearGradient id="playGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF2E4D"/>
+      <stop offset="100%" stop-color="#8B7CFF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Khung bo góc Squircle -->
+  <rect x="24" y="24" width="464" height="464" rx="120" fill="url(#bgGrad)" stroke="url(#borderGrad)" stroke-width="12"/>
+
+  <!-- Biểu tượng Tam giác YouTube Play cách điệu -->
+  <path d="M190 145 C190 135 205 125 218 132 L360 237 C372 245 372 267 360 275 L218 380 C205 387 190 377 190 367 Z" 
+        fill="url(#playGrad)" opacity="0.95"/>
+
+  <!-- 5 Vạch sóng âm AI Voice tích hợp xuyên qua nút Play -->
+  <line x1="225" y1="210" x2="225" y2="302" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  <line x1="255" y1="180" x2="255" y2="332" stroke="#38BDF8" stroke-width="14" stroke-linecap="round"/>
+  <line x1="285" y1="220" x2="285" y2="292" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  <line x1="315" y1="240" x2="315" y2="272" stroke="#8B7CFF" stroke-width="14" stroke-linecap="round"/>
+</svg>
