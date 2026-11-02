@@ -214,25 +214,8 @@ class _CheckApiWorker(QThread):
 
 
 
-        elif sid in ("fal", "seedance_fal", "kling_fal"):
-            if not key:
-                self.done.emit(sid, False, "Chưa nhập API key Fal.ai.")
-                return
-            if len(key) >= 10:
-                self.done.emit(sid, True, "Định dạng key Fal.ai hợp lệ.")
-            else:
-                self.done.emit(sid, False, "Độ dài key Fal.ai không đúng.")
-            return
-
         elif sid == "edge_tts":
             self.done.emit(sid, True, "Edge-TTS sẵn sàng hoạt động (Miễn phí).")
-            return
-
-        elif sid in ("seedance_comet", "seedance_piapi", "elevenlabs"):
-            if not key:
-                self.done.emit(sid, False, "Chưa nhập API key.")
-                return
-            self.done.emit(sid, True, "Đã lưu key & sẵn sàng.")
             return
 
         self.done.emit(sid, True, "Key hợp lệ.")
@@ -939,24 +922,7 @@ class SettingsTab(QWidget):
         self.card_gemini_tts.changed.connect(self._on_changed)
         grid.addWidget(self.card_gemini_tts, 0, 0)
 
-        # 2. ElevenLabs
-        self.card_elevenlabs = ServiceCard(
-            service_id="elevenlabs",
-            title="ElevenLabs",
-            subtitle="Giọng đọc đa ngôn ngữ chất lượng cao",
-            key_placeholder="Nhập xi-...",
-            models=[
-                ("Turbo v2.5", "turbo-v2.5"),
-                ("Multilingual v2", "multilingual-v2"),
-                ("Flash v2.5", "flash-v2.5"),
-            ],
-            has_endpoint=True,
-            parent=page,
-        )
-        self.card_elevenlabs.changed.connect(self._on_changed)
-        grid.addWidget(self.card_elevenlabs, 0, 1)
-
-        # 3. Edge-TTS (Miễn phí)
+        # 2. Edge-TTS (Miễn phí)
         self.card_edge_tts = ServiceCard(
             service_id="edge_tts",
             title="Edge-TTS (Miễn phí)",
@@ -971,7 +937,7 @@ class SettingsTab(QWidget):
         self.card_edge_tts.switch.setChecked(True)
         self.card_edge_tts.set_status("valid", "• Hợp lệ")
         self.card_edge_tts.changed.connect(self._on_changed)
-        grid.addWidget(self.card_edge_tts, 0, 2)
+        grid.addWidget(self.card_edge_tts, 0, 1)
 
         layout.addLayout(grid)
 
@@ -994,15 +960,11 @@ class SettingsTab(QWidget):
         layout.addWidget(
             PageHeader(
                 "Ảnh / Video AI",
-                "Key cho ảnh AI, video AI.",
+                "Tạo ảnh minh họa bằng Google Imagen / Gemini.",
             )
         )
 
-        grid = QGridLayout()
-        grid.setSpacing(12)
-
-        # Row 0:
-        # 1. Google Gemini - Ảnh AI
+        # Google Gemini - Ảnh AI
         self.card_gemini_image = ServiceCard(
             service_id="gemini_image",
             title="Google Gemini – Ảnh AI",
@@ -1010,114 +972,16 @@ class SettingsTab(QWidget):
             models=[
                 ("Gemini 3.1 Flash Image", "gemini-3.1-flash-image"),
                 ("Imagen 3.0", "imagen-3.0-generate-002"),
+                ("Imagen 4.0", "imagen-4.0-generate-001"),
             ],
             price_note="Đơn giá: ≈ $0.039 / ảnh 1K (ước tính)",
             has_key_input=False,
             parent=page,
         )
+        self.card_gemini_image.switch.setChecked(True)
         self.card_gemini_image.changed.connect(self._on_changed)
-        grid.addWidget(self.card_gemini_image, 0, 0)
+        layout.addWidget(self.card_gemini_image)
 
-        # 2. Fal.ai (Flux)
-        self.card_fal = ServiceCard(
-            service_id="fal",
-            title="Fal.ai (Flux)",
-            subtitle="Flux Schnell / Dev – ảnh AI",
-            key_placeholder="Nhập fal-...",
-            models=[
-                ("Flux Schnell", "flux-schnell"),
-                ("Flux Dev", "flux-dev"),
-                ("Flux Pro", "flux-pro"),
-            ],
-            price_note="Đơn giá: ≈ $0.003 / ảnh (ước tính)",
-            has_endpoint=True,
-            parent=page,
-        )
-        self.card_fal.changed.connect(self._sync_shared_keys)
-        self.card_fal.changed.connect(self._on_changed)
-        grid.addWidget(self.card_fal, 0, 1)
-
-        # 3. Google Veo 3.1
-        self.card_veo = ServiceCard(
-            service_id="veo",
-            title="Google Veo 3.1",
-            shared_from="Gemini Flash",
-            models=[
-                ("Veo 3.1 Lite (rẻ nhất)", "veo-3.1-lite"),
-                ("Veo 3.1 Pro", "veo-3.1-pro"),
-            ],
-            price_note="Đơn giá: $0.05 / giây (720p)",
-            has_key_input=False,
-            parent=page,
-        )
-        self.card_veo.changed.connect(self._on_changed)
-        grid.addWidget(self.card_veo, 0, 2)
-
-        # Row 1:
-        # 4. ByteDance Seedance 2.0 (qua fal)
-        self.card_seedance_fal = ServiceCard(
-            service_id="seedance_fal",
-            title="ByteDance Seedance 2.0 (qua fal)",
-            shared_from="Fal.ai (Flux)",
-            models=[
-                ("Seedance 2.0 Fast (rẻ hơn)", "seedance-2.0-fast"),
-                ("Seedance 2.0 Pro", "seedance-2.0-pro"),
-            ],
-            has_key_input=False,
-            parent=page,
-        )
-        self.card_seedance_fal.changed.connect(self._on_changed)
-        grid.addWidget(self.card_seedance_fal, 1, 0)
-
-        # 5. Seedance qua CometAPI
-        self.card_seedance_comet = ServiceCard(
-            service_id="seedance_comet",
-            title="Seedance qua CometAPI",
-            subtitle="Seedance 2.0 / Fast / Mini / 2.5 giá rẻ (≈ $0.12/giây 720p bản 2.0) – key riêng của cometapi.com",
-            key_placeholder="Nhập sk-...",
-            models=[
-                ("Seedance 2.0", "seedance-2.0"),
-                ("Seedance Fast", "seedance-fast"),
-            ],
-            has_endpoint=True,
-            parent=page,
-        )
-        self.card_seedance_comet.changed.connect(self._on_changed)
-        grid.addWidget(self.card_seedance_comet, 1, 1)
-
-        # 6. Seedance qua PiAPI
-        self.card_seedance_piapi = ServiceCard(
-            service_id="seedance_piapi",
-            title="Seedance qua PiAPI",
-            subtitle="Seedance 2.0 / Fast / Mini / 2.5, khung đầu / cuối chính xác (≈ $0.20/giây 720p bản 2.0) – key riêng của piapi.ai",
-            key_placeholder="Nhập PiAPI key...",
-            models=[
-                ("Seedance 2.0", "seedance-2.0"),
-                ("Seedance 2.5", "seedance-2.5"),
-            ],
-            has_endpoint=True,
-            parent=page,
-        )
-        self.card_seedance_piapi.changed.connect(self._on_changed)
-        grid.addWidget(self.card_seedance_piapi, 1, 2)
-
-        # Row 2:
-        # 7. Kling 3.0 (qua fal)
-        self.card_kling_fal = ServiceCard(
-            service_id="kling_fal",
-            title="Kling 3.0 (qua fal)",
-            shared_from="Fal.ai (Flux)",
-            models=[
-                ("Kling 3.0 Standard (rẻ hơn)", "kling-3.0-standard"),
-                ("Kling 3.0 Pro", "kling-3.0-pro"),
-            ],
-            has_key_input=False,
-            parent=page,
-        )
-        self.card_kling_fal.changed.connect(self._on_changed)
-        grid.addWidget(self.card_kling_fal, 2, 0)
-
-        layout.addLayout(grid)
         layout.addStretch(1)
         self.api_tabs.addTab(wrap_scroll(page), "Ảnh / Video AI")
 
@@ -1127,12 +991,6 @@ class SettingsTab(QWidget):
         has_gemini = bool(gemini_key)
         self.card_gemini_tts.update_shared_status(has_gemini)
         self.card_gemini_image.update_shared_status(has_gemini)
-        self.card_veo.update_shared_status(has_gemini)
-
-        fal_key = self.card_fal.key_edit.text().strip()
-        has_fal = bool(fal_key)
-        self.card_seedance_fal.update_shared_status(has_fal)
-        self.card_kling_fal.update_shared_status(has_fal)
 
     def _on_changed(self) -> None:
         self._sync_shared_keys()
@@ -1164,12 +1022,6 @@ class SettingsTab(QWidget):
         gemini_val = str(api.get("gemini_key") or script.get("api_key") or video.get("ai_api_key") or "")
         self.card_gemini.key_edit.setText(gemini_val)
 
-        # Other API keys
-        self.card_elevenlabs.key_edit.setText(str(api.get("elevenlabs_key") or ""))
-        self.card_fal.key_edit.setText(str(api.get("fal_key") or ""))
-        self.card_seedance_comet.key_edit.setText(str(api.get("comet_key") or ""))
-        self.card_seedance_piapi.key_edit.setText(str(api.get("piapi_key") or ""))
-
         self._sync_shared_keys()
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
@@ -1197,24 +1049,12 @@ class SettingsTab(QWidget):
             script["api_key"] = gemini_k
             video["ai_api_key"] = gemini_k
 
-        api["elevenlabs_key"] = self.card_elevenlabs.key_edit.text().strip()
-        api["fal_key"] = self.card_fal.key_edit.text().strip()
-        api["comet_key"] = self.card_seedance_comet.key_edit.text().strip()
-        api["piapi_key"] = self.card_seedance_piapi.key_edit.text().strip()
-
         self._settings = settings
 
     def apply_theme(self) -> None:
         self.card_gemini.apply_theme()
-        self.card_elevenlabs.apply_theme()
         self.card_gemini_tts.apply_theme()
         self.card_edge_tts.apply_theme()
         self.card_h2mtts.apply_theme()
         self.card_gemini_image.apply_theme()
-        self.card_fal.apply_theme()
-        self.card_veo.apply_theme()
-        self.card_seedance_fal.apply_theme()
-        self.card_seedance_comet.apply_theme()
-        self.card_seedance_piapi.apply_theme()
-        self.card_kling_fal.apply_theme()
 

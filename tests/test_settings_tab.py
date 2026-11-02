@@ -1,4 +1,4 @@
-"""Unit tests for SettingsTab: General options, system paths, and API & AI services."""
+"""Unit tests for SettingsTab: General options, system paths, and Gemini API services."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,26 +37,26 @@ def test_settings_tab_structure_and_cards(app) -> None:
     assert tab.api_tabs.tabText(1) == "Giọng đọc (TTS)"
     assert tab.api_tabs.tabText(2) == "Ảnh / Video AI"
 
-    # Verify cards in Text AI: only Gemini Flash remains (Omnira, DeepSeek, OpenAI removed)
+    # Verify Text AI: only Gemini Flash
     assert hasattr(tab, "card_gemini")
     assert not hasattr(tab, "card_deepseek")
     assert not hasattr(tab, "card_openai")
 
-    # Verify cards in TTS: Gemini TTS, ElevenLabs, Edge-TTS, H2MTTS (OpenAI Audio removed)
+    # Verify TTS: Gemini TTS, Edge-TTS, H2MTTS (ElevenLabs and OpenAI removed)
     assert hasattr(tab, "card_gemini_tts")
-    assert hasattr(tab, "card_elevenlabs")
     assert hasattr(tab, "card_edge_tts")
     assert hasattr(tab, "card_h2mtts")
+    assert not hasattr(tab, "card_elevenlabs")
     assert not hasattr(tab, "card_openai_audio")
 
-    # Verify cards in Media AI
+    # Verify Media AI: only Google Gemini Image
     assert hasattr(tab, "card_gemini_image")
-    assert hasattr(tab, "card_fal")
-    assert hasattr(tab, "card_veo")
-    assert hasattr(tab, "card_seedance_fal")
-    assert hasattr(tab, "card_seedance_comet")
-    assert hasattr(tab, "card_seedance_piapi")
-    assert hasattr(tab, "card_kling_fal")
+    assert not hasattr(tab, "card_fal")
+    assert not hasattr(tab, "card_veo")
+    assert not hasattr(tab, "card_seedance_fal")
+    assert not hasattr(tab, "card_seedance_comet")
+    assert not hasattr(tab, "card_seedance_piapi")
+    assert not hasattr(tab, "card_kling_fal")
 
 
 def test_settings_tab_load_apply_and_shared_keys(app, tmp_path: Path) -> None:
@@ -67,26 +67,17 @@ def test_settings_tab_load_apply_and_shared_keys(app, tmp_path: Path) -> None:
         "app": {"retry": 3, "stop_on_error": True, "log_dir": "custom_logs"},
         "api": {
             "gemini_key": "AIzaSyTestGemini123",
-            "fal_key": "fal_key_test_12345",
-            "comet_key": "sk-comet-test",
-            "piapi_key": "piapi-test-key",
         },
     }
 
     tab.load_from(settings)
 
-    # Check that keys were loaded
+    # Check that Gemini key was loaded
     assert tab.card_gemini.key_edit.text() == "AIzaSyTestGemini123"
-    assert tab.card_fal.key_edit.text() == "fal_key_test_12345"
-    assert tab.card_seedance_comet.key_edit.text() == "sk-comet-test"
-    assert tab.card_seedance_piapi.key_edit.text() == "piapi-test-key"
 
     # Check shared key statuses
     assert "Dùng chung" in tab.card_gemini_tts.status_badge.text()
     assert "Dùng chung" in tab.card_gemini_image.status_badge.text()
-    assert "Dùng chung" in tab.card_veo.status_badge.text()
-    assert "Dùng chung" in tab.card_seedance_fal.status_badge.text()
-    assert "Dùng chung" in tab.card_kling_fal.status_badge.text()
 
     # Check apply_to
     out = {}
