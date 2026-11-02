@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -34,6 +35,7 @@ from core.ai_images import (
     DEFAULT_MODEL as AI_DEFAULT_MODEL,
     DEFAULT_STYLE as AI_DEFAULT_STYLE,
 )
+from ui.tab_frame import FrameTab
 from ui.components.icons import set_icon
 from ui.components.page import (
     PageHeader,
@@ -65,15 +67,24 @@ class VideoConfigTab(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._settings: Dict[str, Any] = {}
+        self.frame_tab = FrameTab(self)
 
         page = QVBoxLayout(self)
         page.setContentsMargins(0, 0, 0, 0)
+        page.setSpacing(0)
+
+        self.inner_tabs = QTabWidget(self)
+        self.inner_tabs.setDocumentMode(True)
+        page.addWidget(self.inner_tabs, 1)
+
         content = QWidget()
         content.setObjectName("PageContent")
         scroller = wrap_scroll(content)
         # The two option columns need ~1500px; allow scrolling on smaller windows.
         scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        page.addWidget(scroller)
+
+        self.inner_tabs.addTab(scroller, "Cấu hình video")
+        self.inner_tabs.addTab(self.frame_tab, "Khung mẫu (Video Frame)")
 
         root = QVBoxLayout(content)
         root.setContentsMargins(14, 14, 14, 14)
@@ -690,6 +701,7 @@ class VideoConfigTab(QWidget):
         self._sync_visual_height()
         self._update_bgm_label(self.bgm_volume.value())
         self._update_duck_label(self.bgm_duck.value())
+        self.frame_tab.load_from(settings)
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         video = settings.setdefault("video", {})
@@ -729,7 +741,11 @@ class VideoConfigTab(QWidget):
         video["keep_temp"] = self.keep_temp_check.isChecked()
         paths["ffmpeg"] = self.ffmpeg_edit.text().strip() or "ffmpeg"
         paths["ffprobe"] = self.ffprobe_edit.text().strip() or "ffprobe"
+        self.frame_tab.apply_to(settings)
         self._settings = settings
+
+    def apply_theme(self) -> None:
+        self.frame_tab.apply_theme()
 
     @staticmethod
     def _set_combo(combo: QComboBox, value: Any) -> None:

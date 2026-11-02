@@ -8,6 +8,7 @@ from pathlib import Path
 from core.project_manager import ProjectManager, VideoJob
 from core.youtube_uploader import (
     YouTubeConfig,
+    YouTubeUploader,
     build_metadata,
     compute_publish_at,
     parse_times,
@@ -130,3 +131,16 @@ def test_build_metadata_drops_empty_timestamps_section(tmp_path: Path) -> None:
 
 def test_render_template_keeps_unknown_placeholders() -> None:
     assert render_template("{a}-{b}", {"a": "1"}) == "1-{b}"
+
+
+def test_delete_channel_removes_token_and_meta(tmp_path: Path) -> None:
+    settings = {"paths": {"youtube_credentials": str(tmp_path)}}
+    uploader = YouTubeUploader(settings)
+    token = uploader.token_path("test_channel")
+    meta = uploader.meta_path("test_channel")
+    token.write_text("{}", encoding="utf-8")
+    meta.write_text("{}", encoding="utf-8")
+    assert token.is_file() and meta.is_file()
+    assert uploader.delete_channel("test_channel") is True
+    assert not token.is_file() and not meta.is_file()
+    assert uploader.delete_channel("test_channel") is False

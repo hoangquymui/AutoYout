@@ -43,11 +43,17 @@ def window(app, monkeypatch, tmp_path: Path):
 def test_window_builds_all_tabs(window) -> None:
     assert window.windowTitle().startswith("AutoYout")
     assert not window.windowIcon().isNull()
-    assert window.tabs.count() == 7
+    assert window.tabs.count() == 6
     labels = [window.tabs.tabText(i) for i in range(window.tabs.count())]
     assert labels == ["Dự án", "Kịch bản",
-                      "Lồng tiếng", "Video", "Video Frame", "YouTube",
+                      "Lồng tiếng", "Video", "YouTube",
                       "Automation"]
+    inner_video_labels = [
+        window.video_tab.inner_tabs.tabText(i)
+        for i in range(window.video_tab.inner_tabs.count())
+    ]
+    assert inner_video_labels == ["Cấu hình video", "Khung mẫu (Video Frame)"]
+    assert window.frame_tab is window.video_tab.frame_tab
     tab = window.automation_tab
     assert tab.btn_tts.text().startswith("1. Lồng tiếng")
     assert tab.btn_video.text().startswith("2. Tạo Video")
@@ -103,11 +109,15 @@ def test_browser_login_button_follows_upload_method(window) -> None:
 def test_youtube_tab_has_upload_and_thumbnail_pages(window) -> None:
     tab = window.youtube_tab
     labels = [tab.sub_tabs.tabText(i) for i in range(tab.sub_tabs.count())]
-    assert labels == ["Đăng tải", "Hình thu nhỏ"]
+    assert labels == ["Đăng tải", "Hình thu nhỏ", "Tài khoản"]
     assert tab.sub_tabs.currentIndex() == 0
     assert tab.sub_tabs.widget(1) is tab.thumbnail_panel
     assert tab.thumbnail_panel.template_list.count() >= 2
     assert tab.thumbnail_panel.provider_combo.currentData() == "pollinations"
+    assert hasattr(tab, "acc_table")
+    assert tab.acc_table.columnCount() == 6
+    assert hasattr(tab, "acc_add_btn")
+    assert hasattr(tab, "acc_check_all_btn")
 
 
 def test_ai_visual_mode_toggles_imagen_fields(window) -> None:

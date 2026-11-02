@@ -473,6 +473,28 @@ class YouTubeUploader:
                                   authorized=self.token_path(known).is_file()))
         return result
 
+    def delete_channel(self, channel: str) -> bool:
+        """Remove saved token and metadata files for a channel."""
+        name = safe_filename(channel, "default")
+        deleted = False
+        token = self.token_path(name)
+        if token.is_file():
+            try:
+                token.unlink()
+                deleted = True
+            except OSError:
+                pass
+        meta = self.meta_path(name)
+        if meta.is_file():
+            try:
+                meta.unlink()
+                deleted = True
+            except OSError:
+                pass
+        if name in self._services:
+            del self._services[name]
+        return deleted
+
     def authorize(self, channel: Optional[str] = None, open_browser: bool = True,
                   progress_cb: ProgressCb = None) -> Channel:
         """Run the OAuth consent flow and store a token for ``channel``."""
@@ -601,6 +623,7 @@ class YouTubeUploader:
         return service
 
     def channel_info(self, channel: Optional[str] = None) -> Dict[str, Any]:
+        name = safe_filename(channel or self.channel_name(), "default")
         service = self._service(channel)
         response = service.channels().list(part="snippet,statistics,contentDetails", mine=True).execute()
         items = response.get("items") or []
@@ -609,13 +632,21 @@ class YouTubeUploader:
         item = items[0]
         snippet = item.get("snippet", {})
         stats = item.get("statistics", {})
-        return {
+        info = {
             "channel_id": item.get("id", ""),
             "title": snippet.get("title", ""),
             "description": snippet.get("description", ""),
             "subscribers": stats.get("subscriberCount", ""),
             "videos": stats.get("videoCount", ""),
+            "updated_at": _local_now().strftime("%Y-%m-%d %H:%M:%S"),
         }
+        try:
+            meta = self.meta_path(name)
+            meta.parent.mkdir(parents=True, exist_ok=True)
+            meta.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+        return info
 
     # ── scheduling / metadata for a job ──────────────────────────────────────
     def existing_schedule(self, manager: ProjectManager,

@@ -151,14 +151,13 @@ class MainWindow(QMainWindow):
         self.script_tab = ScriptTab()
         self.tts_tab = DubbingTab()
         self.video_tab = VideoConfigTab()
-        self.frame_tab = FrameTab()
+        self.frame_tab = self.video_tab.frame_tab
         self.youtube_tab = YouTubeConfigTab()
         self.automation_tab = AutomationTab()
         self.tabs.addTab(self.project_tab, icon("folder", theme.TEXT_DIM, 15), "Dự án")
         self.tabs.addTab(self.script_tab, icon("file", theme.TEXT_DIM, 15), "Kịch bản")
         self.tabs.addTab(self.tts_tab, icon("mic", theme.TEXT_DIM, 15), "Lồng tiếng")
         self.tabs.addTab(self.video_tab, icon("film", theme.TEXT_DIM, 15), "Video")
-        self.tabs.addTab(self.frame_tab, icon("image", theme.TEXT_DIM, 15), "Video Frame")
         self.tabs.addTab(self.youtube_tab, icon("youtube", theme.TEXT_DIM, 15), "YouTube")
         self._automation_index = self.tabs.addTab(
             self.automation_tab, icon("zap", theme.TEXT_DIM, 15), "Automation"
@@ -670,7 +669,7 @@ class MainWindow(QMainWindow):
 
     # ── theme ────────────────────────────────────────────────────────────────
     def _update_tab_icons(self, index: int | None = None) -> None:
-        names = ("folder", "file", "mic", "film", "image", "youtube", "zap")
+        names = ("folder", "file", "mic", "film", "youtube", "zap")
         current = self.tabs.currentIndex() if index is None else index
         for position, name in enumerate(names):
             color = theme.ACCENT_SOFT if position == current else theme.TEXT_DIM
@@ -702,6 +701,7 @@ class MainWindow(QMainWindow):
             badge.apply_theme()
         self.project_tab.apply_theme()
         self.tts_tab.apply_theme()
+        self.video_tab.apply_theme()
         self.frame_tab.apply_theme()
         self.youtube_tab.apply_theme()
         self._sync_theme_button()

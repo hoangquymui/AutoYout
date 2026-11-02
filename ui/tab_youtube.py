@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 from PySide6.QtCore import QDateTime, QSize, Qt, QThread, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDateTimeEdit,
@@ -15,13 +16,17 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
     QStackedWidget,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -114,6 +119,33 @@ class _CheckWorker(QThread):
             self.done.emit(info)
         except Exception as exc:
             self.failed.emit(str(exc))
+
+
+class _CheckAllWorker(QThread):
+    account_checked = Signal(str, dict, str)
+    progress = Signal(int, int, str)
+    finished_all = Signal(int, int)
+
+    def __init__(self, settings: Dict[str, Any], channel_names: list[str], parent=None) -> None:
+        super().__init__(parent)
+        self._settings = settings
+        self._names = channel_names
+
+    def run(self) -> None:
+        uploader = YouTubeUploader(self._settings)
+        total = len(self._names)
+        ok = 0
+        fail = 0
+        for i, name in enumerate(self._names):
+            self.progress.emit(i + 1, total, f"Đang kiểm tra {name}...")
+            try:
+                info = uploader.channel_info(name)
+                self.account_checked.emit(name, info, "")
+                ok += 1
+            except Exception as exc:
+                self.account_checked.emit(name, {}, str(exc))
+                fail += 1
+        self.finished_all.emit(ok, fail)
 
 
 class YouTubeConfigTab(QWidget):
@@ -405,6 +437,9 @@ class YouTubeConfigTab(QWidget):
         self.thumbnail_panel.thumbnail_saved.connect(self.thumbnail_saved.emit)
         self.sub_tabs.addTab(self.thumbnail_panel, "Hình thu nhỏ")
 
+        self.accounts_page = self._build_accounts_page()
+        self.sub_tabs.addTab(wrap_scroll(self.accounts_page), "Tài khoản")
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         stack_columns(self, self._columns, 980)
@@ -484,12 +519,18 @@ class YouTubeConfigTab(QWidget):
         self._on_schedule_changed()
         self.refresh_channels(select=str(yt.get("channel") or ""))
         self.thumbnail_panel.load_from(settings)
+        secret_val = str(yt.get("client_secret") or "")
+        self.acc_secret_edit.setText(secret_val)
+        self.refresh_accounts_table()
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         yt = settings.setdefault("youtube", {})
         yt["method"] = self.method_combo.currentData() or "api"
         yt["channel"] = self.channel_combo.currentData() or "default"
-        yt["client_secret"] = self.client_secret_edit.text().strip()
+        yt["client_secret"] = (
+            self.client_secret_edit.text().strip()
+            or self.acc_secret_edit.text().strip()
+        )
         yt["title_template"] = self.title_edit.text().strip() or "{title}"
         yt["description_template"] = self.description_edit.toPlainText()
         yt["tags"] = self.tags_edit.text().strip()
@@ -565,6 +606,7 @@ class YouTubeConfigTab(QWidget):
         self.thumbnail_panel.apply_theme()
         if self._settings:
             self.refresh_channels(select=str(self.channel_combo.currentData() or ""))
+            self.refresh_accounts_table()
 
     def refresh_channels(self, select: str = "") -> None:
         if not self._settings:
@@ -612,6 +654,10 @@ class YouTubeConfigTab(QWidget):
         )
         self.channel_combo.setEnabled(not busy)
         self.new_channel_edit.setEnabled(not busy)
+        if hasattr(self, "acc_add_btn"):
+            self.acc_add_btn.setEnabled(not busy)
+        if hasattr(self, "acc_check_all_btn"):
+            self.acc_check_all_btn.setEnabled(not busy)
         if message:
             paint_status(self.auth_status, "running")
             self.auth_status.setText(message)
@@ -736,3 +782,353 @@ class YouTubeConfigTab(QWidget):
         self._set_busy(False)
         if self._pipeline_busy:
             self.set_pipeline_busy(True)
+
+    # ── Accounts Management Page ──────────────────────────────────────────────
+    def _build_accounts_page(self) -> QWidget:
+        page = QWidget()
+        page.setObjectName("PageContent")
+        root = QVBoxLayout(page)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(12)
+
+        root.addWidget(
+            PageHeader(
+                "Quản lý tài khoản YouTube",
+                "Quản lý danh sách kênh YouTube, thêm tài khoản OAuth mới, kiểm tra trạng thái hoạt động và xoá tài khoản.",
+            )
+        )
+
+        add_box = QGroupBox("Thêm tài khoản mới")
+        add_layout = QVBoxLayout(add_box)
+        add_layout.setSpacing(10)
+
+        add_form = QFormLayout()
+        add_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.acc_name_edit = QLineEdit()
+        self.acc_name_edit.setPlaceholderText("Tên định danh kênh (ví dụ: KenhChinh, ReviewPhim, Channel2...)")
+        add_form.addRow("Tên nhận diện", self.acc_name_edit)
+
+        secret_row = QHBoxLayout()
+        secret_row.setSpacing(6)
+        self.acc_secret_edit = QLineEdit()
+        self.acc_secret_edit.setPlaceholderText("config/youtube_credentials/client_secret.json (mặc định)")
+        secret_browse = icon_button(
+            "file", "Chọn client_secret.json…", role="muted", size=15, side=30
+        )
+        secret_browse.clicked.connect(self._browse_acc_secret)
+        secret_row.addWidget(self.acc_secret_edit, 1)
+        secret_row.addWidget(secret_browse)
+        add_form.addRow("client_secret.json", self._wrap(secret_row))
+
+        add_layout.addLayout(add_form)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+        self.acc_add_btn = QPushButton("Đăng nhập & Thêm tài khoản")
+        self.acc_add_btn.setObjectName("primaryButton")
+        set_icon(self.acc_add_btn, "key", "white", 14)
+        self.acc_add_btn.clicked.connect(self._add_account)
+        btn_row.addWidget(self.acc_add_btn)
+
+        self.acc_add_status = QLabel("")
+        self.acc_add_status.setWordWrap(True)
+        btn_row.addWidget(self.acc_add_status, 1)
+        add_layout.addLayout(btn_row)
+
+        root.addWidget(add_box)
+
+        list_box = QGroupBox("Danh sách tài khoản đã lưu")
+        list_layout = QVBoxLayout(list_box)
+        list_layout.setSpacing(10)
+
+        top_actions = QHBoxLayout()
+        top_actions.setSpacing(8)
+
+        self.acc_check_all_btn = QPushButton("Kiểm tra tất cả")
+        set_icon(self.acc_check_all_btn, "check-circle", "accent", 14)
+        self.acc_check_all_btn.clicked.connect(self._check_all_accounts)
+        top_actions.addWidget(self.acc_check_all_btn)
+
+        self.acc_refresh_btn = icon_button(
+            "refresh", "Quét lại danh sách token đã lưu", role="muted", size=14, side=30
+        )
+        self.acc_refresh_btn.clicked.connect(lambda: self.refresh_accounts_table())
+        top_actions.addWidget(self.acc_refresh_btn)
+
+        self.acc_table_status = QLabel("")
+        self.acc_table_status.setWordWrap(True)
+        top_actions.addWidget(self.acc_table_status, 1)
+        list_layout.addLayout(top_actions)
+
+        self.acc_table = QTableWidget()
+        self.acc_table.setColumnCount(6)
+        self.acc_table.setHorizontalHeaderLabels([
+            "Tên định danh",
+            "Kênh YouTube",
+            "Channel ID",
+            "Trạng thái",
+            "Thông tin chi tiết",
+            "Thao tác",
+        ])
+        header = self.acc_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self.acc_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.acc_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.acc_table.verticalHeader().setVisible(False)
+        self.acc_table.setAlternatingRowColors(True)
+        self.acc_table.setMinimumHeight(260)
+        list_layout.addWidget(self.acc_table, 1)
+
+        root.addWidget(list_box, 1)
+        return page
+
+    def _browse_acc_secret(self) -> None:
+        start = self.acc_secret_edit.text().strip() or str(Path.home())
+        chosen, _ = QFileDialog.getOpenFileName(
+            self, "Chọn client_secret.json", start, "JSON (*.json);;Tất cả (*)"
+        )
+        if chosen:
+            self.acc_secret_edit.setText(chosen)
+            self.client_secret_edit.setText(chosen)
+
+    def _add_account(self) -> None:
+        if self._worker is not None:
+            return
+        name = self.acc_name_edit.text().strip()
+        if not name:
+            paint_status(self.acc_add_status, "error")
+            self.acc_add_status.setText("Vui lòng nhập tên nhận diện kênh (ví dụ: KenhChinh).")
+            return
+        snapshot = self._snapshot()
+        secret = self.acc_secret_edit.text().strip() or self.client_secret_edit.text().strip()
+        if secret:
+            snapshot["youtube"]["client_secret"] = secret
+        snapshot["youtube"]["channel"] = name
+
+        self._worker = _AuthWorker(snapshot, name, self)
+        self._worker.progress.connect(
+            lambda _pct, msg: self._on_acc_auth_progress(msg)
+        )
+        self._worker.done.connect(lambda ch: self._on_acc_auth_done(ch, name))
+        self._worker.failed.connect(self._on_acc_auth_failed)
+        self._worker.finished.connect(self._on_worker_finished)
+        self._set_busy(True, f"Đang mở trình duyệt đăng nhập cho tài khoản '{name}'…")
+        paint_status(self.acc_add_status, "running")
+        self.acc_add_status.setText(f"Đang mở trình duyệt đăng nhập cho '{name}'…")
+        self._worker.start()
+
+    def _on_acc_auth_progress(self, msg: str) -> None:
+        paint_status(self.acc_add_status, "running")
+        self.acc_add_status.setText(msg)
+
+    def _on_acc_auth_done(self, channel: Any, requested_name: str) -> None:
+        title = getattr(channel, "title", "") or getattr(channel, "name", "") or requested_name
+        paint_status(self.acc_add_status, "success")
+        self.acc_add_status.setText(f"Đã thêm và kết nối tài khoản thành công: {title}")
+        self.acc_name_edit.clear()
+        self.refresh_accounts_table()
+        self.refresh_channels(select=requested_name)
+        self.channels_changed.emit()
+
+    def _on_acc_auth_failed(self, message: str) -> None:
+        paint_status(self.acc_add_status, "error")
+        self.acc_add_status.setText(f"Đăng nhập thất bại: {message}")
+        self._on_auth_failed(message)
+
+    def _reauth_account(self, name: str) -> None:
+        self.acc_name_edit.setText(name)
+        self._add_account()
+
+    def _delete_account(self, name: str) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Xác nhận xoá tài khoản",
+            f"Bạn có chắc muốn xoá tài khoản '{name}' không?\n"
+            "File token và metadata lưu trữ sẽ bị xoá vĩnh viễn.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        deleted = YouTubeUploader(self._settings).delete_channel(name)
+        self.refresh_accounts_table()
+        self.refresh_channels()
+        self.channels_changed.emit()
+        if deleted:
+            paint_status(self.acc_table_status, "success")
+            self.acc_table_status.setText(f"Đã xoá tài khoản '{name}'.")
+        else:
+            paint_status(self.acc_table_status, "warning")
+            self.acc_table_status.setText(f"Không tìm thấy file token của '{name}'.")
+
+    def _check_single_account(self, name: str, row: int) -> None:
+        if self._worker is not None:
+            paint_status(self.acc_table_status, "warning")
+            self.acc_table_status.setText("Đang có tiến trình khác đang chạy, vui lòng chờ…")
+            return
+        snapshot = self._snapshot()
+        secret = self.acc_secret_edit.text().strip() or self.client_secret_edit.text().strip()
+        if secret:
+            snapshot["youtube"]["client_secret"] = secret
+        snapshot["youtube"]["channel"] = name
+
+        self._worker = _CheckWorker(snapshot, name, self)
+        self._worker.done.connect(lambda info: self._on_single_check_done(name, info))
+        self._worker.failed.connect(lambda err: self._on_single_check_failed(name, err))
+        self._worker.finished.connect(self._on_worker_finished)
+        self._set_busy(True)
+        paint_status(self.acc_table_status, "running")
+        self.acc_table_status.setText(f"Đang kiểm tra tài khoản '{name}'…")
+        self._worker.start()
+
+    def _on_single_check_done(self, name: str, info: dict) -> None:
+        self._update_account_row(name, info, "")
+        paint_status(self.acc_table_status, "success")
+        title = info.get("title", "")
+        self.acc_table_status.setText(f"Tài khoản '{name}' hoạt động tốt · Kênh: {title}")
+        self.refresh_channels(select=name)
+
+    def _on_single_check_failed(self, name: str, message: str) -> None:
+        self._update_account_row(name, {}, message)
+        paint_status(self.acc_table_status, "error")
+        self.acc_table_status.setText(f"Tài khoản '{name}' kiểm tra thất bại: {message}")
+
+    def _update_account_row(self, name: str, info: dict, error: str = "") -> None:
+        for row in range(self.acc_table.rowCount()):
+            item = self.acc_table.item(row, 0)
+            if item and item.text() == name:
+                if error:
+                    st_item = self.acc_table.item(row, 3)
+                    if st_item:
+                        st_item.setText("🔴 Không hoạt động / Hết hạn")
+                    inf_item = self.acc_table.item(row, 4)
+                    if inf_item:
+                        inf_item.setText(error)
+                        inf_item.setToolTip(error)
+                else:
+                    title = info.get("title", "")
+                    cid = info.get("channel_id", "")
+                    subs = info.get("subscribers", "?")
+                    vids = info.get("videos", "?")
+                    if title:
+                        self.acc_table.setItem(row, 1, QTableWidgetItem(title))
+                    if cid:
+                        item_cid = QTableWidgetItem(cid)
+                        item_cid.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.acc_table.setItem(row, 2, item_cid)
+                    st_item = self.acc_table.item(row, 3)
+                    if st_item:
+                        st_item.setText("🟢 Đang hoạt động")
+                    inf_item = self.acc_table.item(row, 4)
+                    if inf_item:
+                        inf_item.setText(f"{subs} người đăng ký · {vids} video")
+                        inf_item.setToolTip(f"Kênh: {title}\nID: {cid}\nSubscribers: {subs}\nVideos: {vids}")
+                break
+
+    def _check_all_accounts(self) -> None:
+        if self._worker is not None:
+            return
+        names = []
+        for r in range(self.acc_table.rowCount()):
+            it = self.acc_table.item(r, 0)
+            if it and it.text():
+                names.append(it.text())
+        if not names:
+            paint_status(self.acc_table_status, "muted")
+            self.acc_table_status.setText("Chưa có tài khoản nào trong danh sách để kiểm tra.")
+            return
+
+        snapshot = self._snapshot()
+        secret = self.acc_secret_edit.text().strip() or self.client_secret_edit.text().strip()
+        if secret:
+            snapshot["youtube"]["client_secret"] = secret
+
+        self._worker = _CheckAllWorker(snapshot, names, self)
+        self._worker.account_checked.connect(self._on_check_all_single)
+        self._worker.progress.connect(self._on_check_all_progress)
+        self._worker.finished_all.connect(self._on_check_all_finished)
+        self._worker.finished.connect(self._on_worker_finished)
+        self._set_busy(True)
+        paint_status(self.acc_table_status, "running")
+        self.acc_table_status.setText(f"Bắt đầu kiểm tra {len(names)} tài khoản…")
+        self._worker.start()
+
+    def _on_check_all_progress(self, current: int, total: int, msg: str) -> None:
+        paint_status(self.acc_table_status, "running")
+        self.acc_table_status.setText(f"[{current}/{total}] {msg}")
+
+    def _on_check_all_single(self, name: str, info: dict, err: str) -> None:
+        self._update_account_row(name, info, err)
+
+    def _on_check_all_finished(self, ok: int, fail: int) -> None:
+        paint_status(self.acc_table_status, "success" if fail == 0 else "warning")
+        self.acc_table_status.setText(f"Kiểm tra xong: {ok} hoạt động, {fail} lỗi.")
+        self.refresh_channels()
+
+    def refresh_accounts_table(self) -> None:
+        if not self._settings:
+            return
+        try:
+            channels = YouTubeUploader(self._settings).channels()
+        except Exception as exc:
+            logger.error("Không đọc được danh sách kênh: %s", exc)
+            channels = []
+
+        self.acc_table.setRowCount(len(channels))
+        for row, ch in enumerate(channels):
+            item_name = QTableWidgetItem(ch.name)
+            item_name.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item_name.setToolTip(str(ch.token_path))
+            self.acc_table.setItem(row, 0, item_name)
+
+            item_title = QTableWidgetItem(ch.title or "(Chưa đồng bộ)")
+            self.acc_table.setItem(row, 1, item_title)
+
+            item_id = QTableWidgetItem(ch.channel_id or "-")
+            item_id.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.acc_table.setItem(row, 2, item_id)
+
+            if ch.authorized:
+                status_text = "🟢 Đang hoạt động" if ch.title else "🟢 Đã uỷ quyền"
+            else:
+                status_text = "🔴 Chưa đăng nhập / Hết hạn"
+            item_status = QTableWidgetItem(status_text)
+            item_status.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.acc_table.setItem(row, 3, item_status)
+
+            info_text = f"Cập nhật: {ch.updated_at}" if ch.updated_at else "Bấm 'Kiểm tra' để xem thông tin"
+            item_info = QTableWidgetItem(info_text)
+            self.acc_table.setItem(row, 4, item_info)
+
+            actions_widget = QWidget()
+            act_layout = QHBoxLayout(actions_widget)
+            act_layout.setContentsMargins(4, 2, 4, 2)
+            act_layout.setSpacing(6)
+
+            ch_name = ch.name
+            btn_chk = QPushButton("Kiểm tra")
+            set_icon(btn_chk, "check-circle", "accent", 12)
+            btn_chk.setToolTip("Kiểm tra xem token còn hoạt động không")
+            btn_chk.clicked.connect(lambda _, n=ch_name, r=row: self._check_single_account(n, r))
+            act_layout.addWidget(btn_chk)
+
+            btn_auth = QPushButton("Cấp lại")
+            set_icon(btn_auth, "key", "muted", 12)
+            btn_auth.setToolTip("Đăng nhập và cấp quyền lại cho kênh này")
+            btn_auth.clicked.connect(lambda _, n=ch_name: self._reauth_account(n))
+            act_layout.addWidget(btn_auth)
+
+            btn_del = QPushButton("Xoá")
+            set_icon(btn_del, "trash", "error", 12)
+            btn_del.setToolTip("Xoá tài khoản này khỏi AutoYout")
+            btn_del.clicked.connect(lambda _, n=ch_name: self._delete_account(n))
+            act_layout.addWidget(btn_del)
+
+            self.acc_table.setCellWidget(row, 5, actions_widget)
+            self.acc_table.setRowHeight(row, 36)
