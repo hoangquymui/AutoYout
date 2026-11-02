@@ -1,12 +1,13 @@
 """Settings tab: General options, system paths, and API & AI services."""
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import urllib.request
 import urllib.error
 
@@ -39,6 +40,55 @@ from ui.components.page import PageHeader, icon_button, paint_status, wrap_scrol
 from utils.logger import get_logger
 
 logger = get_logger("ui.settings")
+
+# ── Google Gemini Models matching Google AI Studio Rate Limit ────────────────
+GEMINI_TEXT_MODELS: List[Tuple[str, str]] = [
+    ("Gemini 3.1 Flash Lite (Khuyên dùng · 15 RPM)", "gemini-3.1-flash-lite"),
+    ("Gemini 2.5 Flash (Tiêu chuẩn)", "gemini-2.5-flash"),
+    ("Gemini 2.5 Flash Lite (Siêu nhẹ)", "gemini-2.5-flash-lite"),
+    ("Gemini 2.5 Pro (Tư duy sâu)", "gemini-2.5-pro"),
+    ("Gemini 3 Flash", "gemini-3-flash"),
+    ("Gemini 3.1 Pro", "gemini-3.1-pro"),
+    ("Gemini 3.5 Flash Lite (15 RPM / 500 RPD)", "gemini-3.5-flash-lite"),
+    ("Gemini 3.6 Flash", "gemini-3.6-flash"),
+    ("Gemini 3.8 Flash", "gemini-3.8-flash"),
+    ("Gemini 4 Argon (Thế hệ 4)", "gemini-4-argon"),
+    ("Gemini 2 Flash", "gemini-2.0-flash"),
+    ("Gemini 2 Flash Lite", "gemini-2.0-flash-lite"),
+    ("Gemini Omni 1.1 Flash (Đa phương thức)", "gemini-omni-1.1-flash"),
+    ("Gemma 4 26B (Open Model)", "gemma-4-26b"),
+    ("Gemma 4 31B (Open Model)", "gemma-4-31b"),
+]
+
+GEMINI_TTS_MODELS: List[Tuple[str, str]] = [
+    ("Gemini 2.5 Flash TTS (Tiêu chuẩn)", "gemini-2.5-flash-tts"),
+    ("Gemini 2.5 Pro TTS (Chất lượng cao)", "gemini-2.5-pro-tts"),
+    ("Gemini 3.1 Flash TTS (Thế hệ 3.1)", "gemini-3.1-flash-tts"),
+    ("Gemini 3.8 Flash TTS (Thế hệ 3.8)", "gemini-3.8-flash-tts"),
+    ("Gemini 3.8 Flash Lite TTS (Bản nhẹ)", "gemini-3.8-flash-lite-tts"),
+    ("Gemini 2.5 Flash Native Audio Dialog (Live API)", "gemini-2.5-flash-native-audio-dialog"),
+    ("Gemini 3 Flash Live (Live API)", "gemini-3-flash-live"),
+    ("Gemini 3.5 Live Translate (Dịch trực tiếp)", "gemini-3.5-live-translate"),
+    ("Gemini 3.5 Transcribe Live (Chuyển lời nói)", "gemini-3.5-transcribe-live"),
+    ("Gemini 3.8 Live (Live API)", "gemini-3.8-live"),
+]
+
+GEMINI_IMAGE_MODELS: List[Tuple[str, str]] = [
+    ("Nano Banana 2 (Gemini 3.1 Flash Image)", "nano-banana-2"),
+    ("Nano Banana 2 Lite (Gemini 3.1 Flash Lite Image)", "nano-banana-2-lite"),
+    ("Nano Banana (Gemini 2.5 Flash Preview Image)", "nano-banana"),
+    ("Nano Banana Pro (Gemini 3 Pro Image)", "nano-banana-pro"),
+    ("Gemini Nano Banana 2.1", "gemini-nano-banana-2.1"),
+    ("Imagen 3.0 (Google Imagen 3)", "imagen-3.0-generate-002"),
+    ("Imagen 4.0 (Google Imagen 4)", "imagen-4.0-generate-001"),
+]
+
+VEO_VIDEO_MODELS: List[Tuple[str, str]] = [
+    ("Veo 3 Fast Generate (Tạo nhanh)", "veo-3-fast-generate"),
+    ("Veo 3 Generate (Chuẩn chất lượng)", "veo-3-generate"),
+    ("Veo 3 Lite Generate (Tiết kiệm)", "veo-3-lite-generate"),
+    ("Veo 3.1 Lite (Rẻ nhất)", "veo-3.1-lite"),
+]
 
 
 def detect_hardware(h2mtts_path: str = "") -> Dict[str, Any]:
@@ -175,6 +225,7 @@ class ToggleSwitch(QAbstractButton):
 
 class _CheckApiWorker(QThread):
     done = Signal(str, bool, str)
+    models_discovered = Signal(str, list)
 
     def __init__(
         self,
@@ -203,7 +254,29 @@ class _CheckApiWorker(QThread):
                 req = urllib.request.Request(url, headers={"User-Agent": "AutoYout/1.0"})
                 with urllib.request.urlopen(req, timeout=6) as resp:
                     if resp.status == 200:
-                        self.done.emit(sid, True, "Kết nối Gemini thành công!")
+                        raw = resp.read().decode("utf-8")
+                        discovered: List[Tuple[str, str]] = []
+                        try:
+                            data = json.loads(raw)
+                            for m in data.get("models", []):
+                                raw_name = m.get("name", "")
+                                m_id = raw_name.replace("models/", "").strip()
+                                display_name = m.get("displayName", m_id)
+                                methods = m.get("supportedGenerationMethods", [])
+                                if sid == "gemini" and "generateContent" in methods:
+                                    discovered.append((display_name, m_id))
+                                elif sid == "gemini_tts" and any("audio" in m_id.lower() or "tts" in m_id.lower() or "speech" in str(methods).lower()):
+                                    discovered.append((display_name, m_id))
+                                elif sid == "gemini_image" and any("imagen" in m_id.lower() or "image" in m_id.lower() or "banana" in m_id.lower()):
+                                    discovered.append((display_name, m_id))
+                                elif sid == "veo" and "veo" in m_id.lower():
+                                    discovered.append((display_name, m_id))
+                        except Exception:
+                            pass
+                        msg = f"Kết nối Gemini thành công! ({len(discovered)} models khả dụng)" if discovered else "Kết nối Gemini thành công!"
+                        if discovered:
+                            self.models_discovered.emit(sid, discovered)
+                        self.done.emit(sid, True, msg)
                         return
             except urllib.error.HTTPError as exc:
                 self.done.emit(sid, False, f"Lỗi HTTP {exc.code} (Key không hợp lệ)")
@@ -211,8 +284,6 @@ class _CheckApiWorker(QThread):
             except Exception as exc:
                 self.done.emit(sid, False, f"Lỗi kết nối: {exc}")
                 return
-
-
 
         elif sid == "edge_tts":
             self.done.emit(sid, True, "Edge-TTS sẵn sàng hoạt động (Miễn phí).")
@@ -240,6 +311,7 @@ class ServiceCard(QFrame):
         has_endpoint: bool = False,
         has_test_model: bool = False,
         has_key_input: bool = True,
+        key_provider: Optional[Callable[[], str]] = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -249,6 +321,7 @@ class ServiceCard(QFrame):
         self.shared_from = shared_from
         self.has_key_input = has_key_input
         self.has_endpoint = has_endpoint
+        self.key_provider = key_provider
         self._checker: Optional[_CheckApiWorker] = None
 
         self.setObjectName("ServiceCard")
@@ -321,9 +394,12 @@ class ServiceCard(QFrame):
 
         if models:
             self.model_combo = QComboBox()
+            self.model_combo.setEditable(True)
+            self.model_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
             for label, val in models:
                 self.model_combo.addItem(label, val)
             self.model_combo.currentIndexChanged.connect(lambda _: self.changed.emit())
+            self.model_combo.currentTextChanged.connect(lambda _: self.changed.emit())
             mid_row.addWidget(self.model_combo, 1)
 
         if has_key_input or models:
@@ -389,6 +465,40 @@ class ServiceCard(QFrame):
 
         self.apply_theme()
 
+    def get_key(self) -> str:
+        if hasattr(self, "key_edit") and self.key_edit.text().strip():
+            return self.key_edit.text().strip()
+        if self.key_provider:
+            try:
+                return self.key_provider().strip()
+            except Exception:
+                return ""
+        return ""
+
+    def get_model(self) -> str:
+        if not hasattr(self, "model_combo"):
+            return ""
+        cur_idx = self.model_combo.currentIndex()
+        cur_text = self.model_combo.currentText().strip()
+        if cur_idx >= 0 and self.model_combo.itemText(cur_idx) == cur_text:
+            data = self.model_combo.itemData(cur_idx)
+            if data:
+                return str(data)
+        return cur_text
+
+    def set_model(self, model_name: str) -> None:
+        if not hasattr(self, "model_combo") or not model_name:
+            return
+        idx = self.model_combo.findData(model_name)
+        if idx >= 0:
+            self.model_combo.setCurrentIndex(idx)
+            return
+        idx = self.model_combo.findText(model_name)
+        if idx >= 0:
+            self.model_combo.setCurrentIndex(idx)
+            return
+        self.model_combo.setEditText(model_name)
+
     def _toggle_eye(self) -> None:
         if not hasattr(self, "key_edit"):
             return
@@ -418,7 +528,7 @@ class ServiceCard(QFrame):
         self.changed.emit()
 
     def _save_clicked(self) -> None:
-        key = self.key_edit.text().strip() if hasattr(self, "key_edit") else ""
+        key = self.get_key()
         self.save_requested.emit(self.service_id, key)
         self.set_status("valid", "• Đã lưu key")
 
@@ -428,19 +538,43 @@ class ServiceCard(QFrame):
     def check_connection(self) -> None:
         if self._checker is not None:
             return
-        key = self.key_edit.text().strip() if hasattr(self, "key_edit") else ""
+        key = self.get_key()
         ep = self.ep_edit.text().strip() if hasattr(self, "ep_edit") else ""
-        model = self.model_combo.currentData() if hasattr(self, "model_combo") else ""
+        model = self.get_model()
+
+        if not key and self.service_id != "edge_tts":
+            if self.shared_from:
+                self.set_status("needed", f"• Cần key {self.shared_from}")
+                self.btn_check.setToolTip(f"Vui lòng nhập API key ở ô {self.shared_from} trước khi kiểm tra.")
+            else:
+                self.set_status("missing", "• Chưa nhập API key")
+                self.btn_check.setToolTip("Vui lòng nhập API key.")
+            return
 
         self.set_status("running", "• Đang kiểm tra…")
         self._checker = _CheckApiWorker(self.service_id, key, ep, str(model or ""), self)
         self._checker.done.connect(self._on_check_done)
+        self._checker.models_discovered.connect(self._on_models_discovered)
         self._checker.start()
+
+    def _on_models_discovered(self, _sid: str, models: List[Tuple[str, str]]) -> None:
+        if not hasattr(self, "model_combo") or not models:
+            return
+        existing_values = {
+            self.model_combo.itemData(i) for i in range(self.model_combo.count())
+        }
+        for label, val in models:
+            if val and val not in existing_values:
+                self.model_combo.addItem(f"{label} ({val})", val)
+                existing_values.add(val)
 
     def _on_check_done(self, _sid: str, success: bool, message: str) -> None:
         self._checker = None
         if success:
-            self.set_status("valid", "• Hợp lệ")
+            if self.shared_from and not (hasattr(self, "key_edit") and self.key_edit.text().strip()):
+                self.set_status("valid", f"• Hợp lệ (Dùng chung {self.shared_from})")
+            else:
+                self.set_status("valid", "• Hợp lệ")
             self.btn_check.setToolTip(message)
         else:
             self.set_status("missing", f"• {message}")
@@ -872,11 +1006,7 @@ class SettingsTab(QWidget):
             title="Gemini Flash",
             tag="Gemini Flash (key dùng chung cho Nano Banana, Veo, Lyria)",
             key_placeholder="Nhập AIza...",
-            models=[
-                ("Gemini 3.5 Flash", "gemini-3.5-flash"),
-                ("Gemini 2.5 Flash", "gemini-2.5-flash"),
-                ("Gemini 2.0 Flash", "gemini-2.0-flash"),
-            ],
+            models=GEMINI_TEXT_MODELS,
             has_endpoint=True,
             has_test_model=True,
             parent=page,
@@ -911,12 +1041,10 @@ class SettingsTab(QWidget):
             service_id="gemini_tts",
             title="Google Gemini TTS",
             shared_from="Gemini Flash",
-            models=[
-                ("Gemini 2.5 Flash TTS", "gemini-2.5-flash-tts"),
-                ("Gemini 2.0 Flash Audio", "gemini-2.0-flash-audio"),
-            ],
+            models=GEMINI_TTS_MODELS,
             price_note="Đơn giá: ≈ $20 / 1M ký tự (ước tính)",
             has_key_input=False,
+            key_provider=self.card_gemini.get_key,
             parent=page,
         )
         self.card_gemini_tts.changed.connect(self._on_changed)
@@ -960,69 +1088,113 @@ class SettingsTab(QWidget):
         layout.addWidget(
             PageHeader(
                 "Ảnh / Video AI",
-                "Tạo ảnh minh họa bằng Google Imagen / Gemini.",
+                "Tạo ảnh minh họa & video bằng Google Nano Banana, Imagen & Veo (dùng chung API key Gemini).",
             )
         )
 
-        # Google Gemini - Ảnh AI
+        grid = QGridLayout()
+        grid.setSpacing(12)
+
+        # 1. Google Gemini - Ảnh AI
         self.card_gemini_image = ServiceCard(
             service_id="gemini_image",
             title="Google Gemini – Ảnh AI",
             shared_from="Gemini Flash",
-            models=[
-                ("Gemini 3.1 Flash Image", "gemini-3.1-flash-image"),
-                ("Imagen 3.0", "imagen-3.0-generate-002"),
-                ("Imagen 4.0", "imagen-4.0-generate-001"),
-            ],
+            models=GEMINI_IMAGE_MODELS,
             price_note="Đơn giá: ≈ $0.039 / ảnh 1K (ước tính)",
             has_key_input=False,
+            key_provider=self.card_gemini.get_key,
             parent=page,
         )
         self.card_gemini_image.switch.setChecked(True)
         self.card_gemini_image.changed.connect(self._on_changed)
-        layout.addWidget(self.card_gemini_image)
+        grid.addWidget(self.card_gemini_image, 0, 0)
 
+        # 2. Google Veo 3 - Video AI
+        self.card_veo = ServiceCard(
+            service_id="veo",
+            title="Google Veo 3 – Video AI",
+            tag="Video AI",
+            shared_from="Gemini Flash",
+            models=VEO_VIDEO_MODELS,
+            price_note="Đơn giá: $0.05 / giây (720p)",
+            has_key_input=False,
+            key_provider=self.card_gemini.get_key,
+            parent=page,
+        )
+        self.card_veo.switch.setChecked(False)
+        self.card_veo.changed.connect(self._on_changed)
+        grid.addWidget(self.card_veo, 0, 1)
+
+        layout.addLayout(grid)
         layout.addStretch(1)
         self.api_tabs.addTab(wrap_scroll(page), "Ảnh / Video AI")
 
     # ── Shared key propagation ───────────────────────────────────────────────
     def _sync_shared_keys(self) -> None:
-        gemini_key = self.card_gemini.key_edit.text().strip()
+        gemini_key = self.card_gemini.get_key()
         has_gemini = bool(gemini_key)
         self.card_gemini_tts.update_shared_status(has_gemini)
         self.card_gemini_image.update_shared_status(has_gemini)
+        if hasattr(self, "card_veo"):
+            self.card_veo.update_shared_status(has_gemini)
 
     def _on_changed(self) -> None:
+        if getattr(self, "_loading", False):
+            return
         self._sync_shared_keys()
         self.settings_changed.emit()
 
     # ── settings load & apply ────────────────────────────────────────────────
     def load_from(self, settings: Dict[str, Any]) -> None:
-        self._settings = settings
-        paths = settings.get("paths") or {}
-        app = settings.get("app") or {}
-        script = settings.get("script") or {}
-        video = settings.get("video") or {}
-        api = settings.get("api") or {}
+        self._loading = True
+        try:
+            self._settings = settings
+            paths = settings.get("paths") or {}
+            app = settings.get("app") or {}
+            script = settings.get("script") or {}
+            video = settings.get("video") or {}
+            api = settings.get("api") or {}
 
-        # General paths
-        h2 = str(paths.get("h2mtts") or "D:/mui/f375/tts/H2MTTS")
-        self.general_page.h2mtts_edit.setText(h2)
-        self.card_h2mtts.path_edit.setText(h2)
-        self.card_h2mtts.detect_specs()
+            # General paths
+            h2 = str(paths.get("h2mtts") or "D:/mui/f375/tts/H2MTTS")
+            self.general_page.h2mtts_edit.setText(h2)
+            self.card_h2mtts.path_edit.setText(h2)
+            self.card_h2mtts.detect_specs()
 
-        self.general_page.ffmpeg_edit.setText(str(paths.get("ffmpeg") or "ffmpeg"))
-        self.general_page.ffprobe_edit.setText(str(paths.get("ffprobe") or "ffprobe"))
-        self.general_page.chrome_edit.setText(str(settings.get("youtube", {}).get("browser_profile") or ""))
-        self.general_page.retry_spin.setValue(int(app.get("retry", 1) or 1))
-        self.general_page.stop_error_check.setChecked(bool(app.get("stop_on_error", False)))
-        self.general_page.log_dir_edit.setText(str(app.get("log_dir") or "logs"))
+            self.general_page.ffmpeg_edit.setText(str(paths.get("ffmpeg") or "ffmpeg"))
+            self.general_page.ffprobe_edit.setText(str(paths.get("ffprobe") or "ffprobe"))
+            self.general_page.chrome_edit.setText(str(settings.get("youtube", {}).get("browser_profile") or ""))
+            self.general_page.retry_spin.setValue(int(app.get("retry", 1) or 1))
+            self.general_page.stop_error_check.setChecked(bool(app.get("stop_on_error", False)))
+            self.general_page.log_dir_edit.setText(str(app.get("log_dir") or "logs"))
 
-        # Gemini key sync from script/video
-        gemini_val = str(api.get("gemini_key") or script.get("api_key") or video.get("ai_api_key") or "")
-        self.card_gemini.key_edit.setText(gemini_val)
+            # Gemini key sync from script/video
+            gemini_val = str(api.get("gemini_key") or script.get("api_key") or video.get("ai_api_key") or "")
+            self.card_gemini.key_edit.setText(gemini_val)
 
-        self._sync_shared_keys()
+            # Model selections (normalizing legacy/retired models like gemini-2.0-flash)
+            from core.ai_client import normalize_model
+            gemini_model = normalize_model(str(script.get("model") or api.get("gemini_model") or ""))
+            if gemini_model:
+                self.card_gemini.set_model(gemini_model)
+
+            tts_model = str(api.get("gemini_tts_model") or "")
+            if tts_model:
+                self.card_gemini_tts.set_model(tts_model)
+
+            img_model = str(video.get("ai_image_model") or api.get("gemini_image_model") or "")
+            if img_model:
+                self.card_gemini_image.set_model(img_model)
+
+            if hasattr(self, "card_veo"):
+                veo_model = str(video.get("ai_video_model") or api.get("veo_model") or "")
+                if veo_model:
+                    self.card_veo.set_model(veo_model)
+
+            self._sync_shared_keys()
+        finally:
+            self._loading = False
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         paths = settings.setdefault("paths", {})
@@ -1042,12 +1214,23 @@ class SettingsTab(QWidget):
         app["stop_on_error"] = self.general_page.stop_error_check.isChecked()
         app["log_dir"] = self.general_page.log_dir_edit.text().strip() or "logs"
 
-        # API keys
-        gemini_k = self.card_gemini.key_edit.text().strip()
+        # API keys & models
+        gemini_k = self.card_gemini.get_key()
         api["gemini_key"] = gemini_k
         if gemini_k:
             script["api_key"] = gemini_k
             video["ai_api_key"] = gemini_k
+
+        api["gemini_model"] = self.card_gemini.get_model()
+        script["model"] = self.card_gemini.get_model()
+
+        api["gemini_tts_model"] = self.card_gemini_tts.get_model()
+        api["gemini_image_model"] = self.card_gemini_image.get_model()
+        video["ai_image_model"] = self.card_gemini_image.get_model()
+
+        if hasattr(self, "card_veo"):
+            api["veo_model"] = self.card_veo.get_model()
+            video["ai_video_model"] = self.card_veo.get_model()
 
         self._settings = settings
 
@@ -1057,4 +1240,6 @@ class SettingsTab(QWidget):
         self.card_edge_tts.apply_theme()
         self.card_h2mtts.apply_theme()
         self.card_gemini_image.apply_theme()
+        if hasattr(self, "card_veo"):
+            self.card_veo.apply_theme()
 
