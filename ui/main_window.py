@@ -105,7 +105,7 @@ class MainWindow(QMainWindow):
 
         theme.set_mode(str((settings.get("app") or {}).get("theme") or theme.DEFAULT_MODE))
 
-        self.setWindowTitle("AutoYout — Text → TTS → Video → YouTube")
+        self.setWindowTitle("AutoYout")
         self.setWindowIcon(brand_icon())
         self.setMinimumSize(1000, 680)
         self.resize(1400, 920)

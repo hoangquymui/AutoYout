@@ -41,7 +41,7 @@ def window(app, monkeypatch, tmp_path: Path):
 
 
 def test_window_builds_all_tabs(window) -> None:
-    assert window.windowTitle().startswith("AutoYout")
+    assert window.windowTitle() == "AutoYout"
     assert not window.windowIcon().isNull()
     assert window.tabs.count() == 7
     labels = [window.tabs.tabText(i) for i in range(window.tabs.count())]
