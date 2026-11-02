@@ -212,51 +212,7 @@ class _CheckApiWorker(QThread):
                 self.done.emit(sid, False, f"Lỗi kết nối: {exc}")
                 return
 
-        elif sid in ("openai", "openai_audio"):
-            if not key:
-                self.done.emit(sid, False, "Chưa nhập API key OpenAI.")
-                return
-            try:
-                url = self.endpoint or "https://api.openai.com/v1/models"
-                req = urllib.request.Request(
-                    url,
-                    headers={
-                        "Authorization": f"Bearer {key}",
-                        "User-Agent": "AutoYout/1.0",
-                    },
-                )
-                with urllib.request.urlopen(req, timeout=6) as resp:
-                    if resp.status == 200:
-                        self.done.emit(sid, True, "Kết nối OpenAI thành công!")
-                        return
-            except urllib.error.HTTPError as exc:
-                self.done.emit(sid, False, f"Lỗi HTTP {exc.code} (Key không hợp lệ)")
-                return
-            except Exception as exc:
-                self.done.emit(sid, False, f"Lỗi: {exc}")
-                return
 
-        elif sid == "deepseek":
-            if not key:
-                self.done.emit(sid, False, "Chưa nhập API key DeepSeek.")
-                return
-            try:
-                base = self.endpoint.rstrip("/") if self.endpoint else "https://api.deepseek.com"
-                url = f"{base}/models"
-                req = urllib.request.Request(
-                    url,
-                    headers={
-                        "Authorization": f"Bearer {key}",
-                        "User-Agent": "AutoYout/1.0",
-                    },
-                )
-                with urllib.request.urlopen(req, timeout=6) as resp:
-                    if resp.status == 200:
-                        self.done.emit(sid, True, "Kết nối DeepSeek thành công!")
-                        return
-            except Exception as exc:
-                self.done.emit(sid, False, f"Lỗi: {exc}")
-                return
 
         elif sid in ("fal", "seedance_fal", "kling_fal"):
             if not key:
@@ -924,90 +880,9 @@ class SettingsTab(QWidget):
         layout.addWidget(
             PageHeader(
                 "Văn bản AI",
-                "Viết kịch bản, caption, trả lời tự động.",
+                "Viết kịch bản, caption, trả lời tự động bằng Google Gemini.",
             )
         )
-
-        # Omnira banner
-        banner = QFrame()
-        banner.setStyleSheet(
-            "background: rgba(2, 132, 199, 0.08); border: 1px solid rgba(2, 132, 199, 0.25); "
-            "border-radius: 8px; padding: 10px;"
-        )
-        b_layout = QVBoxLayout(banner)
-        b_layout.setContentsMargins(10, 8, 10, 8)
-        b_layout.setSpacing(6)
-
-        b_top = QHBoxLayout()
-        b_title = QLabel("AI Omnira")
-        b_title.setStyleSheet("font-weight: bold; color: #0284C7; font-size: 12px;")
-        b_badge = QLabel("Đang dùng")
-        b_badge.setStyleSheet(
-            "background: rgba(16, 185, 129, 0.18); color: #10B981; "
-            "border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: bold;"
-        )
-        b_top.addWidget(b_title)
-        b_top.addWidget(b_badge)
-        b_top.addStretch(1)
-        b_layout.addLayout(b_top)
-
-        b_desc = QLabel(
-            "AI văn bản có sẵn trong gói của bạn – tự dùng khi bạn chưa nhập key AI văn bản riêng. "
-            "Chỉ dùng để viết chữ (kịch bản, caption, trả lời tin nhắn); ảnh / video vẫn cần key riêng "
-            "hoặc Google Flow. Nhập key riêng bên dưới để dùng không giới hạn."
-        )
-        b_desc.setWordWrap(True)
-        b_desc.setStyleSheet("color: #64748B; font-size: 11px;")
-        b_layout.addWidget(b_desc)
-
-        b_bottom = QHBoxLayout()
-        b_today = QLabel("Hôm nay: còn 30/30 lượt")
-        b_today.setStyleSheet("color: #0284C7; font-size: 11px; font-weight: bold;")
-        b_month = QLabel("Tháng này: còn 100/100 lượt")
-        b_month.setStyleSheet("color: #0284C7; font-size: 11px; font-weight: bold;")
-        b_bottom.addWidget(b_today)
-        b_bottom.addSpacing(20)
-        b_bottom.addWidget(b_month)
-        b_bottom.addStretch(1)
-        b_layout.addLayout(b_bottom)
-
-        layout.addWidget(banner)
-
-        # 3 Text Cards
-        self.card_deepseek = ServiceCard(
-            service_id="deepseek",
-            title="DeepSeek V3 / R1",
-            tag="DeepSeek V3 / R1 (Reasoning)",
-            key_placeholder="Nhập sk-...",
-            models=[
-                ("deepseek-v3 (chat)", "deepseek-v3"),
-                ("deepseek-r1 (reasoner)", "deepseek-r1"),
-            ],
-            has_endpoint=True,
-            has_test_model=True,
-            parent=page,
-        )
-        self.card_deepseek.changed.connect(self._on_changed)
-        layout.addWidget(self.card_deepseek)
-
-        self.card_openai = ServiceCard(
-            service_id="openai",
-            title="OpenAI GPT-4o",
-            tag="GPT-4o & GPT-4o-mini",
-            key_placeholder="Nhập sk-proj-...",
-            models=[
-                ("gpt-4o (Chất lượng)", "gpt-4o"),
-                ("gpt-4o-mini (Nhanh, rẻ)", "gpt-4o-mini"),
-                ("o1", "o1"),
-                ("o3-mini", "o3-mini"),
-            ],
-            has_endpoint=True,
-            has_test_model=True,
-            parent=page,
-        )
-        self.card_openai.changed.connect(self._sync_shared_keys)
-        self.card_openai.changed.connect(self._on_changed)
-        layout.addWidget(self.card_openai)
 
         self.card_gemini = ServiceCard(
             service_id="gemini",
@@ -1048,7 +923,23 @@ class SettingsTab(QWidget):
         grid = QGridLayout()
         grid.setSpacing(12)
 
-        # 1. ElevenLabs
+        # 1. Google Gemini TTS
+        self.card_gemini_tts = ServiceCard(
+            service_id="gemini_tts",
+            title="Google Gemini TTS",
+            shared_from="Gemini Flash",
+            models=[
+                ("Gemini 2.5 Flash TTS", "gemini-2.5-flash-tts"),
+                ("Gemini 2.0 Flash Audio", "gemini-2.0-flash-audio"),
+            ],
+            price_note="Đơn giá: ≈ $20 / 1M ký tự (ước tính)",
+            has_key_input=False,
+            parent=page,
+        )
+        self.card_gemini_tts.changed.connect(self._on_changed)
+        grid.addWidget(self.card_gemini_tts, 0, 0)
+
+        # 2. ElevenLabs
         self.card_elevenlabs = ServiceCard(
             service_id="elevenlabs",
             title="ElevenLabs",
@@ -1063,42 +954,9 @@ class SettingsTab(QWidget):
             parent=page,
         )
         self.card_elevenlabs.changed.connect(self._on_changed)
-        grid.addWidget(self.card_elevenlabs, 0, 0)
+        grid.addWidget(self.card_elevenlabs, 0, 1)
 
-        # 2. OpenAI Audio
-        self.card_openai_audio = ServiceCard(
-            service_id="openai_audio",
-            title="OpenAI Audio",
-            shared_from="OpenAI GPT-4o",
-            models=[
-                ("gpt-4o-mini-tts", "gpt-4o-mini-tts"),
-                ("tts-1", "tts-1"),
-                ("tts-1-hd", "tts-1-hd"),
-            ],
-            price_note="Đơn giá: ≈ $15 / 1M ký tự (ước tính)",
-            has_key_input=False,
-            parent=page,
-        )
-        self.card_openai_audio.changed.connect(self._on_changed)
-        grid.addWidget(self.card_openai_audio, 0, 1)
-
-        # 3. Google Gemini TTS
-        self.card_gemini_tts = ServiceCard(
-            service_id="gemini_tts",
-            title="Google Gemini TTS",
-            shared_from="Gemini Flash",
-            models=[
-                ("Gemini 2.5 Flash TTS", "gemini-2.5-flash-tts"),
-                ("Gemini 2.0 Flash Audio", "gemini-2.0-flash-audio"),
-            ],
-            price_note="Đơn giá: ≈ $20 / 1M ký tự (ước tính)",
-            has_key_input=False,
-            parent=page,
-        )
-        self.card_gemini_tts.changed.connect(self._on_changed)
-        grid.addWidget(self.card_gemini_tts, 1, 0)
-
-        # 4. Edge-TTS (Miễn phí)
+        # 3. Edge-TTS (Miễn phí)
         self.card_edge_tts = ServiceCard(
             service_id="edge_tts",
             title="Edge-TTS (Miễn phí)",
@@ -1113,7 +971,7 @@ class SettingsTab(QWidget):
         self.card_edge_tts.switch.setChecked(True)
         self.card_edge_tts.set_status("valid", "• Hợp lệ")
         self.card_edge_tts.changed.connect(self._on_changed)
-        grid.addWidget(self.card_edge_tts, 1, 1)
+        grid.addWidget(self.card_edge_tts, 0, 2)
 
         layout.addLayout(grid)
 
@@ -1271,10 +1129,6 @@ class SettingsTab(QWidget):
         self.card_gemini_image.update_shared_status(has_gemini)
         self.card_veo.update_shared_status(has_gemini)
 
-        openai_key = self.card_openai.key_edit.text().strip()
-        has_openai = bool(openai_key)
-        self.card_openai_audio.update_shared_status(has_openai)
-
         fal_key = self.card_fal.key_edit.text().strip()
         has_fal = bool(fal_key)
         self.card_seedance_fal.update_shared_status(has_fal)
@@ -1311,8 +1165,6 @@ class SettingsTab(QWidget):
         self.card_gemini.key_edit.setText(gemini_val)
 
         # Other API keys
-        self.card_deepseek.key_edit.setText(str(api.get("deepseek_key") or ""))
-        self.card_openai.key_edit.setText(str(api.get("openai_key") or ""))
         self.card_elevenlabs.key_edit.setText(str(api.get("elevenlabs_key") or ""))
         self.card_fal.key_edit.setText(str(api.get("fal_key") or ""))
         self.card_seedance_comet.key_edit.setText(str(api.get("comet_key") or ""))
@@ -1345,8 +1197,6 @@ class SettingsTab(QWidget):
             script["api_key"] = gemini_k
             video["ai_api_key"] = gemini_k
 
-        api["deepseek_key"] = self.card_deepseek.key_edit.text().strip()
-        api["openai_key"] = self.card_openai.key_edit.text().strip()
         api["elevenlabs_key"] = self.card_elevenlabs.key_edit.text().strip()
         api["fal_key"] = self.card_fal.key_edit.text().strip()
         api["comet_key"] = self.card_seedance_comet.key_edit.text().strip()
@@ -1355,11 +1205,8 @@ class SettingsTab(QWidget):
         self._settings = settings
 
     def apply_theme(self) -> None:
-        self.card_deepseek.apply_theme()
-        self.card_openai.apply_theme()
         self.card_gemini.apply_theme()
         self.card_elevenlabs.apply_theme()
-        self.card_openai_audio.apply_theme()
         self.card_gemini_tts.apply_theme()
         self.card_edge_tts.apply_theme()
         self.card_h2mtts.apply_theme()
@@ -1370,3 +1217,4 @@ class SettingsTab(QWidget):
         self.card_seedance_comet.apply_theme()
         self.card_seedance_piapi.apply_theme()
         self.card_kling_fal.apply_theme()
+
