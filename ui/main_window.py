@@ -31,6 +31,7 @@ from core.tts_engine import TTSEngine
 from core.youtube_uploader import YouTubeUploader
 from ui import theme
 from ui.components.icons import (
+    brand_icon,
     brand_pixmap,
     clear_cache,
     icon,
@@ -104,6 +105,7 @@ class MainWindow(QMainWindow):
         theme.set_mode(str((settings.get("app") or {}).get("theme") or theme.DEFAULT_MODE))
 
         self.setWindowTitle("AutoYout — Text → TTS → Video → YouTube")
+        self.setWindowIcon(brand_icon())
         self.setMinimumSize(1000, 680)
         self.resize(1400, 920)
 

@@ -28,6 +28,7 @@ except Exception:  # pragma: no cover
     QSvgRenderer = None  # type: ignore[assignment]
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
+LOGO_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "logo"
 
 DEFAULT_COLOR = "#E8EEF8"
 
@@ -207,6 +208,8 @@ def clear_cache() -> None:
     """Drop rendered pixmaps so the next theme paints with its own colours."""
     _pixmap_cached.cache_clear()
     _icon_cached.cache_clear()
+    brand_pixmap.cache_clear()
+    brand_icon.cache_clear()
 
 
 def set_icon(widget: QAbstractButton, name: str, role: str = "muted", size: int = 15) -> None:
@@ -242,11 +245,46 @@ def refresh_icons(root: QWidget) -> None:
             widget.setPixmap(pixmap(name, color, size))
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=32)
 def brand_pixmap(size: int = 38) -> QPixmap:
-    """Rounded gradient mark with a white audio waveform."""
+    """Render the AutoYout logo mark from assets/logo with crisp HiDPI support."""
     ratio = 2.0
     pixel = int(round(size * ratio))
+
+    # 1. Try vector SVG first for pristine crisp scaling at any resolution
+    svg_path = LOGO_DIR / "logo.svg"
+    if svg_path.is_file() and QSvgRenderer is not None:
+        try:
+            renderer = QSvgRenderer(str(svg_path))
+            if renderer.isValid():
+                pixmap = QPixmap(pixel, pixel)
+                pixmap.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(pixmap)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+                renderer.render(painter, QRectF(0, 0, pixel, pixel))
+                painter.end()
+                pixmap.setDevicePixelRatio(ratio)
+                return pixmap
+        except Exception:
+            pass
+
+    # 2. Try PNG / JPG raster logos if available
+    for name in ("logo.png", "logo.jpg", "autoyout_app_icon.jpg"):
+        img_path = LOGO_DIR / name
+        if img_path.is_file():
+            loaded = QPixmap(str(img_path))
+            if not loaded.isNull():
+                scaled = loaded.scaled(
+                    pixel,
+                    pixel,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                scaled.setDevicePixelRatio(ratio)
+                return scaled
+
+    # 3. Procedural fallback
     pixmap = QPixmap(pixel, pixel)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
@@ -265,8 +303,13 @@ def brand_pixmap(size: int = 38) -> QPixmap:
     pen = QPen(QColor("#FFFFFF"), max(1.6, size * 0.055))
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     painter.setPen(pen)
-    bars = ((0.30, 0.38, 0.62), (0.41, 0.26, 0.74), (0.52, 0.16, 0.84),
-            (0.63, 0.29, 0.71), (0.74, 0.40, 0.60))
+    bars = (
+        (0.30, 0.38, 0.62),
+        (0.41, 0.26, 0.74),
+        (0.52, 0.16, 0.84),
+        (0.63, 0.29, 0.71),
+        (0.74, 0.40, 0.60),
+    )
     for x, top, bottom in bars:
         painter.drawLine(
             QPointF(x * size, top * size), QPointF(x * size, bottom * size)
@@ -274,3 +317,18 @@ def brand_pixmap(size: int = 38) -> QPixmap:
     painter.end()
     pixmap.setDevicePixelRatio(ratio)
     return pixmap
+
+
+@lru_cache(maxsize=4)
+def brand_icon() -> QIcon:
+    """Return the AutoYout QIcon for application window and taskbar."""
+    ico_path = LOGO_DIR / "logo.ico"
+    if ico_path.is_file():
+        ico = QIcon(str(ico_path))
+        if not ico.isNull():
+            return ico
+
+    result = QIcon()
+    for s in (16, 24, 32, 48, 64, 128, 256):
+        result.addPixmap(brand_pixmap(s))
+    return result

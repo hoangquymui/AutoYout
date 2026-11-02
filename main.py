@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.settings import load_settings  # noqa: E402
+from ui.components.icons import brand_icon  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
 from utils.logger import get_logger, setup_logging  # noqa: E402
 
@@ -67,11 +68,13 @@ def main() -> int:
     app.setApplicationName("AutoYout")
     app.setApplicationDisplayName("AutoYout")
     app.setOrganizationName("AutoYout")
+    app.setWindowIcon(brand_icon())
     app.setStyle("Fusion")
     app.setFont(QFont("Segoe UI", 10))
     _install_excepthook(app, logger)
 
     window = MainWindow(settings)
+    window.setWindowIcon(brand_icon())
     window.show()
     code = app.exec()
     logger.info("Thoát AutoYout (exit=%s)", code)
