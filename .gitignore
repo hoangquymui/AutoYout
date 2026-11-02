@@ -9,6 +9,7 @@ __pycache__/
 # Runtime output
 logs/
 preview/
+bin/
 
 # Local secrets and per-user settings
 config/user_settings.json

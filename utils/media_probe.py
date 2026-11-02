@@ -25,16 +25,24 @@ def _popen(cmd: Sequence[str], timeout: float = 60.0) -> subprocess.CompletedPro
 
 
 def resolve_tool(value: str | os.PathLike | None, default_name: str) -> str:
-    """Resolve a configured executable, falling back to ``PATH``."""
+    """Resolve a configured executable, checking explicit paths, project bin, then ``PATH``."""
     if value:
         raw = str(value).strip().strip('"')
-        if raw:
+        if raw and raw != default_name:
             p = Path(raw)
             if p.is_file():
                 return str(p)
             found = shutil.which(raw)
             if found:
                 return found
+
+    # Check project-local bin directory (e.g. <project>/bin/ffmpeg.exe)
+    project_bin = Path(__file__).resolve().parent.parent / "bin"
+    for ext in (".exe", "", ".cmd", ".bat"):
+        candidate = project_bin / f"{default_name}{ext}"
+        if candidate.is_file():
+            return str(candidate)
+
     found = shutil.which(default_name)
     return found or default_name
 

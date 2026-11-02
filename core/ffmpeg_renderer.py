@@ -1739,8 +1739,8 @@ class FFmpegRenderer:
                     pass
             if index > 0:
                 report(25, f"Thử lại bằng {encoder}...")
-                logger.warning("Encode %s bằng %s thất bại, thử lại bằng %s",
-                               job.id, candidates[index - 1], encoder)
+                logger.warning("Encode %s bằng %s thất bại (%s), thử lại bằng %s",
+                               job.id, candidates[index - 1], last_error, encoder)
             try:
                 self._run_encode(cfg, temp_dir, combined, visual, entries, total,
                                  out_path, encoder, bgm, report, pause_cb, cancel_cb,
