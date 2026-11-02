@@ -124,6 +124,8 @@ QGroupBox::title {
     font-weight: 600;
     font-size: 9.5pt;
 }
+QGroupBox#headerlessGroup { padding: 9px 12px 9px 12px; }
+QLabel#GroupTitle { color: $GROUP_TITLE_TEXT; font-weight: 600; font-size: 9.5pt; }
 QLineEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox,
 QDateTimeEdit, QListWidget {
     background: $INPUT;

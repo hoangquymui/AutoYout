@@ -1,4 +1,4 @@
-"""AutoYout main window: header, tabs and the right-hand pipeline panel."""
+"""AutoYout main window: header, tabs and pipeline automation."""
 from __future__ import annotations
 
 import copy
@@ -12,15 +12,12 @@ from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
-    QProgressBar,
     QPushButton,
     QSizePolicy,
-    QSplitter,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -41,10 +38,10 @@ from ui.components.icons import (
     set_icon,
     set_pixmap,
 )
-from ui.components.log_console import LogConsole
 from ui.components.page import icon_button, refresh_statuses
 from ui.components.status_badge import StatusBadge
 from ui.styles import app_stylesheet
+from ui.tab_automation import AutomationTab
 from ui.tab_project import ProjectTab
 from ui.tab_script import ScriptTab
 from ui.tab_dubbing import DubbingTab
@@ -103,9 +100,6 @@ class MainWindow(QMainWindow):
         self._log_handler = None
         self._log_emitter: Optional[LogEmitter] = None
         self._last_success = False
-        self._status_error = False
-        self._status_running = False
-        self._pipeline_notes: list = []
 
         theme.set_mode(str((settings.get("app") or {}).get("theme") or theme.DEFAULT_MODE))
 
@@ -134,7 +128,6 @@ class MainWindow(QMainWindow):
         self.btn_header_project.setText("Project" if compact else "Chọn Project")
         for badge in (self.badge_tts, self.badge_ffmpeg, self.badge_youtube):
             badge.set_compact(width < 1180)
-        self._pipeline_panel.setMinimumWidth(320 if compact else 350)
 
     # ── UI construction ──────────────────────────────────────────────────────
     def _build_ui(self) -> None:
@@ -158,26 +151,23 @@ class MainWindow(QMainWindow):
         self.video_tab = VideoConfigTab()
         self.frame_tab = FrameTab()
         self.youtube_tab = YouTubeConfigTab()
+        self.automation_tab = AutomationTab()
         self.tabs.addTab(self.project_tab, icon("folder", theme.TEXT_DIM, 15), "Dự án")
         self.tabs.addTab(self.script_tab, icon("file", theme.TEXT_DIM, 15), "Kịch bản")
         self.tabs.addTab(self.tts_tab, icon("mic", theme.TEXT_DIM, 15), "Lồng tiếng")
         self.tabs.addTab(self.video_tab, icon("film", theme.TEXT_DIM, 15), "Video")
         self.tabs.addTab(self.frame_tab, icon("image", theme.TEXT_DIM, 15), "Video Frame")
         self.tabs.addTab(self.youtube_tab, icon("youtube", theme.TEXT_DIM, 15), "YouTube")
+        self._automation_index = self.tabs.addTab(
+            self.automation_tab, icon("zap", theme.TEXT_DIM, 15), "Automation"
+        )
         self.tabs.currentChanged.connect(self._update_tab_icons)
         self._update_tab_icons()
+        layout.addWidget(self.tabs, 1)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setObjectName("MainSplitter")
-        splitter.setChildrenCollapsible(False)
-        splitter.setHandleWidth(10)
-        splitter.addWidget(self.tabs)
-        self._pipeline_panel = self._build_pipeline_panel()
-        splitter.addWidget(self._pipeline_panel)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 0)
-        splitter.setSizes([990, 380])
-        layout.addWidget(splitter, 1)
+        self.automation_tab.run_requested.connect(self._start_pipeline)
+        self.automation_tab.pause_requested.connect(self._toggle_pause)
+        self.automation_tab.stop_requested.connect(self._stop_pipeline)
 
         self.project_tab.reload_requested.connect(self._reload_project)
         self.script_tab.reload_requested.connect(self._reload_project)
@@ -281,143 +271,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.btn_theme)
         return header
 
-    def _build_pipeline_panel(self) -> QWidget:
-        panel = QFrame()
-        panel.setObjectName("BottomPanel")
-        panel.setMinimumWidth(350)
-        panel.setMaximumWidth(460)
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(8)
-
-        meta_row = QHBoxLayout()
-        meta_row.setSpacing(8)
-        meta_row.addWidget(self._panel_label("PIPELINE"))
-        meta_row.addStretch(1)
-        self.stage_label = QLabel("Sẵn sàng")
-        self.stage_label.setObjectName("StageChip")
-        meta_row.addWidget(self.stage_label)
-        layout.addLayout(meta_row)
-
-        hint = QLabel("Chạy từng bước hoặc toàn bộ — có thể tạm dừng và tiếp tục.")
-        hint.setObjectName("MutedLabel")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-        self.notes_label = QLabel("")
-        self.notes_label.setObjectName("MutedLabel")
-        self.notes_label.setWordWrap(True)
-        self.notes_label.setVisible(False)
-        layout.addWidget(self.notes_label)
-
-        self.btn_tts = QPushButton("1. Lồng tiếng")
-        self.btn_tts.setToolTip(
-            "Lồng tiếng theo cue (nếu có SRT) hoặc đọc toàn bộ .txt/.json thành MP3.")
-        self.btn_video = QPushButton("2. Tạo Video")
-        self.btn_video.setToolTip("Ghép MP3 với hình nền, nhạc nền và xuất MP4 bằng FFmpeg.")
-        self.btn_upload = QPushButton("3. Upload YouTube")
-        self.btn_upload.setToolTip("Đăng các video đã xuất lên kênh YouTube đã chọn.")
-        self.btn_all = QPushButton("CHẠY TOÀN BỘ (AUTO ALL)")
-        self.btn_all.setToolTip("Chạy tuần tự TTS → Video → Upload YouTube.")
-        self.btn_all.setObjectName("runAllButton")
-        self.btn_pause = QPushButton("Tạm dừng")
-        self.btn_pause.setObjectName("pauseButton")
-        self.btn_stop = QPushButton("Dừng hẳn")
-        self.btn_stop.setObjectName("stopButton")
-        set_icon(self.btn_tts, "mic", "accent", 15)
-        set_icon(self.btn_video, "film", "accent", 15)
-        set_icon(self.btn_upload, "upload", "accent", 15)
-        set_icon(self.btn_all, "zap", "white", 16)
-        set_icon(self.btn_pause, "pause", "warning", 14)
-        set_icon(self.btn_stop, "stop", "danger", 14)
-        self.btn_pause.setEnabled(False)
-        self.btn_stop.setEnabled(False)
-        self.btn_tts.clicked.connect(lambda: self._start_pipeline("tts"))
-        self.btn_video.clicked.connect(lambda: self._start_pipeline("video"))
-        self.btn_upload.clicked.connect(lambda: self._start_pipeline("upload"))
-        self.btn_all.clicked.connect(lambda: self._start_pipeline("all"))
-        self.btn_pause.clicked.connect(self._toggle_pause)
-        self.btn_stop.clicked.connect(self._stop_pipeline)
-
-        actions = QGridLayout()
-        actions.setHorizontalSpacing(8)
-        actions.setVerticalSpacing(6)
-        actions.addWidget(self.btn_tts, 0, 0)
-        actions.addWidget(self.btn_video, 0, 1)
-        # Wide labels ("Upload YouTube", "CHẠY TOÀN BỘ") get a full row so the
-        # text is never clipped in the narrow sidebar.
-        actions.addWidget(self.btn_upload, 1, 0, 1, 2)
-        actions.addWidget(self.btn_all, 2, 0, 1, 2)
-        actions.addWidget(self.btn_pause, 3, 0)
-        actions.addWidget(self.btn_stop, 3, 1)
-        actions.setColumnStretch(0, 1)
-        actions.setColumnStretch(1, 1)
-        layout.addLayout(actions)
-
-        self.overall_bar = QProgressBar()
-        self.overall_bar.setRange(0, 100)
-        self.overall_bar.setValue(0)
-        self.overall_bar.setTextVisible(False)
-        self.overall_value = QLabel("0%")
-        self.overall_value.setObjectName("PercentLabel")
-        layout.addLayout(
-            self._progress_block("TỔNG THỂ", self.overall_bar, self.overall_value)
-        )
-        self.task_bar = QProgressBar()
-        self.task_bar.setRange(0, 100)
-        self.task_bar.setValue(0)
-        self.task_bar.setTextVisible(False)
-        self.task_value = QLabel("0%")
-        self.task_value.setObjectName("PercentLabel")
-        layout.addLayout(
-            self._progress_block("TÁC VỤ HIỆN TẠI", self.task_bar, self.task_value)
-        )
-
-        status_row = QHBoxLayout()
-        status_row.setSpacing(8)
-        self.status_dot = QLabel()
-        self.status_dot.setFixedSize(8, 8)
-        self.status_dot.setStyleSheet(
-            f"background:{theme.TEXT_FAINT}; border-radius:4px;"
-        )
-        status_row.addWidget(self.status_dot, 0, Qt.AlignmentFlag.AlignTop)
-        self.status_label = QLabel("Chọn project và bấm chạy để bắt đầu.")
-        self.status_label.setObjectName("StatusText")
-        self.status_label.setWordWrap(True)
-        self.status_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-        status_row.addWidget(self.status_label, 1)
-        layout.addLayout(status_row)
-
-        self.log_console = LogConsole()
-        self.log_console.setMinimumHeight(120)
-        layout.addWidget(self.log_console, 1)
-        return panel
-
-    @staticmethod
-    def _panel_label(text: str) -> QLabel:
-        label = QLabel(text)
-        label.setObjectName("PanelTitle")
-        return label
-
-    @staticmethod
-    def _progress_block(title: str, bar: QProgressBar, value: QLabel) -> QVBoxLayout:
-        block = QVBoxLayout()
-        block.setSpacing(4)
-        head = QHBoxLayout()
-        label = QLabel(title)
-        label.setObjectName("PanelTitle")
-        head.addWidget(label)
-        head.addStretch(1)
-        head.addWidget(value)
-        block.addLayout(head)
-        block.addWidget(bar)
-        return block
-
     # ── logging ──────────────────────────────────────────────────────────────
     def _attach_logging(self) -> None:
         self._log_emitter = LogEmitter(self)
-        self._log_emitter.message.connect(self.log_console.append)
+        self._log_emitter.message.connect(self.automation_tab.log_console.append)
         self._log_handler = attach_qt_handler(
             logging.getLogger(APP_LOGGER_NAME), self._log_emitter, logging.INFO
         )
@@ -602,13 +459,11 @@ class MainWindow(QMainWindow):
         try:
             manager = ProjectManager(
                 path,
-                input_dir=project_cfg.get("input_dir") or "input",
                 audio_dir=project_cfg.get("audio_dir") or "audio",
                 video_dir=project_cfg.get("video_dir") or "video",
                 assets_dir=project_cfg.get("assets_dir") or "assets",
                 script_dir=project_cfg.get("script_dir") or "script",
                 thumbs_dir=project_cfg.get("thumbs_dir") or "thumbs",
-                output_dir=project_cfg.get("output_dir") or "output",
                 default_language=(self.settings.get("tts") or {}).get("language") or "vi",
             )
             manager.scan()
@@ -675,14 +530,10 @@ class MainWindow(QMainWindow):
         worker.finished.connect(self._on_worker_finished)
         self.worker = worker
         self._last_success = False
-        self.overall_bar.setValue(0)
-        self.overall_value.setText("0%")
-        self.task_bar.setValue(0)
-        self.task_value.setText("0%")
-        self.stage_label.setText("Đang chuẩn bị…")
-        self._pipeline_notes = []
-        self.notes_label.setText("")
-        self.notes_label.setVisible(False)
+        self.automation_tab.set_overall(0)
+        self.automation_tab.set_task(0)
+        self.automation_tab.set_stage("Đang chuẩn bị…")
+        self.automation_tab.set_notes([])
         self._set_status("Pipeline đang khởi động…", error=False)
         self.tts_tab.set_busy(True)
         self.youtube_tab.set_pipeline_busy(True)
@@ -696,13 +547,11 @@ class MainWindow(QMainWindow):
         wanted = {
             "project": Path(str(project_cfg.get("last_project") or "")).resolve()
             if project_cfg.get("last_project") else None,
-            "input": project_cfg.get("input_dir") or "input",
             "audio": project_cfg.get("audio_dir") or "audio",
             "video": project_cfg.get("video_dir") or "video",
             "assets": project_cfg.get("assets_dir") or "assets",
             "script": project_cfg.get("script_dir") or "script",
             "thumbs": project_cfg.get("thumbs_dir") or "thumbs",
-            "output": project_cfg.get("output_dir") or "output",
         }
         if wanted["project"] is None or self.manager.project_dir != wanted["project"]:
             return False
@@ -714,13 +563,11 @@ class MainWindow(QMainWindow):
             return path.resolve()
 
         return (
-            self.manager.input_dir == resolve(wanted["input"], "input")
-            and self.manager.audio_dir == resolve(wanted["audio"], "audio")
+            self.manager.audio_dir == resolve(wanted["audio"], "audio")
             and self.manager.video_dir == resolve(wanted["video"], "video")
             and self.manager.assets_dir == resolve(wanted["assets"], "assets")
             and self.manager.script_dir == resolve(wanted["script"], "script")
             and self.manager.thumbs_dir == resolve(wanted["thumbs"], "thumbs")
-            and self.manager.output_dir == resolve(wanted["output"], "output")
         )
 
     def _toggle_pause(self) -> None:
@@ -738,35 +585,26 @@ class MainWindow(QMainWindow):
             logger.warning("Tạm dừng pipeline.")
 
     def _set_pause_ui(self, paused: bool) -> None:
-        if paused:
-            self.btn_pause.setText("Tiếp tục")
-            set_icon(self.btn_pause, "play", "success", 14)
-        else:
-            self.btn_pause.setText("Tạm dừng")
-            set_icon(self.btn_pause, "pause", "warning", 14)
+        self.automation_tab.set_pause_ui(paused)
 
     def _stop_pipeline(self) -> None:
         if self.worker is None:
             return
-        self.btn_stop.setEnabled(False)
-        self.btn_pause.setEnabled(False)
+        self.automation_tab.btn_stop.setEnabled(False)
+        self.automation_tab.btn_pause.setEnabled(False)
         self._set_status("Đang dừng pipeline…", error=False)
         logger.warning("Yêu cầu dừng pipeline.")
         self.worker.stop()
 
     # ── worker signals ───────────────────────────────────────────────────────
     def _on_overall(self, value: int) -> None:
-        value = max(0, min(100, int(value)))
-        self.overall_bar.setValue(value)
-        self.overall_value.setText(f"{value}%")
+        self.automation_tab.set_overall(value)
 
     def _on_task(self, value: int) -> None:
-        value = max(0, min(100, int(value)))
-        self.task_bar.setValue(value)
-        self.task_value.setText(f"{value}%")
+        self.automation_tab.set_task(value)
 
     def _on_stage(self, label: str) -> None:
-        self.stage_label.setText(label)
+        self.automation_tab.set_stage(label)
 
     def _on_status(self, message: str, running: bool) -> None:
         self._set_status(message, error=False, running=running)
@@ -776,25 +614,16 @@ class MainWindow(QMainWindow):
         logger.info("Upload xong %s: %s", job_id, url)
 
     def _on_notes_changed(self, notes: list) -> None:
-        self._pipeline_notes = list(notes)
-        if not notes:
-            self.notes_label.setText("")
-            self.notes_label.setVisible(False)
-            return
-        self.notes_label.setText(f"Ghi chú: {len(notes)}")
-        self.notes_label.setToolTip("\n".join(f"• {note}" for note in notes))
-        self.notes_label.setVisible(True)
+        self.automation_tab.set_notes(list(notes))
 
     def _on_completed(self, success: bool, message: str) -> None:
         self._last_success = success
         first_line = message.splitlines()[0] if message else ""
         self._set_status(first_line, error=not success)
-        self.stage_label.setText("Hoàn tất" if success else "Kết thúc có lỗi")
-        self.task_bar.setValue(100)
-        self.task_value.setText("100%")
+        self.automation_tab.set_stage("Hoàn tất" if success else "Kết thúc có lỗi")
+        self.automation_tab.set_task(100)
         if success:
-            self.overall_bar.setValue(100)
-            self.overall_value.setText("100%")
+            self.automation_tab.set_overall(100)
         self.project_tab.refresh()
 
     def _on_worker_finished(self) -> None:
@@ -831,27 +660,11 @@ class MainWindow(QMainWindow):
 
     # ── helpers ──────────────────────────────────────────────────────────────
     def _set_status(self, message: str, error: bool = False, running: bool = False) -> None:
-        short = message if len(message) <= 240 else message[:237] + "…"
-        self.status_label.setText(short)
-        self.status_label.setToolTip(message)
-        self._status_error = bool(error)
-        self._status_running = bool(running) and not error
-        self._paint_status_colors()
-
-    def _paint_status_colors(self) -> None:
-        if self._status_error:
-            color = dot = theme.DANGER
-        elif self._status_running:
-            color = dot = theme.BLUE
-        else:
-            color = theme.TEXT_MUTED
-            dot = theme.TEXT_FAINT
-        self.status_label.setStyleSheet(f"color:{color};")
-        self.status_dot.setStyleSheet(f"background:{dot}; border-radius:4px;")
+        self.automation_tab.set_status(message, error=error, running=running)
 
     # ── theme ────────────────────────────────────────────────────────────────
     def _update_tab_icons(self, index: int | None = None) -> None:
-        names = ("folder", "file", "mic", "film", "image", "youtube")
+        names = ("folder", "file", "mic", "film", "image", "youtube", "zap")
         current = self.tabs.currentIndex() if index is None else index
         for position, name in enumerate(names):
             color = theme.ACCENT_SOFT if position == current else theme.TEXT_DIM
@@ -878,7 +691,7 @@ class MainWindow(QMainWindow):
         self._update_tab_icons()
         refresh_icons(self)
         refresh_statuses(self)
-        self.log_console.apply_theme()
+        self.automation_tab.apply_theme()
         for badge in (self.badge_tts, self.badge_ffmpeg, self.badge_youtube):
             badge.apply_theme()
         self.project_tab.apply_theme()
@@ -886,7 +699,6 @@ class MainWindow(QMainWindow):
         self.frame_tab.apply_theme()
         self.youtube_tab.apply_theme()
         self._sync_theme_button()
-        self._paint_status_colors()
         if persist:
             self.settings.setdefault("app", {})["theme"] = active
             self._collect_all()
@@ -898,17 +710,14 @@ class MainWindow(QMainWindow):
             and not self._auth_busy
             and not self._script_busy
         )
-        for button in (self.btn_tts, self.btn_video, self.btn_upload, self.btn_all):
-            button.setEnabled(idle)
         running = self.worker is not None
-        self.btn_pause.setEnabled(running)
-        self.btn_stop.setEnabled(running)
-        self.tabs.setEnabled(not running)
+        self.automation_tab.set_actions(idle, running)
+        for position in range(self.tabs.count()):
+            if position != self._automation_index:
+                self.tabs.setTabEnabled(position, not running)
         self.btn_header_project.setEnabled(not running)
         self.btn_header_open.setEnabled(not running)
         self.btn_refresh_status.setEnabled(not running)
-        if not running:
-            self._set_pause_ui(False)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
         if self.worker is not None:
