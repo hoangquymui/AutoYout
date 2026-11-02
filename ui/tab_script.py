@@ -52,6 +52,7 @@ from core.input_pipeline import (
 from core.language_profiles import LanguageProfile, load_profiles, save_profiles
 from core.languages import (
     DEFAULT_LANGUAGE,
+    LANGUAGES,
     is_known,
     language_choices,
     language_name,

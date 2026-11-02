@@ -355,6 +355,10 @@ def test_language_dialogs_collect_and_edit_values(app) -> None:
     add = _LanguagePromptDialog(language="en", prompt="giữ sự kiện")
     assert add.values() == ("en", "giữ sự kiện")
 
+    # Test auto-suggestion while typing character by character without NameError
+    for text in ["T", "Ti", "Tiếng", "Tiếng Việt", "Anh", "Pháp", "Bất kỳ"]:
+        add.name_edit.setText(text)
+
     clean = _CleanPromptDialog(DEFAULT_CLEAN_PROMPT)
     assert clean.prompt_edit.toPlainText() == DEFAULT_CLEAN_PROMPT
     clean.prompt_edit.setPlainText("prompt làm sạch mới")
