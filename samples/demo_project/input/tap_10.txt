@@ -1,3 +1,0 @@
-Phần thứ mười minh họa cách sắp xếp tự nhiên: tap_2 luôn đứng trước tap_10 trong danh sách, đúng như thứ tự con người mong đợi.
-
-Bạn có thể dùng file này để thử chế độ gộp nhiều bài thành một video dài, kèm mốc thời gian tự động cho phần mô tả YouTube.

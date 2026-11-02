@@ -1,5 +1,0 @@
-AutoYout là bộ công cụ chạy trên máy tính, biến văn bản tiếng Việt thành video hoàn chỉnh và đăng lên YouTube.
-
-Quy trình gồm ba bước. Bước một, chuyển nội dung văn bản thành giọng đọc bằng H2MTTS. Bước hai, ghép ảnh nền hoặc video nền với âm thanh bằng FFmpeg. Bước ba, tải video lên kênh YouTube đã kết nối.
-
-Mỗi project lưu trạng thái riêng, nên khi tắt máy hay mất điện, lần chạy sau ứng dụng tiếp tục đúng chỗ đã dừng.

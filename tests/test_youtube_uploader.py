@@ -67,7 +67,7 @@ def test_compute_publish_at_none_mode() -> None:
 
 
 def _manager(tmp_path: Path) -> ProjectManager:
-    inputs = tmp_path / "input"
+    inputs = tmp_path / "script"
     inputs.mkdir(parents=True)
     (inputs / "tap_01.txt").write_text("Nội dung.", encoding="utf-8")
     (inputs / "tap_01.json").write_text(json.dumps({

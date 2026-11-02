@@ -29,7 +29,7 @@ def app():
 
 
 def _media(tmp_path: Path, ffmpeg: str) -> Path:
-    inputs = tmp_path / "input"
+    inputs = tmp_path / "script"
     inputs.mkdir(parents=True)
     (inputs / "tap_01.txt").write_text("Nội dung kiểm thử pipeline.", encoding="utf-8")
     audio = tmp_path / "audio" / "tap_01.mp3"
@@ -52,7 +52,7 @@ def _media(tmp_path: Path, ffmpeg: str) -> Path:
 
 
 def test_tts_stage_marks_item_done(app, tmp_path: Path, monkeypatch) -> None:
-    inputs = tmp_path / "input"
+    inputs = tmp_path / "script"
     inputs.mkdir()
     (inputs / "tap_01.txt").write_text("Nội dung kiểm thử TTS.", encoding="utf-8")
     manager = ProjectManager(tmp_path)
@@ -125,7 +125,7 @@ def test_video_stage_completes(app, tmp_path: Path, ffmpeg: str) -> None:
 
 
 def test_notes_accumulate_and_summary_includes_them(app, tmp_path: Path, monkeypatch) -> None:
-    inputs = tmp_path / "input"
+    inputs = tmp_path / "script"
     inputs.mkdir()
     (inputs / "tap_01.txt").write_text("Nội dung kiểm thử TTS.", encoding="utf-8")
     (inputs / "tap_02.txt").write_text("File này đã có audio.", encoding="utf-8")
@@ -174,7 +174,7 @@ def test_notes_accumulate_and_summary_includes_them(app, tmp_path: Path, monkeyp
 
 
 def test_retry_attempt_appends_note(app, tmp_path: Path, monkeypatch) -> None:
-    inputs = tmp_path / "input"
+    inputs = tmp_path / "script"
     inputs.mkdir()
     (inputs / "tap_01.txt").write_text("Nội dung kiểm thử retry.", encoding="utf-8")
     manager = ProjectManager(tmp_path)

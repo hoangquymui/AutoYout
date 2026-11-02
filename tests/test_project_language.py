@@ -8,7 +8,7 @@ from core.project_manager import ProjectManager
 
 
 def _write_inputs(tmp_path: Path) -> Path:
-    inputs = tmp_path / "input"
+    inputs = tmp_path / "script"
     inputs.mkdir(parents=True)
     (inputs / "intro_en.txt").write_text("Hello world.", encoding="utf-8")
     (inputs / "bai_02.txt").write_text("Xin chào.", encoding="utf-8")

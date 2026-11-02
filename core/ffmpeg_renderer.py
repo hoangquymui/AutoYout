@@ -1484,7 +1484,7 @@ class FFmpegRenderer:
         if item.text_file is not None:
             candidates += [item.text_file.with_suffix(".srt"),
                            item.text_file.with_suffix(".vtt")]
-        for base in (manager.input_dir, manager.audio_dir, manager.project_dir):
+        for base in (manager.script_dir, manager.audio_dir, manager.project_dir):
             candidates += [Path(base) / f"{item.base}.srt", Path(base) / f"{item.base}.vtt"]
         seen: set[str] = set()
         unique: List[Path] = []

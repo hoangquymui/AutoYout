@@ -492,7 +492,7 @@ def attach_thumbnail(manager, base: str, image_path: str | os.PathLike) -> Path:
     if source.resolve() != target.resolve():
         with Image.open(source) as image:
             image.convert("RGB").save(target, "JPEG", quality=92)
-    json_path = Path(manager.input_dir) / f"{base}.json"
+    json_path = Path(manager.script_dir) / f"{base}.json"
     data = load_json(json_path, {}) or {}
     if not isinstance(data, dict):
         data = {}

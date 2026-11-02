@@ -1,4 +1,4 @@
-"""Project folders, input discovery, metadata pairing and resumable state."""
+"""Project folders, script discovery, metadata pairing and resumable state."""
 from __future__ import annotations
 
 import hashlib
@@ -292,26 +292,21 @@ class ProjectManager:
     """One project folder = one ``project_state.json`` and the standard folders."""
 
     FOLDER_LABELS = [
-        ("input", "INPUT"),
         ("script", "SCRIPT"),
         ("audio", "AUDIO OUTPUT"),
         ("video", "VIDEO OUTPUT"),
         ("thumbs", "THUMBNAIL"),
         ("assets", "ASSETS"),
-        ("downloads", "DOWNLOADS"),
-        ("output", "OUTPUT"),
     ]
 
     def __init__(
         self,
         project_dir: str | os.PathLike,
-        input_dir: Optional[str | os.PathLike] = None,
         audio_dir: Optional[str | os.PathLike] = None,
         video_dir: Optional[str | os.PathLike] = None,
         assets_dir: Optional[str | os.PathLike] = None,
         script_dir: Optional[str | os.PathLike] = None,
         thumbs_dir: Optional[str | os.PathLike] = None,
-        output_dir: Optional[str | os.PathLike] = None,
         default_language: str = DEFAULT_LANGUAGE,
     ) -> None:
         self.project_dir = Path(project_dir).resolve()
@@ -319,14 +314,11 @@ class ProjectManager:
             self.project_dir.mkdir(parents=True, exist_ok=True)
         self.default_language = normalize_language(default_language)
         self.created_folders: List[str] = []
-        self.input_dir = self._resolve_dir(input_dir, "input", "input")
         self.audio_dir = self._resolve_dir(audio_dir, "audio", "audio")
         self.video_dir = self._resolve_dir(video_dir, "video", "video")
         self.assets_dir = self._resolve_dir(assets_dir, "assets", "assets")
         self.script_dir = self._resolve_dir(script_dir, "script", "script")
         self.thumbs_dir = self._resolve_dir(thumbs_dir, "thumbs", "thumbs")
-        self.output_dir = self._resolve_dir(output_dir, "output", "output")
-        self.downloads_dir = self._resolve_dir(None, "downloads", "downloads")
         self.state_path = self.project_dir / "project_state.json"
         self._state: Dict[str, Any] = self._load_state()
         self.items: Dict[str, ProjectItem] = {}
@@ -358,14 +350,11 @@ class ProjectManager:
     def folders(self) -> Dict[str, Path]:
         """Ordered mapping key → folder path used by the skeleton checklist."""
         return {
-            "input": self.input_dir,
             "script": self.script_dir,
             "audio": self.audio_dir,
             "video": self.video_dir,
             "thumbs": self.thumbs_dir,
             "assets": self.assets_dir,
-            "downloads": self.downloads_dir,
-            "output": self.output_dir,
         }
 
     def ensure_structure(self) -> List[str]:
@@ -424,14 +413,11 @@ class ProjectManager:
         self._state["version"] = 1
         self._state["project_dir"] = str(self.project_dir)
         self._state["paths"] = {
-            "input": str(self.input_dir),
+            "script": str(self.script_dir),
             "audio": str(self.audio_dir),
             "video": str(self.video_dir),
             "assets": str(self.assets_dir),
-            "script": str(self.script_dir),
             "thumbs": str(self.thumbs_dir),
-            "output": str(self.output_dir),
-            "downloads": str(self.downloads_dir),
         }
         self._state["items"] = {base: item.to_state() for base, item in self.items.items()}
         self._state["videos"] = {job_id: job.to_state() for job_id, job in self.videos.items()}
@@ -440,11 +426,11 @@ class ProjectManager:
 
     # ── scanning ─────────────────────────────────────────────────────────────
     def scan(self) -> List[ProjectItem]:
-        """Discover inputs, pair ``name.txt`` with ``name.json`` and refresh state."""
+        """Discover scripts, pair ``name.txt`` with ``name.json`` and refresh state."""
         old_items = dict(self._state.get("items") or {})
         text_files: Dict[str, Path] = {}
         json_files: Dict[str, Path] = {}
-        for path in natural_sorted(self.input_dir.iterdir() if self.input_dir.exists() else []):
+        for path in natural_sorted(self.script_dir.iterdir() if self.script_dir.exists() else []):
             if not path.is_file():
                 continue
             suffix = path.suffix.lower()
@@ -549,7 +535,7 @@ class ProjectManager:
             )
 
         # Keep state for items whose files disappeared only when an output exists;
-        # the working set is always what the input folder currently contains.
+        # the working set is always what the script folder currently contains.
         self.items = items
         pruned = [job_id for job_id, job in self.videos.items()
                   if not set(job.items).issubset(items)]

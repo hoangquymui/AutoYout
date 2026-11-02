@@ -14,7 +14,7 @@ def _renderer() -> FFmpegRenderer:
 
 
 def _manager(tmp_path: Path) -> ProjectManager:
-    inputs = tmp_path / "input"
+    inputs = tmp_path / "script"
     inputs.mkdir(parents=True, exist_ok=True)
     (inputs / "tap_01.txt").write_text("Nội dung phần một.", encoding="utf-8")
     (inputs / "bai_zh.txt").write_text("你好，世界。", encoding="utf-8")

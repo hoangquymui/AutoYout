@@ -6,13 +6,11 @@
   },
   "project": {
     "last_project": "",
-    "input_dir": "input",
     "audio_dir": "audio",
     "video_dir": "video",
     "assets_dir": "assets",
     "script_dir": "script",
     "thumbs_dir": "thumbs",
-    "output_dir": "output",
     "force_overwrite": false
   },
   "script": {

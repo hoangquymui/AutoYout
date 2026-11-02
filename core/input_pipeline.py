@@ -608,14 +608,6 @@ def web_to_text(url: str, out_txt: str | os.PathLike,
     return target
 
 
-def videos_dir_for(project_dir: str | os.PathLike,
-                   name: str = "downloads") -> Path:
-    """Default folder for downloaded MP4s inside a project."""
-    path = Path(project_dir) / name
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
 def unique_text_path(folder: str | os.PathLike, stem: str) -> Path:
     """``tap_01.txt`` → ``tap_01-2.txt`` … so imports never overwrite inputs."""
     base = re.sub(r"[^\w.-]+", "_", str(stem or "input")).strip("._") or "input"

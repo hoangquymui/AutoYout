@@ -11,12 +11,11 @@ from core.project_manager import ProjectManager
 
 def test_init_creates_all_standard_folders(tmp_path: Path) -> None:
     manager = ProjectManager(tmp_path)
-    expected = {"input", "script", "audio", "video", "thumbs", "assets",
-                "downloads", "output"}
+    expected = {"script", "audio", "video", "thumbs", "assets"}
     assert {path.name for _, path in manager.folders().items()} == expected
     assert all(path.is_dir() for _, path in manager.folders().items())
     status = manager.folder_status()
-    assert len(status) == 8
+    assert len(status) == 5
     assert all(entry["exists"] for entry in status)
 
 
@@ -48,7 +47,7 @@ def test_create_project_builds_state(tmp_path: Path) -> None:
     assert (target / "project_state.json").is_file()
     state = json.loads((target / "project_state.json").read_text(encoding="utf-8"))
     assert state["paths"]["script"].endswith("script")
-    assert (target / "input").is_dir()
+    assert (target / "script").is_dir()
 
 
 def test_create_project_rejects_non_empty_folder(tmp_path: Path) -> None:
@@ -64,7 +63,7 @@ def test_old_state_without_new_keys_still_opens(tmp_path: Path) -> None:
         "version": 1,
         "items": {},
         "videos": {},
-        "paths": {"input": str(tmp_path / "input")},
+        "paths": {"script": str(tmp_path / "script")},
     }
     (tmp_path / "project_state.json").write_text(
         json.dumps(state), encoding="utf-8"
@@ -72,4 +71,4 @@ def test_old_state_without_new_keys_still_opens(tmp_path: Path) -> None:
     manager = ProjectManager(tmp_path)
     manager.scan()
     assert manager.script_dir.is_dir()
-    assert manager.output_dir.is_dir()
+    assert manager.thumbs_dir.is_dir()

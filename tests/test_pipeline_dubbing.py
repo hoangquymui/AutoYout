@@ -46,7 +46,7 @@ class _FakeEngine:
 
 
 def _project(tmp_path: Path) -> tuple[ProjectManager, str]:
-    inputs = tmp_path / "input"
+    inputs = tmp_path / "script"
     inputs.mkdir()
     (inputs / "tap.txt").write_text("Nội dung lồng tiếng thử.", encoding="utf-8")
     manager = ProjectManager(tmp_path)

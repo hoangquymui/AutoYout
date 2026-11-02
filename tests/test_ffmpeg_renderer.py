@@ -15,7 +15,7 @@ from core.settings import load_settings
 
 
 def _manager(tmp_path: Path, count: int = 3) -> ProjectManager:
-    inputs = tmp_path / "input"
+    inputs = tmp_path / "script"
     inputs.mkdir(parents=True, exist_ok=True)
     for index in range(1, count + 1):
         (inputs / f"tap_{index}.txt").write_text(f"Nội dung phần {index}.", encoding="utf-8")

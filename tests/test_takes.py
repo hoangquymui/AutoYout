@@ -16,7 +16,7 @@ def _write(path: Path, text: str) -> None:
 
 def test_old_state_without_take_keys_defaults(tmp_path: Path) -> None:
     """State JSON written before the takes feature loads with []/0 defaults."""
-    _write(tmp_path / "input" / "a.txt", "Nội dung.")
+    _write(tmp_path / "script" / "a.txt", "Nội dung.")
     legacy_audio = str((tmp_path / "audio" / "a.mp3").resolve())
     (tmp_path / "project_state.json").write_text(
         json.dumps({
@@ -55,7 +55,7 @@ def test_old_state_without_take_keys_defaults(tmp_path: Path) -> None:
 
 def test_takes_round_trip_and_select_take(tmp_path: Path) -> None:
     """New take fields survive save/scan, and select_take syncs the primary path."""
-    _write(tmp_path / "input" / "a.txt", "Nội dung.")
+    _write(tmp_path / "script" / "a.txt", "Nội dung.")
     manager = ProjectManager(tmp_path)
     manager.scan()
     item = manager.get_item("a")
@@ -99,7 +99,7 @@ def test_takes_round_trip_and_select_take(tmp_path: Path) -> None:
 
 def test_select_take_on_empty_takes_keeps_audio(tmp_path: Path) -> None:
     """With no candidate takes yet, select_take is a no-op that reports False."""
-    _write(tmp_path / "input" / "a.txt", "Nội dung.")
+    _write(tmp_path / "script" / "a.txt", "Nội dung.")
     manager = ProjectManager(tmp_path)
     manager.scan()
     item = manager.get_item("a")
@@ -148,7 +148,7 @@ def test_audio_variant_paths_are_deterministic() -> None:
 
 def test_add_and_remove_takes(tmp_path: Path) -> None:
     """add_take/remove_take dedupe, re-select and re-sync the audio path."""
-    _write(tmp_path / "input" / "a.txt", "Nội dung.")
+    _write(tmp_path / "script" / "a.txt", "Nội dung.")
     manager = ProjectManager(tmp_path)
     manager.scan()
     item = manager.get_item("a")

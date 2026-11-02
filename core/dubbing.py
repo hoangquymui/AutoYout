@@ -165,8 +165,8 @@ def reindex(cues: Iterable[CueJob]) -> List[CueJob]:
 
 # ── importing ────────────────────────────────────────────────────────────────
 def _ensure_input_text(manager, base: str, text: str, title: str) -> None:
-    txt_path = Path(manager.input_dir) / f"{base}.txt"
-    json_path = Path(manager.input_dir) / f"{base}.json"
+    txt_path = Path(manager.script_dir) / f"{base}.txt"
+    json_path = Path(manager.script_dir) / f"{base}.json"
     if not txt_path.exists():
         txt_path.parent.mkdir(parents=True, exist_ok=True)
         txt_path.write_text(str(text).strip() + "\n", encoding="utf-8", newline="\n")
