@@ -193,6 +193,9 @@ def test_video_pool_settings_roundtrip(window) -> None:
     tab.pool_dir_edit.setText("D:/clips")
     tab.pool_count_spin.setValue(5)
     tab.write_srt_check.setChecked(True)
+    tab.grouping_combo.setCurrentIndex(tab.grouping_combo.findData("group"))
+    tab.group_size_spin.setValue(4)
+    tab.gap_spin.setValue(2.0)
     tab.apply_to(window.settings)
 
     video = window.settings["video"]
@@ -200,14 +203,23 @@ def test_video_pool_settings_roundtrip(window) -> None:
     assert video["video_pool_dir"] == "D:/clips"
     assert video["video_pool_count"] == 5
     assert video["write_srt"] is True
+    assert video["grouping"] == "group"
+    assert video["group_size"] == 4
+    assert video["gap"] == 2.0
 
     tab.pool_dir_edit.setText("")
     tab.pool_count_spin.setValue(0)
     tab.write_srt_check.setChecked(False)
+    tab.grouping_combo.setCurrentIndex(tab.grouping_combo.findData("one"))
+    tab.group_size_spin.setValue(10)
+    tab.gap_spin.setValue(1.5)
     tab.load_from(window.settings)
     assert tab.pool_dir_edit.text() == "D:/clips"
     assert tab.pool_count_spin.value() == 5
     assert tab.write_srt_check.isChecked() is True
+    assert tab.grouping_combo.currentData() == "group"
+    assert tab.group_size_spin.value() == 4
+    assert tab.gap_spin.value() == 2.0
 
 
 def test_srt_file_roundtrip(window) -> None:

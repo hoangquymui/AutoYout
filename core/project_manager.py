@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -314,6 +315,7 @@ class ProjectManager:
             self.project_dir.mkdir(parents=True, exist_ok=True)
         self.default_language = normalize_language(default_language)
         self.created_folders: List[str] = []
+        self._lock = threading.RLock()
         self.audio_dir = self._resolve_dir(audio_dir, "audio", "audio")
         self.video_dir = self._resolve_dir(video_dir, "video", "video")
         self.assets_dir = self._resolve_dir(assets_dir, "assets", "assets")
@@ -410,24 +412,26 @@ class ProjectManager:
         return data
 
     def save_state(self) -> None:
-        self._state["version"] = 1
-        self._state["project_dir"] = str(self.project_dir)
-        self._state["paths"] = {
-            "script": str(self.script_dir),
-            "audio": str(self.audio_dir),
-            "video": str(self.video_dir),
-            "assets": str(self.assets_dir),
-            "thumbs": str(self.thumbs_dir),
-        }
-        self._state["items"] = {base: item.to_state() for base, item in self.items.items()}
-        self._state["videos"] = {job_id: job.to_state() for job_id, job in self.videos.items()}
-        self._state["updated_at"] = _now()
-        write_json_atomic(self.state_path, self._state)
+        with self._lock:
+            self._state["version"] = 1
+            self._state["project_dir"] = str(self.project_dir)
+            self._state["paths"] = {
+                "script": str(self.script_dir),
+                "audio": str(self.audio_dir),
+                "video": str(self.video_dir),
+                "assets": str(self.assets_dir),
+                "thumbs": str(self.thumbs_dir),
+            }
+            self._state["items"] = {base: item.to_state() for base, item in self.items.items()}
+            self._state["videos"] = {job_id: job.to_state() for job_id, job in self.videos.items()}
+            self._state["updated_at"] = _now()
+            write_json_atomic(self.state_path, self._state)
 
     # ── scanning ─────────────────────────────────────────────────────────────
     def scan(self) -> List[ProjectItem]:
         """Discover scripts, pair ``name.txt`` with ``name.json`` and refresh state."""
-        old_items = dict(self._state.get("items") or {})
+        with self._lock:
+            old_items = dict(self._state.get("items") or {})
         text_files: Dict[str, Path] = {}
         json_files: Dict[str, Path] = {}
         for path in natural_sorted(self.script_dir.iterdir() if self.script_dir.exists() else []):

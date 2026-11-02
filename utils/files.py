@@ -5,6 +5,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Iterable, List, Optional
 
@@ -63,7 +64,7 @@ def read_text_smart(path: os.PathLike | str) -> str:
 
 
 def write_json_atomic(path: os.PathLike | str, payload: Any) -> None:
-    """Write JSON atomically so a crash cannot leave a half-written state file."""
+    """Write JSON atomically with retry on Windows sharing violations (WinError 32)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
@@ -72,7 +73,28 @@ def write_json_atomic(path: os.PathLike | str, payload: Any) -> None:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(tmp_name, path)
+
+        # Windows can temporarily lock files during antivirus scanning,
+        # QFileSystemModel, or background readers (WinError 32 / WinError 5).
+        # Retry with progressive backoff.
+        last_err: Optional[Exception] = None
+        for attempt in range(15):
+            try:
+                os.replace(tmp_name, path)
+                last_err = None
+                break
+            except OSError as exc:
+                last_err = exc
+                time.sleep(0.04 * (attempt + 1))
+
+        if last_err is not None:
+            # Fallback: attempt direct overwrite if replace remains locked
+            try:
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(payload, handle, ensure_ascii=False, indent=2)
+                    handle.flush()
+            except Exception:
+                raise last_err
     finally:
         if os.path.exists(tmp_name):
             try:

@@ -328,6 +328,44 @@ class VideoConfigTab(QWidget):
         right.setSpacing(12)
         columns.addLayout(right, 1)
 
+        group_box = QGroupBox("Chế độ tạo video")
+        group_form = QFormLayout(group_box)
+        group_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        group_form.setHorizontalSpacing(12)
+        group_form.setVerticalSpacing(8)
+
+        self.grouping_combo = QComboBox()
+        self.grouping_combo.addItem("Mỗi file là một video", "one")
+        self.grouping_combo.addItem("Gộp tất cả thành 1 video", "all")
+        self.grouping_combo.addItem("Ghép theo nhóm file", "group")
+        group_form.addRow("Chế độ ghép", self.grouping_combo)
+
+        self.group_size_spin = QSpinBox()
+        self.group_size_spin.setRange(2, 200)
+        self.group_size_spin.setValue(10)
+        self.group_size_spin.setSuffix(" file / video")
+        self.group_size_label = QLabel("Số file mỗi video")
+        group_form.addRow(self.group_size_label, self.group_size_spin)
+
+        self.gap_spin = QDoubleSpinBox()
+        self.gap_spin.setRange(0.0, 10.0)
+        self.gap_spin.setSingleStep(0.5)
+        self.gap_spin.setDecimals(1)
+        self.gap_spin.setValue(1.5)
+        self.gap_spin.setSuffix(" giây")
+        self.gap_label = QLabel("Khoảng lặng giữa file")
+        group_form.addRow(self.gap_label, self.gap_spin)
+
+        self.group_hint = QLabel(
+            "• Mỗi file là một video: Từng file audio/kịch bản trong dự án sẽ được tạo thành một video .mp4 riêng biệt."
+        )
+        self.group_hint.setObjectName("MutedLabel")
+        self.group_hint.setWordWrap(True)
+        group_form.addRow("", self.group_hint)
+
+        self.grouping_combo.currentIndexChanged.connect(self._on_grouping_changed)
+        right.addWidget(group_box)
+
         output_box = QGroupBox("Xuất video")
         output_form = QFormLayout(output_box)
         output_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
@@ -452,6 +490,28 @@ class VideoConfigTab(QWidget):
         self.visual_combo.currentIndexChanged.connect(self._sync_visual_height)
         self.ai_mode_combo.currentIndexChanged.connect(self._on_ai_mode_changed)
         self._sync_visual_height()
+        self._on_grouping_changed()
+
+    def _on_grouping_changed(self) -> None:
+        mode = str(self.grouping_combo.currentData() or "one")
+        is_group = (mode == "group")
+        is_all_or_group = (mode in ("all", "group"))
+        self.group_size_label.setVisible(is_group)
+        self.group_size_spin.setVisible(is_group)
+        self.gap_label.setVisible(is_all_or_group)
+        self.gap_spin.setVisible(is_all_or_group)
+        if mode == "one":
+            self.group_hint.setText(
+                "• Mỗi file là một video: Từng file audio/kịch bản trong dự án sẽ được tạo thành một video .mp4 riêng biệt."
+            )
+        elif mode == "all":
+            self.group_hint.setText(
+                "• Gộp tất cả thành 1 video: Toàn bộ file trong dự án được ghép nối thành một video dài duy nhất, tự động tạo chapters."
+            )
+        else:
+            self.group_hint.setText(
+                "• Ghép theo nhóm: Chia dự án thành các phần video, mỗi video gồm số file quy định bên trên."
+            )
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -469,6 +529,11 @@ class VideoConfigTab(QWidget):
         self._settings = settings
         video = settings.get("video") or {}
         paths = settings.get("paths") or {}
+        grouping = str(video.get("grouping") or "one").lower()
+        self._set_combo(self.grouping_combo, grouping)
+        self.group_size_spin.setValue(int(video.get("group_size", 10) or 10))
+        self.gap_spin.setValue(float(video.get("gap", 1.5) or 1.5))
+        self._on_grouping_changed()
         self._set_combo(self.visual_combo, video.get("visual", "image"))
         self.image_edit.setText(str(video.get("image") or ""))
         self.slideshow_edit.setText(str(video.get("slideshow_dir") or ""))
@@ -513,6 +578,9 @@ class VideoConfigTab(QWidget):
     def apply_to(self, settings: Dict[str, Any]) -> None:
         video = settings.setdefault("video", {})
         paths = settings.setdefault("paths", {})
+        video["grouping"] = self.grouping_combo.currentData() or "one"
+        video["group_size"] = int(self.group_size_spin.value())
+        video["gap"] = round(float(self.gap_spin.value()), 2)
         video["visual"] = self.visual_combo.currentData() or "image"
         video["image"] = self.image_edit.text().strip()
         video["slideshow_dir"] = self.slideshow_edit.text().strip()

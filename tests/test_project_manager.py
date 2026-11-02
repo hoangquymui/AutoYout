@@ -112,3 +112,29 @@ def test_video_lookup_by_item(tmp_path: Path) -> None:
     manager.upsert_video(job)
     assert manager.video_for_item("b") is job
     assert manager.video_for_item("missing") is None
+
+
+def test_write_json_atomic_concurrent_read(tmp_path: Path) -> None:
+    import threading
+    import time
+    from utils.files import load_json, write_json_atomic
+
+    state_file = tmp_path / "project_state.json"
+    write_json_atomic(state_file, {"initial": True})
+
+    # Hold an open reader handle briefly
+    def reader() -> None:
+        with open(state_file, "r", encoding="utf-8"):
+            time.sleep(0.12)
+
+    t = threading.Thread(target=reader)
+    t.start()
+    time.sleep(0.01)
+
+    # write_json_atomic should retry and succeed despite transient Windows lock
+    write_json_atomic(state_file, {"updated": True})
+    t.join()
+
+    data = load_json(state_file)
+    assert data == {"updated": True}
+
