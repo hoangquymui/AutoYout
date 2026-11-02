@@ -55,7 +55,7 @@ from ui.components.audio_player import AudioPreview
 from ui.components.icons import set_icon
 from ui.components.page import PageHeader, paint_status
 from ui.tab_tts import TTSConfigTab
-from utils.files import open_in_explorer
+from utils.files import open_in_explorer, read_text_smart
 from utils.logger import get_logger
 from utils.media_probe import format_duration
 
@@ -314,6 +314,12 @@ class DubbingTab(QWidget):
             "Số từ tối đa mỗi đoạn — gặp dấu chấm gần nhất thì cắt.")
         row2.addWidget(self.max_words_spin)
 
+        self.reload_btn = QPushButton("Tải lại")
+        set_icon(self.reload_btn, "refresh", "accent", 13)
+        self.reload_btn.setToolTip("Chia lại đoạn theo số từ hiện tại hoặc tải lại từ file.")
+        self.reload_btn.clicked.connect(self._resplit_or_reload)
+        row2.addWidget(self.reload_btn)
+
         row2.addStretch(1)
 
         self.stats_label = QLabel("0 đoạn · Xong 0 · Lỗi 0 · 0s")
@@ -322,16 +328,15 @@ class DubbingTab(QWidget):
 
         layout.addLayout(row2)
 
-        self.table = QTableWidget(0, 6)
+        self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
-            ["STT", "Thời gian", "Nội dung", "Giọng", "Trạng thái", "File xuất"])
+            ["STT", "Thời gian", "Nội dung", "Trạng thái", "File xuất"])
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setWordWrap(True)
@@ -462,6 +467,49 @@ class DubbingTab(QWidget):
         self._refresh_stats()
         self._refresh_buttons()
 
+    def _resplit_or_reload(self) -> None:
+        if self._worker is not None or self._join is not None:
+            return
+        if self._manager is None or not self._base:
+            self._set_status("Hãy chọn file trước khi tải lại.", "warning")
+            return
+        txt_path = Path(self._manager.script_dir) / f"{self._base}.txt"
+        min_words = int(self.min_words_spin.value())
+        max_words = int(self.max_words_spin.value())
+
+        # Cách 1: Đọc lại file văn bản gốc và tách đoạn theo khoảng từ mới
+        if txt_path.is_file():
+            try:
+                text = read_text_smart(txt_path)
+                pieces = dubbing.split_by_words(text, min_words, max_words)
+                if pieces:
+                    jobs = dubbing._cues_from_pieces(pieces)
+                    save_cues(self._manager, self._base, jobs)
+                    self._reload_from_disk()
+                    self._set_status(f"Đã chia lại thành {len(self._cues)} đoạn.", "success")
+                    self.reload_requested.emit()
+                    return
+            except Exception as exc:
+                logger.warning("Lỗi chia lại từ file gốc %s: %s", txt_path, exc)
+
+        # Cách 2: Nếu có các đoạn hiện tại, gộp nội dung và chia lại
+        if self._cues:
+            full_text = " ".join(c.text for c in self._cues if c.text)
+            if full_text.strip():
+                pieces = dubbing.split_by_words(full_text, min_words, max_words)
+                if pieces:
+                    jobs = dubbing._cues_from_pieces(pieces)
+                    save_cues(self._manager, self._base, jobs)
+                    self._reload_from_disk()
+                    self._set_status(f"Đã chia lại thành {len(self._cues)} đoạn.", "success")
+                    self.reload_requested.emit()
+                    return
+
+        # Cách 3: Nạp lại từ đĩa
+        self._reload_from_disk()
+        self._set_status(f"Đã tải lại {len(self._cues)} đoạn từ đĩa.", "muted")
+        self.reload_requested.emit()
+
     def _save_cues(self) -> None:
         if self._manager is not None and self._base:
             save_cues(self._manager, self._base, self._cues)
@@ -471,7 +519,6 @@ class DubbingTab(QWidget):
         self._filling = True
         self.table.clearContents()
         self.table.setRowCount(len(self._cues))
-        voices = self.tts_page.voice_names()
         for row, cue in enumerate(self._cues):
             self.table.setItem(row, 0, self._readonly(str(cue.id)))
             self.table.setItem(row, 1, self._readonly(
@@ -481,18 +528,8 @@ class DubbingTab(QWidget):
                 Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
                 | Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row, 2, content)
-            combo = QComboBox()
-            combo.setMinimumWidth(170)
-            combo.addItem("— Mặc định —", "")
-            for name in voices:
-                combo.addItem(name, name)
-            index = combo.findData(cue.voice)
-            combo.setCurrentIndex(max(0, index))
-            combo.currentIndexChanged.connect(
-                lambda _i, c=cue, box=combo: self._set_cue_voice(c, box.currentData() or ""))
-            self.table.setCellWidget(row, 3, combo)
-            self.table.setItem(row, 4, self._readonly(""))
-            self.table.setItem(row, 5, self._readonly(self._output_name(cue)))
+            self.table.setItem(row, 3, self._readonly(""))
+            self.table.setItem(row, 4, self._readonly(self._output_name(cue)))
             self._paint_row(row)
         self._filling = False
 
@@ -512,11 +549,11 @@ class DubbingTab(QWidget):
         if row >= len(self._cues):
             return
         cue = self._cues[row]
-        status = self.table.item(row, 4)
+        status = self.table.item(row, 3)
         if status is not None:
             status.setText(_STATUS_TEXT.get(cue.status, cue.status))
             status.setForeground(QColor(_status_color(cue.status)))
-        output = self.table.item(row, 5)
+        output = self.table.item(row, 4)
         if output is not None:
             output.setText(self._output_name(cue))
 
@@ -610,16 +647,6 @@ class DubbingTab(QWidget):
 
     def _assign_voice(self, cue: CueJob, name: str) -> None:
         self._set_cue_voice(cue, name)
-        try:
-            row = self._cues.index(cue)
-        except ValueError:
-            return
-        combo = self.table.cellWidget(row, 3)
-        if isinstance(combo, QComboBox):
-            combo.blockSignals(True)
-            index = combo.findData(name)
-            combo.setCurrentIndex(max(0, index))
-            combo.blockSignals(False)
 
     def _assign_voice_all(self, name: str) -> None:
         changed = False
@@ -676,6 +703,7 @@ class DubbingTab(QWidget):
         self.stop_btn.setEnabled(self._worker is not None)
         self.import_btn.setEnabled(not busy and self._manager is not None)
         self.import_dir_btn.setEnabled(not busy and self._manager is not None)
+        self.reload_btn.setEnabled(not busy and bool(self._base))
         self.open_btn.setEnabled(self._manager is not None)
         self.join_btn.setEnabled(not busy and has_cues)
         self.file_combo.setEnabled(not busy)

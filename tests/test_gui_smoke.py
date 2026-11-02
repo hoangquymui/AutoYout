@@ -80,7 +80,7 @@ def test_theme_toggle_switches_and_persists(window) -> None:
     assert theme.current_mode() == "light"
     assert window.settings["app"]["theme"] == "light"
     assert window.btn_theme.property("ayIconName") == "moon"
-    assert "#F2F5FA" in QApplication.instance().styleSheet()
+    assert theme.BG in QApplication.instance().styleSheet()
     window._apply_theme("dark")
 
 
@@ -481,12 +481,40 @@ def test_dubbing_tab_ui_layout_and_labels(window) -> None:
     dub = window.tts_tab
     assert dub.import_btn.text() == "Nhập TXT"
     assert dub.import_dir_btn.text() == "Nhập thư mục"
+    assert dub.reload_btn.text() == "Tải lại"
     assert dub.start_btn.text() == "Bắt đầu"
     assert dub.pause_btn.text() == "Tạm dừng"
     assert dub.stop_btn.text() == "Dừng"
     assert dub.open_btn.text() == "Mở thư mục xuất"
     assert dub.inner_tabs.tabText(0) == "Bảng đoạn"
-    headers = [dub.table.horizontalHeaderItem(i).text() for i in range(6)]
-    assert headers == ["STT", "Thời gian", "Nội dung", "Giọng", "Trạng thái", "File xuất"]
+    headers = [dub.table.horizontalHeaderItem(i).text() for i in range(5)]
+    assert headers == ["STT", "Thời gian", "Nội dung", "Trạng thái", "File xuất"]
     assert "0 đoạn · Xong 0" in dub.stats_label.text()
+
+
+def test_dubbing_tab_resplit_or_reload(window, tmp_path: Path) -> None:
+    from core import dubbing
+    project = tmp_path / "proj"
+    script_file = project / "script" / "sample.txt"
+    script_file.parent.mkdir(parents=True, exist_ok=True)
+    words = "Một hai ba bốn năm sáu bảy tám chín mười. Mười một mười hai mười ba mười bốn mười lăm mười sáu mười bảy mười tám mười chín hai mươi."
+    script_file.write_text(words, encoding="utf-8")
+
+    window.project_tab.set_project(str(project))
+    window._reload_project()
+
+    dubbing.import_txt(window.manager, script_file, min_words=15, max_words=30)
+    window._reload_project()
+
+    dub = window.tts_tab
+    dub.min_words_spin.setValue(5)
+    dub.max_words_spin.setValue(10)
+    dub.reload_btn.click()
+
+    assert len(dub._cues) >= 2
+    assert "đoạn" in dub.stats_label.text()
+    assert dub.table.rowCount() == len(dub._cues)
+    assert dub.table.columnCount() == 5
+    assert dub.table.item(0, 3).text() == "Chờ"
+
 
