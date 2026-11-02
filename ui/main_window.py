@@ -44,6 +44,7 @@ from ui.components.status_badge import StatusBadge
 from ui.styles import app_stylesheet
 from ui.tab_automation import AutomationTab
 from ui.tab_project import ProjectTab
+from ui.tab_settings import SettingsTab
 from ui.tab_script import ScriptTab
 from ui.tab_dubbing import DubbingTab
 from ui.tab_frame import FrameTab
@@ -148,6 +149,7 @@ class MainWindow(QMainWindow):
         self.tabs.setMinimumHeight(320)
         self.tabs.tabBar().setDrawBase(False)
         self.project_tab = ProjectTab()
+        self.settings_tab = SettingsTab()
         self.script_tab = ScriptTab()
         self.tts_tab = DubbingTab()
         self.video_tab = VideoConfigTab()
@@ -155,6 +157,7 @@ class MainWindow(QMainWindow):
         self.youtube_tab = YouTubeConfigTab()
         self.automation_tab = AutomationTab()
         self.tabs.addTab(self.project_tab, icon("folder", theme.TEXT_DIM, 15), "Dự án")
+        self.tabs.addTab(self.settings_tab, icon("settings", theme.TEXT_DIM, 15), "Cài đặt")
         self.tabs.addTab(self.script_tab, icon("file", theme.TEXT_DIM, 15), "Kịch bản")
         self.tabs.addTab(self.tts_tab, icon("mic", theme.TEXT_DIM, 15), "Lồng tiếng")
         self.tabs.addTab(self.video_tab, icon("film", theme.TEXT_DIM, 15), "Video")
@@ -166,6 +169,7 @@ class MainWindow(QMainWindow):
         self._update_tab_icons()
         layout.addWidget(self.tabs, 1)
 
+        self.settings_tab.settings_changed.connect(self._on_settings_tab_changed)
         self.automation_tab.run_requested.connect(self._start_pipeline)
         self.automation_tab.pause_requested.connect(self._toggle_pause)
         self.automation_tab.stop_requested.connect(self._stop_pipeline)
@@ -283,6 +287,7 @@ class MainWindow(QMainWindow):
     # ── startup / settings ───────────────────────────────────────────────────
     def _load_settings_into_tabs(self) -> None:
         self.project_tab.load_from(self.settings)
+        self.settings_tab.load_from(self.settings)
         self.script_tab.load_from(self.settings)
         self.tts_tab.load_from(self.settings)
         self.video_tab.load_from(self.settings)
@@ -291,12 +296,20 @@ class MainWindow(QMainWindow):
 
     def _collect_all(self) -> None:
         self.project_tab.apply_to(self.settings)
+        self.settings_tab.apply_to(self.settings)
         self.script_tab.apply_to(self.settings)
         self.tts_tab.apply_to(self.settings)
         self.video_tab.apply_to(self.settings)
         self.frame_tab.apply_to(self.settings)
         self.youtube_tab.apply_to(self.settings)
         save_settings(self.settings)
+
+    def _on_settings_tab_changed(self) -> None:
+        self.settings_tab.apply_to(self.settings)
+        save_settings(self.settings)
+        self.video_tab.load_from(self.settings)
+        self.script_tab.load_from(self.settings)
+        self._refresh_statuses()
 
     def _startup(self) -> None:
         logger.info("AutoYout khởi động.")
@@ -669,7 +682,7 @@ class MainWindow(QMainWindow):
 
     # ── theme ────────────────────────────────────────────────────────────────
     def _update_tab_icons(self, index: int | None = None) -> None:
-        names = ("folder", "file", "mic", "film", "youtube", "zap")
+        names = ("folder", "settings", "file", "mic", "film", "youtube", "zap")
         current = self.tabs.currentIndex() if index is None else index
         for position, name in enumerate(names):
             color = theme.ACCENT_SOFT if position == current else theme.TEXT_DIM
@@ -700,6 +713,7 @@ class MainWindow(QMainWindow):
         for badge in (self.badge_tts, self.badge_ffmpeg, self.badge_youtube):
             badge.apply_theme()
         self.project_tab.apply_theme()
+        self.settings_tab.apply_theme()
         self.tts_tab.apply_theme()
         self.video_tab.apply_theme()
         self.frame_tab.apply_theme()

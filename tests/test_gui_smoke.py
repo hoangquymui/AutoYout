@@ -43,11 +43,19 @@ def window(app, monkeypatch, tmp_path: Path):
 def test_window_builds_all_tabs(window) -> None:
     assert window.windowTitle().startswith("AutoYout")
     assert not window.windowIcon().isNull()
-    assert window.tabs.count() == 6
+    assert window.tabs.count() == 7
     labels = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-    assert labels == ["Dự án", "Kịch bản",
+    assert labels == ["Dự án", "Cài đặt", "Kịch bản",
                       "Lồng tiếng", "Video", "YouTube",
                       "Automation"]
+    assert window.settings_tab.inner_tabs.count() == 2
+    assert window.settings_tab.inner_tabs.tabText(0) == "Cài đặt chung"
+    assert window.settings_tab.inner_tabs.tabText(1) == "API"
+    assert window.settings_tab.api_tabs.count() == 3
+    assert window.settings_tab.api_tabs.tabText(0) == "Văn bản AI"
+    assert window.settings_tab.api_tabs.tabText(1) == "Giọng đọc (TTS)"
+    assert window.settings_tab.api_tabs.tabText(2) == "Ảnh / Video AI"
+    assert window.settings_tab.card_h2mtts is not None
     inner_video_labels = [
         window.video_tab.inner_tabs.tabText(i)
         for i in range(window.video_tab.inner_tabs.count())
