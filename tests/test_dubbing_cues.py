@@ -111,7 +111,7 @@ def test_import_srt_creates_input_text(tmp_path: Path) -> None:
     base = import_srt(manager, srt)
 
     assert base == "Bài giảng 01"
-    txt = manager.input_dir / f"{base}.txt"
+    txt = manager.script_dir / f"{base}.txt"
     assert txt.is_file()
     assert "Xin chào các bạn." in txt.read_text(encoding="utf-8")
     cues = load_cues(manager, base)

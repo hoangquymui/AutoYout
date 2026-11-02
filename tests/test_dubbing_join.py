@@ -26,8 +26,8 @@ def _tone(ffmpeg: str, target: Path, seconds: float) -> Path:
 
 @pytest.fixture
 def project(tmp_path: Path, ffmpeg: str) -> tuple[ProjectManager, object, list[CueJob]]:
-    (tmp_path / "input").mkdir()
-    (tmp_path / "input" / "tap.txt").write_text("Lồng tiếng thử.", encoding="utf-8")
+    (tmp_path / "script").mkdir()
+    (tmp_path / "script" / "tap.txt").write_text("Lồng tiếng thử.", encoding="utf-8")
     manager = ProjectManager(tmp_path)
     manager.scan()
     item = manager.get_item("tap")
