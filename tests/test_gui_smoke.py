@@ -41,25 +41,27 @@ def window(app, monkeypatch, tmp_path: Path):
 
 
 def test_window_builds_all_tabs(window) -> None:
-    assert window.tabs.count() == 6
+    assert window.tabs.count() == 7
     labels = [window.tabs.tabText(i) for i in range(window.tabs.count())]
     assert labels == ["Dự án", "Kịch bản",
-                      "Lồng tiếng", "Video", "Video Frame", "YouTube"]
-    assert window.btn_tts.text().startswith("1. Lồng tiếng")
-    assert window.btn_video.text().startswith("2. Tạo Video")
-    assert window.btn_upload.text().startswith("3. Upload YouTube")
-    assert "AUTO ALL" in window.btn_all.text()
-    assert window.btn_pause.isEnabled() is False
-    assert window.btn_stop.isEnabled() is False
+                      "Lồng tiếng", "Video", "Video Frame", "YouTube",
+                      "Automation"]
+    tab = window.automation_tab
+    assert tab.btn_tts.text().startswith("1. Lồng tiếng")
+    assert tab.btn_video.text().startswith("2. Tạo Video")
+    assert tab.btn_upload.text().startswith("3. Upload YouTube")
+    assert "AUTO ALL" in tab.btn_all.text()
+    assert tab.btn_pause.isEnabled() is False
+    assert tab.btn_stop.isEnabled() is False
 
 
 def test_log_console_and_status(window) -> None:
-    window.log_console.append("INFO", "xin chào")
-    window.log_console.append("ERROR", "lỗi thử")
-    text = window.log_console.view.toPlainText()
+    window.automation_tab.log_console.append("INFO", "xin chào")
+    window.automation_tab.log_console.append("ERROR", "lỗi thử")
+    text = window.automation_tab.log_console.view.toPlainText()
     assert "xin chào" in text and "lỗi thử" in text
     window._set_status("Đang chạy thử", running=True)
-    assert "Đang chạy thử" in window.status_label.text()
+    assert "Đang chạy thử" in window.automation_tab.status_label.text()
     window.tts_tab.cancel_preview()
 
 
@@ -164,18 +166,19 @@ def test_subtitle_and_duck_roundtrip(window) -> None:
     assert tab.bgm_duck.value() == 40
 
 
-def test_open_project_populates_table(window, tmp_path: Path) -> None:
+def test_open_project_populates_tree(window, tmp_path: Path) -> None:
     project = tmp_path / "demo"
-    inputs = project / "input"
+    inputs = project / "script"
     inputs.mkdir(parents=True)
     (inputs / "tap_01.txt").write_text("Nội dung thử.", encoding="utf-8")
     window.project_tab.set_project(str(project))
     window._reload_project()
 
     assert window.manager is not None
-    assert window.project_tab.table.rowCount() == 1
+    assert Path(window.project_tab.fs_model.rootPath()) == project.resolve()
+    assert window.project_tab.tree.rootIndex().isValid()
     assert str(project.resolve()) == window.project_label._full
-    assert window.btn_all.isEnabled()
+    assert window.automation_tab.btn_all.isEnabled()
 
 
 def test_video_pool_settings_roundtrip(window) -> None:
@@ -280,27 +283,6 @@ def test_tts_default_language_roundtrip(window) -> None:
     assert page.language_combo.currentData() == "ja"
 
 
-def test_project_language_column_and_override(window, tmp_path: Path) -> None:
-    project = tmp_path / "demo"
-    inputs = project / "input"
-    inputs.mkdir(parents=True)
-    (inputs / "tap_01.txt").write_text("Nội dung một.", encoding="utf-8")
-    (inputs / "tap_02_en.txt").write_text("Second clip.", encoding="utf-8")
-    window.project_tab.set_project(str(project))
-    window._reload_project()
-
-    table = window.project_tab.table
-    assert table.rowCount() == 2
-    assert table.item(0, 2).text() == "VI"
-    assert table.item(1, 2).text() == "EN"
-
-    table.setCurrentCell(1, 0)
-    combo = window.project_tab.language_combo
-    combo.setCurrentIndex(combo.findData("zh"))
-    assert window.manager.get_item("tap_02_en").language == "zh"
-    assert table.item(1, 2).text() == "ZH"
-
-
 def test_script_tab_profiles_and_api_key(window, monkeypatch, tmp_path: Path) -> None:
     import ui.tab_script as tab_script
     from core.language_profiles import load_profiles as real_load, save_profiles as real_save
@@ -317,9 +299,7 @@ def test_script_tab_profiles_and_api_key(window, monkeypatch, tmp_path: Path) ->
     tab = window.script_tab
     tab.load_from(window.settings)
     assert [p.language for p in tab._profiles] == ["en", "ja"]
-    assert tab.result_table.rowCount() == 2
-    assert tab.result_table.item(0, 0).text() == "English"
-    assert tab.result_table.item(0, 1).text() == "Chưa chuyển thể"
+    assert tab.result_table.rowCount() == 0
     assert tab.api_key_edit.echoMode() == tab.api_key_edit.EchoMode.Password
     assert tab.add_language_button.isEnabled() is True
     assert tab.edit_prompts_button.isEnabled() is True
@@ -334,11 +314,12 @@ def test_script_tab_profiles_and_api_key(window, monkeypatch, tmp_path: Path) ->
 
     tab._translations["en"] = "bản dịch thử"
     tab._reload_targets()
+    assert tab.result_table.rowCount() == 1
+    assert tab.result_table.item(0, 0).text() == "English"
     assert tab.result_table.item(0, 1).text().startswith("Xong")
     assert tab.result_table.cellWidget(0, 2).isEnabled() is True
     tab._reload_targets(keep=False)
-    assert tab.result_table.item(0, 1).text() == "Chưa chuyển thể"
-    assert tab.result_table.cellWidget(0, 2).isEnabled() is False
+    assert tab.result_table.rowCount() == 0
 
     tab.api_key_edit.setText("  test-key  ")
     tab.apply_to(window.settings)
@@ -351,21 +332,46 @@ def test_script_tab_profiles_and_api_key(window, monkeypatch, tmp_path: Path) ->
     tab.load_from(window.settings)
     assert tab._api_key() == "video-key"
 
+    from core.ai_client import DEFAULT_CLEAN_PROMPT
+
+    window.settings["script"].pop("transcript_clean_prompt", None)
+    tab.load_from(window.settings)
+    assert tab._clean_prompt == DEFAULT_CLEAN_PROMPT
+    tab._clean_prompt = "prompt làm sạch riêng"
+    tab.apply_to(window.settings)
+    assert window.settings["script"]["transcript_clean_prompt"] == "prompt làm sạch riêng"
+
 
 def test_language_dialogs_collect_and_edit_values(app) -> None:
+    from core.ai_client import DEFAULT_CLEAN_PROMPT
     from core.language_profiles import LanguageProfile
-    from ui.tab_script import _LanguagePromptDialog, _ManageLanguagesDialog
+    from ui.tab_script import (
+        _CleanPromptDialog,
+        _LanguagePromptDialog,
+        _ManageLanguagesDialog,
+        _PromptEditDialog,
+    )
 
     add = _LanguagePromptDialog(language="en", prompt="giữ sự kiện")
     assert add.values() == ("en", "giữ sự kiện")
+
+    clean = _CleanPromptDialog(DEFAULT_CLEAN_PROMPT)
+    assert clean.prompt_edit.toPlainText() == DEFAULT_CLEAN_PROMPT
+    clean.prompt_edit.setPlainText("prompt làm sạch mới")
+    assert clean.value() == "prompt làm sạch mới"
 
     manage = _ManageLanguagesDialog([
         LanguageProfile("en", "prompt en", "id1"),
         LanguageProfile("ja", "prompt ja", "id2"),
     ])
     assert manage.table.rowCount() == 2
+    assert manage.table.columnCount() == 3
     assert manage.table.item(0, 0).text() == "English"
     assert manage.table.item(1, 1).text() == "prompt ja"
+
+    edit = _PromptEditDialog("en", "prompt en")
+    edit.edit.setPlainText("prompt mới")
+    assert edit.value() == "prompt mới"
 
     manage.table.item(0, 1).setText("prompt mới")
     manage._remove("ja")

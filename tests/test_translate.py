@@ -4,9 +4,11 @@ from __future__ import annotations
 import pytest
 
 from core.ai_client import (
+    DEFAULT_CLEAN_PROMPT,
     DEFAULT_MODEL,
     MODEL_CHOICES,
     AIError,
+    build_clean_prompt,
     build_translate_prompt,
     normalize_model,
     split_for_translation,
@@ -37,6 +39,19 @@ def test_prompt_cleans_in_place_when_languages_match() -> None:
     assert "Chuyển thể văn bản từ" not in prompt
     assert "làm sạch" in prompt
     assert "Xin chào" in prompt
+
+
+def test_clean_prompt_pastes_transcript_at_marker() -> None:
+    assert "[DÁN ĐOẠN TRANSCRIPT CỦA BẠN VÀO ĐÂY]" in DEFAULT_CLEAN_PROMPT
+    prompt = build_clean_prompt("Nội dung gốc", DEFAULT_CLEAN_PROMPT)
+    assert "Nội dung gốc" in prompt
+    assert "[DÁN ĐOẠN TRANSCRIPT CỦA BẠN VÀO ĐÂY]" not in prompt
+
+
+def test_clean_prompt_falls_back_when_marker_missing() -> None:
+    prompt = build_clean_prompt("Nội dung gốc", "Hãy sửa lỗi chính tả")
+    assert "Hãy sửa lỗi chính tả" in prompt
+    assert prompt.strip().endswith("Nội dung gốc")
 
 
 def test_split_for_translation_respects_limit() -> None:

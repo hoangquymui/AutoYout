@@ -2,8 +2,8 @@
 
 The heavy work happens in :class:`ScriptWorker` (a ``QThread``): fetching the
 existing YouTube captions and translating with Gemini. The tab merges the
-captions into a single text (no timestamps), saves it as ``.txt`` and then
-adapts it into other languages.
+captions into a single text (no timestamps), cleans it and adapts it into
+other languages.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from PySide6.QtCore import QThread, Signal, Qt
+from PySide6.QtCore import QSignalBlocker, QThread, Signal, Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -34,10 +34,13 @@ from PySide6.QtWidgets import (
 )
 
 from core.ai_client import (
+    DEFAULT_CLEAN_PROMPT,
     DEFAULT_MODEL,
     MODEL_CHOICES,
     AICancelled,
     AIError,
+    build_clean_prompt,
+    gemini_generate,
     normalize_model,
     translate_text,
 )
@@ -45,11 +48,11 @@ from core.input_pipeline import (
     InputCancelled,
     InputError,
     get_youtube_transcript,
-    unique_text_path,
 )
 from core.language_profiles import LanguageProfile, load_profiles, save_profiles
 from core.languages import (
     DEFAULT_LANGUAGE,
+    is_known,
     language_choices,
     language_name,
     normalize_language,
@@ -63,28 +66,57 @@ from utils.logger import get_logger
 
 logger = get_logger("ui.script")
 
+_ACTION_BTN = 26
+_ACTION_GAP = 6
+_ITEM_H_PAD = 16  # QTableWidget::item padding 8px × 2
+
 
 class _LanguagePromptDialog(QDialog):
     """Modal to add one target language and the prompt used to adapt the story."""
 
-    def __init__(self, parent=None, *, language: str = "en", prompt: str = "",
-                 title: str = "Thêm ngôn ngữ") -> None:
+    def __init__(self, parent=None, *, language: str = "", name: str = "", prompt: str = "",
+                 existing: Optional[set[str]] = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle(title)
+        self.setWindowTitle("Thêm ngôn ngữ")
         self.setModal(True)
-        self.resize(480, 320)
+        self.resize(580, 420)
+        self._existing = existing or set()
+        self._code_user_modified = False
+
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
-        form = QFormLayout()
-        self.language_combo = QComboBox()
-        for code, label in language_choices():
-            self.language_combo.addItem(label, code)
-        index = self.language_combo.findData(language)
-        if index >= 0:
-            self.language_combo.setCurrentIndex(index)
-        form.addRow("Tên ngôn ngữ", self.language_combo)
-        layout.addLayout(form)
+        # Hàng nhập: Tên ngôn ngữ & Viết tắt
+        lang_row = QHBoxLayout()
+        lang_row.setSpacing(10)
+
+        name_box = QVBoxLayout()
+        name_box.setSpacing(4)
+        name_box.addWidget(QLabel("Tên ngôn ngữ"))
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("Ví dụ: Tiếng Anh, Tiếng Nhật, Français...")
+        name_box.addWidget(self.name_edit)
+        lang_row.addLayout(name_box, 3)
+
+        code_box = QVBoxLayout()
+        code_box.setSpacing(4)
+        code_box.addWidget(QLabel("Viết tắt (mã file)"))
+        self.code_edit = QLineEdit()
+        self.code_edit.setPlaceholderText("Ví dụ: en, ja, fr...")
+        self.code_edit.setToolTip("Mã viết tắt dùng để đặt tên file, ví dụ: tap_01_en.txt")
+        code_box.addWidget(self.code_edit)
+        lang_row.addLayout(code_box, 2)
+
+        layout.addLayout(lang_row)
+
+        initial_name = name or (language_name(language) if (language and is_known(language)) else "")
+        if initial_name:
+            self.name_edit.setText(initial_name)
+        if language:
+            self.code_edit.setText(language)
+
+        self.name_edit.textChanged.connect(self._on_name_changed)
+        self.code_edit.textEdited.connect(self._on_code_edited)
 
         layout.addWidget(QLabel("Prompt (cách làm sạch / chuyển thể câu chuyện)"))
         self.prompt_edit = QPlainTextEdit()
@@ -99,31 +131,148 @@ class _LanguagePromptDialog(QDialog):
         cancel.clicked.connect(self.reject)
         save = QPushButton("Lưu")
         save.setObjectName("primaryButton")
+        save.clicked.connect(self._accept)
+        buttons.addWidget(cancel)
+        buttons.addWidget(save)
+        layout.addLayout(buttons)
+
+    def _on_code_edited(self, _text: str) -> None:
+        self._code_user_modified = True
+
+    def _on_name_changed(self, text: str) -> None:
+        if self._code_user_modified:
+            return
+        t = text.strip()
+        if not t:
+            return
+        lower = t.lower()
+        if "anh" in lower or "english" in lower:
+            self.code_edit.setText("en")
+        elif "nhật" in lower or "japan" in lower:
+            self.code_edit.setText("ja")
+        elif "trung" in lower or "chinese" in lower or "hoa" in lower:
+            self.code_edit.setText("zh")
+        elif "hàn" in lower or "korea" in lower:
+            self.code_edit.setText("ko")
+        elif "pháp" in lower or "french" in lower or "français" in lower:
+            self.code_edit.setText("fr")
+        elif "tây ban nha" in lower or "spain" in lower or "español" in lower:
+            self.code_edit.setText("es")
+        elif "thái" in lower or "thai" in lower:
+            self.code_edit.setText("th")
+        elif "đức" in lower or "german" in lower or "deutsch" in lower:
+            self.code_edit.setText("de")
+        elif "nga" in lower or "russian" in lower:
+            self.code_edit.setText("ru")
+        elif "ý" in lower or "italian" in lower:
+            self.code_edit.setText("it")
+        else:
+            for code, info in LANGUAGES.items():
+                if t.casefold() in (code.casefold(), info["name"].casefold()):
+                    self.code_edit.setText(code)
+                    break
+
+    def _accept(self) -> None:
+        name = self.name_edit.text().strip()
+        code = self.code_edit.text().strip().lower()
+        if not code and not name:
+            QMessageBox.warning(self, "Ngôn ngữ", "Vui lòng nhập tên ngôn ngữ hoặc viết tắt.")
+            return
+        self.accept()
+
+    def values(self) -> tuple[str, str]:
+        name = self.name_edit.text().strip()
+        code = self.code_edit.text().strip().lower()
+        if not code:
+            code = normalize_language(name, "") or safe_filename(name.lower(), "lang")[:10]
+        return (code, self.prompt_edit.toPlainText().strip())
+
+    def custom_name(self) -> str:
+        return self.name_edit.text().strip()
+
+
+class _PromptEditDialog(QDialog):
+    """Modal to edit one language's adaptation prompt."""
+
+    def __init__(self, language: str, prompt: str, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"Sửa prompt — {language_name(language)}")
+        self.setModal(True)
+        self.resize(560, 360)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        layout.addWidget(QLabel("Prompt (cách làm sạch / chuyển thể câu chuyện)"))
+        self.edit = QPlainTextEdit()
+        self.edit.setPlainText(prompt)
+        self.edit.setPlaceholderText(
+            "Ví dụ: làm sạch lời kể, sửa chính tả, câu ngắn dễ đọc, giữ nguyên sự kiện…")
+        layout.addWidget(self.edit, 1)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel = QPushButton("Huỷ")
+        cancel.clicked.connect(self.reject)
+        save = QPushButton("Lưu")
+        save.setObjectName("primaryButton")
         save.clicked.connect(self.accept)
         buttons.addWidget(cancel)
         buttons.addWidget(save)
         layout.addLayout(buttons)
 
-    def values(self) -> tuple[str, str]:
-        return (str(self.language_combo.currentData() or "en"),
-                self.prompt_edit.toPlainText().strip())
+    def value(self) -> str:
+        return self.edit.toPlainText().strip()
+
+
+class _CleanPromptDialog(QDialog):
+    """Modal to edit the transcript cleaning prompt."""
+
+    def __init__(self, prompt: str, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Prompt làm sạch")
+        self.setModal(True)
+        self.resize(620, 480)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        layout.addWidget(QLabel(
+            "Hướng dẫn AI làm sạch transcript trước khi chuyển thể:"))
+        self.prompt_edit = QPlainTextEdit()
+        self.prompt_edit.setPlainText(prompt)
+        self.prompt_edit.setPlaceholderText(
+            "Prompt hướng dẫn AI lọc bỏ thẻ rác, CTA, quảng cáo, sửa chính tả…")
+        layout.addWidget(self.prompt_edit, 1)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel = QPushButton("Huỷ")
+        cancel.clicked.connect(self.reject)
+        save = QPushButton("Lưu")
+        save.setObjectName("primaryButton")
+        save.clicked.connect(self.accept)
+        buttons.addWidget(cancel)
+        buttons.addWidget(save)
+        layout.addLayout(buttons)
+
+    def value(self) -> str:
+        return self.prompt_edit.toPlainText().strip()
 
 
 class _ManageLanguagesDialog(QDialog):
-    """Modal listing every language profile to edit prompts or delete entries."""
+    """Modal listing every language profile; click a prompt cell to edit it."""
 
     def __init__(self, profiles: List[LanguageProfile], parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Sửa prompt ngôn ngữ")
         self.setModal(True)
-        self.resize(640, 440)
+        self.resize(680, 420)
         self._profiles: List[LanguageProfile] = [
-            LanguageProfile(p.language, p.prompt, p.id) for p in profiles]
+            LanguageProfile(p.language, p.prompt, p.id, getattr(p, "name", "")) for p in profiles]
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
         layout.addWidget(QLabel(
-            "Sửa prompt trực tiếp hoặc bấm thùng rác để xoá ngôn ngữ:"))
+            "Bấm vào ô Prompt để sửa, hoặc bấm thùng rác để xoá ngôn ngữ:"))
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Ngôn ngữ", "Prompt", ""])
         self.table.verticalHeader().setVisible(False)
@@ -131,6 +280,7 @@ class _ManageLanguagesDialog(QDialog):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.cellClicked.connect(self._on_cell_clicked)
         layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()
@@ -148,17 +298,40 @@ class _ManageLanguagesDialog(QDialog):
     def _rebuild(self) -> None:
         self.table.setRowCount(len(self._profiles))
         for row, profile in enumerate(self._profiles):
-            lang_item = QTableWidgetItem(language_name(profile.language))
+            name = getattr(profile, "name", "")
+            display_name = f"{name} ({profile.language})" if name and profile.language not in name else (name or language_name(profile.language))
+            lang_item = QTableWidgetItem(display_name)
             lang_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             lang_item.setData(Qt.ItemDataRole.UserRole, profile.language)
+
+            prompt_item = QTableWidgetItem(profile.prompt)
+            prompt_item.setToolTip(profile.prompt or "Bấm để sửa prompt")
+
             delete = QPushButton()
             set_icon(delete, "trash", "muted", 13)
             delete.setToolTip("Xoá ngôn ngữ này")
             delete.clicked.connect(
                 lambda _checked=False, code=profile.language: self._remove(code))
             self.table.setItem(row, 0, lang_item)
-            self.table.setItem(row, 1, QTableWidgetItem(profile.prompt))
+            self.table.setItem(row, 1, prompt_item)
             self.table.setCellWidget(row, 2, delete)
+
+    def _on_cell_clicked(self, row: int, column: int) -> None:
+        if column != 1:
+            return
+        lang_item = self.table.item(row, 0)
+        prompt_item = self.table.item(row, 2)
+        if lang_item is None or prompt_item is None:
+            return
+        code = str(lang_item.data(Qt.ItemDataRole.UserRole) or "")
+        dialog = _PromptEditDialog(code, prompt_item.text(), self)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            prompt_item.setText(dialog.value())
+            prompt_item.setToolTip(dialog.value())
+        finally:
+            dialog.deleteLater()
 
     def _remove(self, language: str) -> None:
         self._profiles = [p for p in self._collect()
@@ -196,6 +369,7 @@ class ScriptWorker(QThread):
 
     progress = Signal(int, str)
     transcript_ready = Signal(list, dict)
+    cleaned_ready = Signal(str)
     translated = Signal(str, str, str)   # language, text, error
     failed = Signal(str)
 
@@ -224,12 +398,33 @@ class ScriptWorker(QThread):
                 )
                 self.transcript_ready.emit(cues_to_dicts(cues), dict(meta))
                 return
+            if spec.get("kind") == "clean":
+                text = str(spec.get("text") or "").strip()
+                if not text:
+                    raise InputError("Chưa có transcript để làm sạch.")
+                instruction = str(spec.get("clean_prompt") or DEFAULT_CLEAN_PROMPT).strip()
+                if not instruction:
+                    raise InputError("Prompt làm sạch rỗng.")
+                self._emit(10, "Đang làm sạch transcript bằng AI…")
+                if self._cancelled():
+                    raise InputCancelled("Đã huỷ làm sạch.")
+                cleaned = gemini_generate(
+                    build_clean_prompt(text, instruction),
+                    str(spec.get("api_key") or ""),
+                    str(spec.get("model") or DEFAULT_MODEL),
+                    timeout=180.0, temperature=0.2,
+                )
+                if self._cancelled():
+                    raise InputCancelled("Đã huỷ làm sạch.")
+                self.cleaned_ready.emit(cleaned)
+                return
             profiles = list(spec.get("profiles") or [])
             total = max(1, len(profiles))
             for position, profile in enumerate(profiles):
                 if self._cancelled():
                     raise InputCancelled("Đã huỷ chuyển thể.")
                 language = str(profile.get("language") or DEFAULT_LANGUAGE)
+                model = str(spec.get("model") or DEFAULT_MODEL)
 
                 def report(done: int, count: int, _index: int = position) -> None:
                     fraction = done / max(1, count)
@@ -241,7 +436,7 @@ class ScriptWorker(QThread):
 
                 try:
                     text = translate_text(
-                        spec["text"], spec["api_key"], spec["model"],
+                        spec["text"], spec["api_key"], model,
                         source_lang=spec["source_lang"], target_lang=language,
                         style=str(profile.get("prompt") or ""),
                         progress_cb=report, cancel_cb=self._cancelled,
@@ -275,8 +470,11 @@ class ScriptTab(QWidget):
         self._translations: Dict[str, str] = {}
         self._result_rows: Dict[str, int] = {}
         self._profiles: List[LanguageProfile] = []
-        self._input_dir: Optional[Path] = None
+        self._clean_prompt: str = DEFAULT_CLEAN_PROMPT
         self._script_dir: Optional[Path] = None
+        self._source_lang: Optional[str] = None
+        self._source_text: str = ""
+        self._source_row: int = -1
 
         page = QVBoxLayout(self)
         page.setContentsMargins(0, 0, 0, 0)
@@ -288,37 +486,57 @@ class ScriptTab(QWidget):
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(12)
         root.addWidget(PageHeader(
-            "Kịch bản",
+            "Nguồn YouTube",
             "Dán link YouTube → lấy transcript → gộp thành văn bản (bỏ thời gian) "
-            "→ lưu TXT → chuyển thể sang nhiều ngôn ngữ cho pipeline.",
+            "→ làm sạch → chuyển thể sang nhiều ngôn ngữ cho pipeline.",
         ))
-        root.addWidget(self._build_source_box())
+        top = QHBoxLayout()
+        top.setSpacing(12)
+        self._top_columns = top
+        top.addWidget(self._build_source_box(), 1)
+        top.addWidget(self._build_config_box(), 1)
+        root.addLayout(top)
 
-        columns = QHBoxLayout()
-        columns.setSpacing(12)
-        self._columns = columns
-        columns.addWidget(self._build_transcript_box(), 3)
-        columns.addWidget(self._build_translate_box(), 2)
-        root.addLayout(columns, 1)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
+        root.addWidget(self.progress_bar)
+
+        bottom = QHBoxLayout()
+        bottom.setSpacing(12)
+        self._bottom_columns = bottom
+        bottom.addWidget(self._build_table_box(), 2)
+        bottom.addWidget(self._build_transcript_box(), 3)
+        root.addLayout(bottom, 1)
 
         self._set_busy(False)
         self._set_actions_enabled(False)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        stack_columns(self, self._columns, 800)
+        stack_columns(self, self._top_columns, 760)
+        stack_columns(self, self._bottom_columns, 760)
 
     # ── construction ─────────────────────────────────────────────────────────
     def _build_source_box(self) -> QGroupBox:
-        box = QGroupBox("Nguồn YouTube")
-        grid = QGridLayout(box)
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(8)
+        box = QGroupBox()
+        box.setObjectName("headerlessGroup")
+        layout = QVBoxLayout(box)
+        layout.setSpacing(8)
 
+        url_label = QLabel("Link YouTube")
+        layout.addWidget(url_label)
         self.url_edit = QLineEdit()
         self.url_edit.setPlaceholderText("Dán link video YouTube…")
-        grid.addWidget(QLabel("Link video"), 0, 0)
-        grid.addWidget(self.url_edit, 0, 1, 1, 3)
+        layout.addWidget(self.url_edit)
+
+        topic_label = QLabel("Tên đề tài")
+        layout.addWidget(topic_label)
+        self.topic_edit = QLineEdit()
+        self.topic_edit.setPlaceholderText("Để trống nếu muốn giữ tên mặc định")
+        self.topic_edit.setToolTip("Đặt tên đề tài / tên tệp kịch bản. Để trống nếu muốn giữ tên mặc định từ video YouTube.")
+        layout.addWidget(self.topic_edit)
 
         self.fetch_button = QPushButton("Lấy transcript")
         self.fetch_button.setObjectName("primaryButton")
@@ -332,35 +550,32 @@ class ScriptTab(QWidget):
         action_row.setSpacing(8)
         action_row.addWidget(self.fetch_button)
         action_row.addWidget(self.cancel_button)
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        action_row.addWidget(self.progress_bar, 1)
-        grid.addLayout(action_row, 1, 0, 1, 4)
+        action_row.addStretch(1)
+        layout.addLayout(action_row)
 
         self.status_label = QLabel("Sẵn sàng.")
         self.status_label.setObjectName("MutedLabel")
         self.status_label.setWordWrap(True)
         paint_status(self.status_label, "muted")
-        grid.addWidget(self.status_label, 2, 0, 1, 4)
+        layout.addWidget(self.status_label)
         return box
 
     def _build_transcript_box(self) -> QGroupBox:
-        box = QGroupBox("Script (đã gộp, không kèm thời gian)")
+        box = QGroupBox()
+        box.setObjectName("headerlessGroup")
         layout = QVBoxLayout(box)
         layout.setSpacing(8)
 
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(6)
-        self.btn_save_txt = QPushButton("Lưu TXT")
-        set_icon(self.btn_save_txt, "download", "accent", 14)
-        self.btn_save_txt.clicked.connect(self._save_txt)
-        toolbar.addWidget(self.btn_save_txt)
-        toolbar.addStretch(1)
+        header = QHBoxLayout()
+        header.setSpacing(6)
+        title = QLabel("Transcript")
+        title.setObjectName("GroupTitle")
+        header.addWidget(title)
+        header.addStretch(1)
         self.count_label = QLabel("0 từ")
         self.count_label.setObjectName("MutedLabel")
-        toolbar.addWidget(self.count_label)
-        layout.addLayout(toolbar)
+        header.addWidget(self.count_label)
+        layout.addLayout(header)
 
         self.script_edit = QPlainTextEdit()
         self.script_edit.setPlaceholderText(
@@ -369,36 +584,57 @@ class ScriptTab(QWidget):
         layout.addWidget(self.script_edit, 1)
         return box
 
-    def _build_translate_box(self) -> QGroupBox:
-        box = QGroupBox("Chuyển thể ngôn ngữ")
-        layout = QVBoxLayout(box)
-        layout.setSpacing(8)
+    def _build_config_box(self) -> QGroupBox:
+        box = QGroupBox()
+        box.setObjectName("headerlessGroup")
+        grid = QGridLayout(box)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(8)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
 
-        key_row = QHBoxLayout()
-        key_row.setSpacing(8)
-        key_row.addWidget(QLabel("API key Gemini"))
+        grid.addWidget(QLabel("Api key Gemini"), 0, 0)
         self.api_key_edit = QLineEdit()
         self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key_edit.setMinimumWidth(150)
         self.api_key_edit.setPlaceholderText(
             "Dán API key Gemini (để trống dùng key ở tab Video)")
-        key_row.addWidget(self.api_key_edit, 1)
-        layout.addLayout(key_row)
+        grid.addWidget(self.api_key_edit, 0, 1)
 
-        model_row = QHBoxLayout()
-        model_row.setSpacing(8)
-        model_row.addWidget(QLabel("Model AI"))
+        grid.addWidget(QLabel("Model AI"), 0, 2)
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
         self.model_combo.addItems(MODEL_CHOICES)
         self.model_combo.setToolTip(
             "Model Gemini dùng để chuyển thể — có thể gõ tên model khác")
-        model_row.addWidget(self.model_combo, 1)
-        layout.addLayout(model_row)
+        grid.addWidget(self.model_combo, 0, 3)
 
-        head = QHBoxLayout()
-        head.setSpacing(6)
-        head.addWidget(QLabel("Ngôn ngữ đích"))
-        head.addStretch(1)
+        clean_row = QHBoxLayout()
+        clean_row.setSpacing(6)
+        self.clean_button = QPushButton("Làm sạch")
+        self.clean_button.setObjectName("primaryButton")
+        set_icon(self.clean_button, "zap", "white", 15)
+        self.clean_button.setToolTip(
+            "Làm sạch transcript bằng AI theo prompt làm sạch")
+        self.clean_button.clicked.connect(self._clean)
+        self.clean_prompt_button = QPushButton()
+        self.clean_prompt_button.setObjectName("iconButton")
+        self.clean_prompt_button.setFixedSize(30, 30)
+        set_icon(self.clean_prompt_button, "broom", "muted", 14)
+        self.clean_prompt_button.setToolTip("Sửa prompt làm sạch")
+        self.clean_prompt_button.clicked.connect(self._edit_clean_prompt)
+        clean_row.addWidget(self.clean_button, 1)
+        clean_row.addWidget(self.clean_prompt_button)
+        grid.addLayout(clean_row, 1, 0, 1, 2)
+
+        self.translate_button = QPushButton("Chuyển thể")
+        self.translate_button.setObjectName("primaryButton")
+        set_icon(self.translate_button, "globe", "white", 15)
+        self.translate_button.clicked.connect(self._translate)
+        grid.addWidget(self.translate_button, 2, 0, 1, 2)
+
+        lang_row = QHBoxLayout()
+        lang_row.setSpacing(6)
         self.add_language_button = QPushButton("Thêm ngôn ngữ")
         set_icon(self.add_language_button, "plus", "accent", 13)
         self.add_language_button.setToolTip("Thêm ngôn ngữ đích + prompt chuyển thể")
@@ -409,36 +645,39 @@ class ScriptTab(QWidget):
         set_icon(self.edit_prompts_button, "edit", "muted", 14)
         self.edit_prompts_button.setToolTip("Sửa / xoá prompt các ngôn ngữ")
         self.edit_prompts_button.clicked.connect(self._manage_languages)
-        head.addWidget(self.add_language_button)
-        head.addWidget(self.edit_prompts_button)
-        layout.addLayout(head)
+        lang_row.addWidget(self.add_language_button, 1)
+        lang_row.addWidget(self.edit_prompts_button)
+        grid.addLayout(lang_row, 2, 2, 1, 2)
 
         self.target_hint = QLabel(
             "Chưa có ngôn ngữ — bấm “Thêm ngôn ngữ” để tạo.")
         self.target_hint.setObjectName("MutedLabel")
         self.target_hint.setWordWrap(True)
-        layout.addWidget(self.target_hint)
+        grid.addWidget(self.target_hint, 3, 0, 1, 4)
+        return box
 
-        self.translate_button = QPushButton("Chuyển thể")
-        self.translate_button.setObjectName("primaryButton")
-        set_icon(self.translate_button, "globe", "white", 15)
-        self.translate_button.clicked.connect(self._translate)
-        layout.addWidget(self.translate_button)
+    def _build_table_box(self) -> QGroupBox:
+        box = QGroupBox()
+        box.setObjectName("headerlessGroup")
+        layout = QVBoxLayout(box)
+        layout.setSpacing(8)
 
         self.result_table = QTableWidget(0, 3)
         self.result_table.setHorizontalHeaderLabels(
-            ["Ngôn ngữ", "Trạng thái", ""])
+            ["Ngôn ngữ", "Trạng thái", "Thao tác"])
         self.result_table.verticalHeader().setVisible(False)
         self.result_table.setEditTriggers(
             QAbstractItemView.EditTrigger.NoEditTriggers)
         header = self.result_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(
+            2, _ACTION_BTN * 4 + _ACTION_GAP * 3 + _ITEM_H_PAD + 16)
         self.result_table.setMinimumHeight(150)
         layout.addWidget(self.result_table, 1)
 
-        self.save_all_button = QPushButton("Lưu tất cả vào INPUT")
+        self.save_all_button = QPushButton("Lưu tất cả")
         set_icon(self.save_all_button, "check", "accent", 14)
         self.save_all_button.clicked.connect(self._save_all)
         layout.addWidget(self.save_all_button)
@@ -460,6 +699,7 @@ class ScriptTab(QWidget):
         model = normalize_model(str(cfg.get("model") or DEFAULT_MODEL))
         cfg["model"] = model
         self.model_combo.setCurrentText(model)
+        self._clean_prompt = str(cfg.get("transcript_clean_prompt") or DEFAULT_CLEAN_PROMPT)
         self._profiles = load_profiles()
         self._reload_targets()
 
@@ -467,6 +707,7 @@ class ScriptTab(QWidget):
         cfg = settings.setdefault("script", {})
         cfg["api_key"] = self.api_key_edit.text().strip()
         cfg["model"] = self.model_combo.currentText().strip() or DEFAULT_MODEL
+        cfg["transcript_clean_prompt"] = self._clean_prompt.strip()
         self._settings = settings
 
     # ── language profiles ────────────────────────────────────────────────────
@@ -476,16 +717,20 @@ class ScriptTab(QWidget):
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
             language, prompt = dialog.values()
+            name = dialog.custom_name()
         finally:
             dialog.deleteLater()
         language = normalize_language(language, language)
         for profile in self._profiles:
             if profile.language == language:
                 profile.prompt = prompt
+                if name:
+                    profile.name = name
                 break
         else:
-            self._profiles.append(LanguageProfile(language, prompt))
+            self._profiles.append(LanguageProfile(language, prompt, name=name))
         self._persist_profiles()
+        self._reload_targets()
         self._reload_targets()
 
     def _manage_languages(self) -> None:
@@ -512,27 +757,49 @@ class ScriptTab(QWidget):
         previous = dict(self._translations) if keep else {}
         self._translations.clear()
         self._result_rows.clear()
+        self._source_row = -1
         self.result_table.setRowCount(0)
+        if self._source_lang:
+            row = self.result_table.rowCount()
+            self.result_table.insertRow(row)
+            self._source_row = row
+            self.result_table.setItem(
+                row, 0, QTableWidgetItem(language_name(self._source_lang)))
+            widget = self._make_action_widget(
+                on_save=self._save_source,
+                on_view=self._view_source,
+                on_delete=self._delete_source,
+            )
+            self.result_table.setCellWidget(row, 2, widget)
+            if self._source_text.strip():
+                self._set_result_status(row, "gốc", "success")
+            else:
+                self._set_result_status(row, "gốc", "muted")
         for profile in self._profiles:
+            text = previous.get(profile.language)
+            if not text:
+                continue
             row = self.result_table.rowCount()
             self.result_table.insertRow(row)
             self._result_rows[profile.language] = row
+            display_name = getattr(profile, "name", "") or language_name(profile.language)
+            if getattr(profile, "name", "") and profile.language not in display_name:
+                display_name = f"{profile.name} ({profile.language})"
             self.result_table.setItem(
-                row, 0, QTableWidgetItem(language_name(profile.language)))
-            save = QPushButton("Lưu")
-            save.setObjectName("smallButton")
-            save.clicked.connect(
-                lambda _checked=False, lang=profile.language:
-                self._save_language(lang))
-            self.result_table.setCellWidget(row, 2, save)
-            text = previous.get(profile.language)
-            if text:
-                self._translations[profile.language] = text
-                self._set_result_status(row, f"Xong · {len(text)} ký tự", "success")
-                save.setEnabled(True)
-            else:
-                self._set_result_status(row, "Chưa chuyển thể", "muted")
-                save.setEnabled(False)
+                row, 0, QTableWidgetItem(display_name))
+            widget = self._make_action_widget(
+                on_save=lambda _checked=False, lang=profile.language:
+                self._save_language(lang),
+                on_edit=lambda _checked=False, lang=profile.language:
+                self._edit_language_prompt(lang),
+                on_view=lambda _checked=False, lang=profile.language:
+                self._view_language(lang),
+                on_delete=lambda _checked=False, lang=profile.language:
+                self._delete_language(lang),
+            )
+            self.result_table.setCellWidget(row, 2, widget)
+            self._translations[profile.language] = text
+            self._set_result_status(row, f"Xong · {len(text)} ký tự", "success")
         if self._profiles:
             self.target_hint.setText(
                 f"{len(self._profiles)} ngôn ngữ · sửa prompt bằng nút bút chì.")
@@ -543,16 +810,13 @@ class ScriptTab(QWidget):
     # ── project context ──────────────────────────────────────────────────────
     def set_project(self, manager) -> None:
         if manager is None:
-            self._input_dir = None
             self._script_dir = None
             self.output_label.setText(
                 "Chưa chọn project — chọn project ở tab đầu tiên.")
             self._set_actions_enabled(False)
             return
-        self._input_dir = Path(manager.input_dir)
         self._script_dir = Path(manager.script_dir)
-        self.output_label.setText(
-            f"Kịch bản: {self._script_dir} · Input: {self._input_dir}")
+        self.output_label.setText(f"Kịch bản: {self._script_dir}")
         self._set_actions_enabled(self._worker is None)
 
     # ── busy state ───────────────────────────────────────────────────────────
@@ -577,23 +841,24 @@ class ScriptTab(QWidget):
 
     def _set_actions_enabled(self, enabled: bool) -> None:
         self.fetch_button.setEnabled(enabled)
-        self.btn_save_txt.setEnabled(enabled)
+        self.clean_button.setEnabled(enabled)
         self.translate_button.setEnabled(enabled)
         self.save_all_button.setEnabled(enabled)
 
     def _set_busy(self, busy: bool) -> None:
-        has_project = self._input_dir is not None
+        has_project = self._script_dir is not None
         self._set_actions_enabled(not busy and has_project)
         self.cancel_button.setEnabled(busy)
-        for widget in (self.url_edit, self.api_key_edit, self.model_combo,
-                       self.add_language_button, self.edit_prompts_button):
+        for widget in (self.url_edit, self.topic_edit, self.api_key_edit, self.model_combo,
+                       self.clean_prompt_button, self.add_language_button,
+                       self.edit_prompts_button):
             widget.setEnabled(not busy)
 
     # ── transcript job ───────────────────────────────────────────────────────
     def _fetch_transcript(self) -> None:
         if self._worker is not None:
             return
-        if self._input_dir is None or self._script_dir is None:
+        if self._script_dir is None:
             self._warn("Chưa chọn project — chọn project trước.")
             return
         url = self.url_edit.text().strip()
@@ -613,6 +878,7 @@ class ScriptTab(QWidget):
         worker = ScriptWorker(spec, self)
         worker.progress.connect(self._on_progress)
         worker.transcript_ready.connect(self._on_transcript)
+        worker.cleaned_ready.connect(self._on_cleaned)
         worker.translated.connect(self._on_translated)
         worker.failed.connect(self._on_failed)
         worker.finished.connect(lambda: self._on_worker_finished(worker))
@@ -623,13 +889,25 @@ class ScriptTab(QWidget):
 
     def _on_transcript(self, cues: List[dict], meta: dict) -> None:
         self._meta = dict(meta or {})
-        self._reload_targets(keep=False)
+        self._source_lang = str(
+            self._meta.get("source_language") or DEFAULT_LANGUAGE)
         self._script_text = self._merge_cues_to_text(cues)
+        self._source_text = self._script_text
         self.script_edit.setPlainText(self._script_text)
+        self._reload_targets(keep=False)
         title = self._meta.get("title") or self._meta.get("video_id") or "video"
         paint_status(self.status_label, "success")
         self.status_label.setText(
             f"Đã gộp {len(cues)} dòng phụ đề thành văn bản: {title}")
+
+    def _on_cleaned(self, text: str) -> None:
+        self._script_text = text
+        self._source_text = text
+        self.script_edit.setPlainText(text)
+        self._reload_targets(keep=False)
+        paint_status(self.status_label, "success")
+        self.status_label.setText(
+            f"Đã làm sạch transcript ({len(text)} ký tự). Bấm “Chuyển thể” để tiếp tục.")
 
     @staticmethod
     def _merge_cues_to_text(cues: List[dict]) -> str:
@@ -657,22 +935,25 @@ class ScriptTab(QWidget):
             row = self.result_table.rowCount()
             self.result_table.insertRow(row)
             self._result_rows[language] = row
+            profile = next((p for p in self._profiles if p.language == language), None)
+            display_name = getattr(profile, "name", "") or language_name(language)
+            if getattr(profile, "name", "") and language not in display_name:
+                display_name = f"{profile.name} ({language})"
             self.result_table.setItem(
-                row, 0, QTableWidgetItem(language_name(language)))
-            save = QPushButton("Lưu")
-            save.setObjectName("smallButton")
-            save.clicked.connect(
-                lambda _checked=False, lang=language: self._save_language(lang))
-            self.result_table.setCellWidget(row, 2, save)
+                row, 0, QTableWidgetItem(display_name))
+            widget = self._make_action_widget(
+                on_save=lambda _checked=False, lang=language: self._save_language(lang),
+                on_edit=lambda _checked=False, lang=language: self._edit_language_prompt(lang),
+                on_view=lambda _checked=False, lang=language: self._view_language(lang),
+                on_delete=lambda _checked=False, lang=language: self._delete_language(lang),
+            )
+            self.result_table.setCellWidget(row, 2, widget)
         if error:
             self._translations.pop(language, None)
             self._set_result_status(row, f"Lỗi: {error}", "error")
             return
         self._translations[language] = text
         self._set_result_status(row, f"Xong · {len(text)} ký tự", "success")
-        button = self.result_table.cellWidget(row, 2)
-        if button is not None:
-            button.setEnabled(True)
 
     def _set_result_status(self, row: int, message: str, level: str) -> None:
         item = self.result_table.item(row, 1)
@@ -688,6 +969,84 @@ class ScriptTab(QWidget):
         }.get(level, "")
         if color:
             item.setForeground(QBrush(QColor(color)))
+
+    def _make_action_widget(
+        self,
+        on_save=None,
+        on_edit=None,
+        on_view=None,
+        on_delete=None,
+    ) -> QWidget:
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(2, 0, 2, 0)
+        layout.setSpacing(_ACTION_GAP)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        actions = []
+        if on_save is not None:
+            actions.append((on_save, "download", "Lưu file TXT này vào SCRIPT", "accent"))
+        if on_edit is not None:
+            actions.append((on_edit, "edit", "Sửa prompt chuyển thể", "text"))
+        if on_view is not None:
+            actions.append((on_view, "eye", "Xem nội dung trên ô soạn thảo", "text"))
+        if on_delete is not None:
+            actions.append((on_delete, "trash", "Xoá", "muted"))
+
+        for on_click, name, tip, role in actions:
+            button = QPushButton()
+            button.setObjectName("iconButton")
+            button.setFixedSize(_ACTION_BTN, _ACTION_BTN)
+            set_icon(button, name, role, 14)
+            button.setToolTip(tip)
+            button.clicked.connect(on_click)
+            layout.addWidget(button)
+        return container
+
+    def _edit_language_prompt(self, language: str) -> None:
+        profile = next((p for p in self._profiles if p.language == language), None)
+        current_prompt = profile.prompt if profile else ""
+        dialog = _PromptEditDialog(language, current_prompt, self)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            new_prompt = dialog.value()
+            if profile:
+                profile.prompt = new_prompt
+            else:
+                self._profiles.append(LanguageProfile(language, new_prompt))
+            self._persist_profiles()
+            paint_status(self.status_label, "success")
+            self.status_label.setText(f"Đã cập nhật prompt cho {language_name(language)}.")
+        finally:
+            dialog.deleteLater()
+
+    def _show_text(self, text: str) -> None:
+        with QSignalBlocker(self.script_edit):
+            self.script_edit.setPlainText(text)
+        words = len(text.split())
+        self.count_label.setText(f"{words} từ · {len(text)} ký tự")
+
+    def _view_source(self) -> None:
+        if self._source_text.strip():
+            self._show_text(self._source_text)
+
+    def _view_language(self, language: str) -> None:
+        text = self._translations.get(language, "")
+        if not text.strip():
+            self._warn(f"Ngôn ngữ {language_name(language)} chưa có nội dung.")
+            return
+        self._show_text(text)
+
+    def _delete_source(self) -> None:
+        self._source_lang = None
+        self._source_text = ""
+        self._source_row = -1
+        self._reload_targets(keep=True)
+
+    def _delete_language(self, language: str) -> None:
+        self._translations.pop(language, None)
+        self._reload_targets(keep=True)
 
     def _on_progress(self, percent: int, message: str) -> None:
         self.progress_bar.setValue(percent)
@@ -706,6 +1065,7 @@ class ScriptTab(QWidget):
         if self._worker is worker:
             self._worker = None
         worker.deleteLater()
+        self.progress_bar.setValue(0)
         self._set_busy(False)
         self.busy_changed.emit(False)
 
@@ -720,36 +1080,54 @@ class ScriptTab(QWidget):
 
     # ── saving ───────────────────────────────────────────────────────────────
     def _base_name(self) -> str:
+        topic = self.topic_edit.text().strip()
+        if topic:
+            return safe_filename(topic, "script")
         title = str(self._meta.get("title") or "").strip()
         if title:
             return safe_filename(title, "script")
         video_id = str(self._meta.get("video_id") or "").strip()
         return safe_filename(video_id or "script", "script")
 
-    def _save_txt(self) -> None:
-        text = self.script_edit.toPlainText().strip()
-        if not text:
-            self._warn("Chưa có nội dung script để lưu.")
+    def _edit_clean_prompt(self) -> None:
+        dialog = _CleanPromptDialog(self._clean_prompt, self)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            self._clean_prompt = dialog.value()
+        finally:
+            dialog.deleteLater()
+
+    def _clean(self) -> None:
+        if self._worker is not None:
             return
-        if self._input_dir is None:
+        if self._script_dir is None:
             self._warn("Chưa chọn project — chọn project trước.")
             return
-        base = self._base_name()
-        target = unique_text_path(self._input_dir, base)
-        try:
-            target.write_text(text + "\n", encoding="utf-8", newline="\n")
-        except OSError as exc:
-            paint_status(self.status_label, "error")
-            self.status_label.setText(f"Không lưu được {target.name}: {exc}")
+        if not self._script_text.strip():
+            self._warn("Chưa có transcript — lấy transcript trước.")
             return
-        paint_status(self.status_label, "success")
-        self.status_label.setText(f"Đã lưu {target.name} vào INPUT.")
-        self.reload_requested.emit()
+        api_key = self._api_key()
+        if not api_key:
+            self._warn("Thiếu API key Gemini — dán key vào ô trên hoặc tab Video.")
+            return
+        prompt = self._clean_prompt.strip() or DEFAULT_CLEAN_PROMPT
+        spec = {
+            "kind": "clean",
+            "text": self._script_text,
+            "api_key": api_key,
+            "model": self.model_combo.currentText().strip() or DEFAULT_MODEL,
+            "clean_prompt": prompt,
+        }
+        self.progress_bar.setValue(0)
+        paint_status(self.status_label, "running")
+        self.status_label.setText("Đang làm sạch transcript…")
+        self._start_worker(spec)
 
     def _translate(self) -> None:
         if self._worker is not None:
             return
-        if self._input_dir is None:
+        if self._script_dir is None:
             self._warn("Chưa chọn project — chọn project trước.")
             return
         if not self._script_text.strip():
@@ -788,26 +1166,35 @@ class ScriptTab(QWidget):
         return (self.api_key_edit.text().strip()
                 or str((self._settings.get("video") or {}).get("ai_api_key") or ""))
 
-    def _save_language(self, language: str) -> None:
-        text = self._translations.get(language, "")
-        if not text.strip():
-            self._warn(f"Ngôn ngữ {language_name(language)} chưa có bản dịch.")
-            return
-        if self._input_dir is None:
-            self._warn("Chưa chọn project — chọn project trước.")
-            return
+    def _write_text_file(self, language: str, text: str) -> Optional[Path]:
         base = self._base_name()
-        target = unique_text_path(self._input_dir, f"{base}_{language}")
+        topic = self.topic_edit.text().strip()
+        display_title = topic or str(self._meta.get("title") or base)
+        target = self._script_dir / f"{base}_{language}.txt"
         try:
             target.write_text(text.strip() + "\n", encoding="utf-8", newline="\n")
+            is_source = language == (self._source_lang or DEFAULT_LANGUAGE)
             write_json_atomic(target.with_suffix(".json"), {
-                "title": f"{self._meta.get('title') or base} [{language.upper()}]",
+                "title": display_title if is_source else f"{display_title} [{language.upper()}]",
                 "language": language,
                 "url": str(self._meta.get("url") or ""),
             })
         except OSError as exc:
             paint_status(self.status_label, "error")
             self.status_label.setText(f"Không lưu được {target.name}: {exc}")
+            return None
+        return target
+
+    def _save_language(self, language: str) -> None:
+        text = self._translations.get(language, "")
+        if not text.strip():
+            self._warn(f"Ngôn ngữ {language_name(language)} chưa có bản dịch.")
+            return
+        if self._script_dir is None:
+            self._warn("Chưa chọn project — chọn project trước.")
+            return
+        target = self._write_text_file(language, text)
+        if target is None:
             return
         row = self._result_rows.get(language)
         if row is not None:
@@ -815,17 +1202,38 @@ class ScriptTab(QWidget):
             item = self.result_table.item(row, 1)
             if item is not None:
                 item.setToolTip(str(target))
-            button = self.result_table.cellWidget(row, 2)
-            if button is not None:
-                button.setEnabled(False)
         paint_status(self.status_label, "success")
-        self.status_label.setText(f"Đã lưu {target.name} vào INPUT.")
+        self.status_label.setText(f"Đã lưu {target.name} vào SCRIPT.")
+        self.reload_requested.emit()
+
+    def _save_source(self) -> None:
+        if not self._source_text.strip():
+            self._warn("Chưa có nội dung gốc để lưu.")
+            return
+        if self._script_dir is None:
+            self._warn("Chưa chọn project — chọn project trước.")
+            return
+        language = self._source_lang or DEFAULT_LANGUAGE
+        target = self._write_text_file(language, self._source_text)
+        if target is None:
+            return
+        row = self._source_row
+        if 0 <= row < self.result_table.rowCount():
+            self._set_result_status(row, f"Đã lưu {target.name}", "success")
+            item = self.result_table.item(row, 1)
+            if item is not None:
+                item.setToolTip(str(target))
+        paint_status(self.status_label, "success")
+        self.status_label.setText(f"Đã lưu {target.name} vào SCRIPT.")
         self.reload_requested.emit()
 
     def _save_all(self) -> None:
         saved = 0
+        if self._source_text.strip():
+            self._save_source()
+            saved += 1
         for language in list(self._translations):
             self._save_language(language)
             saved += 1
         if not saved:
-            self._warn("Chưa có bản dịch nào để lưu.")
+            self._warn("Chưa có nội dung nào để lưu.")

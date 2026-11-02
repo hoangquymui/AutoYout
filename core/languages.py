@@ -106,7 +106,13 @@ def is_known(value: object) -> bool:
 
 
 def language_name(code: str) -> str:
-    return LANGUAGES.get(normalize_language(code), LANGUAGES[DEFAULT_LANGUAGE])["name"]
+    raw = str(code or "").strip()
+    if not raw:
+        return LANGUAGES[DEFAULT_LANGUAGE]["name"]
+    norm = normalize_language(raw, "")
+    if norm and norm in LANGUAGES:
+        return LANGUAGES[norm]["name"]
+    return raw.upper() if len(raw) <= 3 else raw.replace("_", " ").title()
 
 
 def edge_voice(code: str) -> str:

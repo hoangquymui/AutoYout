@@ -23,21 +23,30 @@ class LanguageProfile:
     language: str
     prompt: str = ""
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
+    name: str = ""
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "language": self.language, "prompt": self.prompt}
+        data = {"id": self.id, "language": self.language, "prompt": self.prompt}
+        if self.name:
+            data["name"] = self.name
+        return data
 
     @classmethod
     def from_dict(cls, data: Any) -> Optional["LanguageProfile"]:
         if not isinstance(data, dict):
             return None
-        language = normalize_language(data.get("language"), "")
+        raw_lang = str(data.get("language") or "").strip()
+        language = normalize_language(raw_lang, "")
+        if not language and raw_lang.isalnum() and len(raw_lang) <= 10:
+            language = raw_lang.lower()
         if not language:
             return None
+        name = str(data.get("name") or "").strip()
         return cls(
             language=language,
             prompt=str(data.get("prompt") or "").strip(),
             id=str(data.get("id") or uuid.uuid4().hex[:8]),
+            name=name,
         )
 
 

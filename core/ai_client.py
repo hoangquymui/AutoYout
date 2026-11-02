@@ -135,6 +135,36 @@ def build_translate_prompt(
     return "\n".join(lines)
 
 
+_CLEAN_MARKER = "--- [DÁN ĐOẠN TRANSCRIPT CỦA BẠN VÀO ĐÂY] ---"
+
+DEFAULT_CLEAN_PROMPT = """Bạn là một biên tập viên nội dung chuyên nghiệp. Hãy giúp tôi làm sạch và biên tập lại đoạn transcript video YouTube dưới đây theo các quy tắc nghiêm ngặt sau:
+
+1. Xóa bỏ hoàn toàn:
+- Mọi thẻ âm thanh, tiếng ồn (ví dụ: [âm nhạc], >>, ồ ồ, nô nô nô...).
+- Lời kêu gọi hành động (CTA) đầu/cuối video: chào mừng, like, share, subscribe, bấm chuông, xin nút vàng...
+- Toàn bộ nội dung quảng cáo/tài trợ (đặc biệt là đoạn quảng cáo ứng dụng chứng khoán DNSE, trứng vàng...).
+
+2. Chuẩn hóa văn phong & chính tả:
+- Sửa các từ nhận diện sai chính tả do âm thanh (ví dụ: "khồn khà" -> không có, "con mã" -> món ăn, "điên lẩu" -> đi ăn lẩu, "Sawadee pị mài" -> Sawasdee Pee Mai...).
+- Viết hoa đúng danh từ riêng, địa danh, tên món ăn (Bangkok, Isan, Chao Phraya, Som Tam, Tom Yum, Pad Thai, Jim Jum, 7-Eleven, Songkran, Jodd Fairs...).
+- Giữ nguyên văn phong vui vẻ, dí dỏm và các kiến thức văn hóa/ẩm thực cốt lõi của bài gốc.
+
+3. Định dạng đầu ra:
+- Định dạng bài viết mạch lạc thành các đoạn văn hoàn chỉnh hoặc có tiêu đề con (H2/H3) theo từng chủ đề: Giao thông & Chùa chiền tại Bangkok, Phân biệt Som Tam & Yam, Sự thật về lẩu Thái & Tom Yum, Xôi xoài & Cách tránh nóng mùa hè, Lễ hội té nước Songkran, Nguồn gốc Pad Thai, Văn hóa chợ đêm & Ẩm thực đường phố.
+
+--- [DÁN ĐOẠN TRANSCRIPT CỦA BẠN VÀO ĐÂY] ---
+"""
+
+
+def build_clean_prompt(text: str, instruction: str) -> str:
+    """Paste the raw transcript into the cleaning instruction at its marker."""
+    body = str(instruction or "").strip()
+    raw = str(text or "").strip()
+    if _CLEAN_MARKER in body:
+        return body.replace(_CLEAN_MARKER, raw)
+    return f"{body}\n\n---\n{raw}"
+
+
 def split_for_translation(text: str, limit: int = _CHUNK_LIMIT) -> List[str]:
     """Split text on paragraph boundaries, packing up to ``limit`` characters."""
     raw = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
