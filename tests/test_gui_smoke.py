@@ -368,6 +368,24 @@ def test_language_dialogs_collect_and_edit_values(app) -> None:
     assert manage.table.columnCount() == 3
     assert manage.table.item(0, 0).text() == "English"
     assert manage.table.item(1, 1).text() == "prompt ja"
+    assert manage.table.verticalHeader().defaultSectionSize() == 42
+    assert manage.table.rowHeight(0) == 42
+    assert manage.table.rowHeight(1) == 42
+    from PySide6.QtWidgets import QHeaderView
+    header = manage.table.horizontalHeader()
+    assert header.sectionResizeMode(2) == QHeaderView.ResizeMode.Fixed
+    assert header.sectionSize(2) == 105
+
+    action_widget = manage.table.cellWidget(0, 2)
+    assert action_widget is not None
+    action_layout = action_widget.layout()
+    assert action_layout.spacing() == 8
+    margins = action_layout.contentsMargins()
+    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (6, 1, 6, 7)
+    edit_btn = action_layout.itemAt(0).widget()
+    del_btn = action_layout.itemAt(1).widget()
+    assert edit_btn.width() == 26 and edit_btn.height() == 26
+    assert del_btn.width() == 26 and del_btn.height() == 26
 
     edit = _PromptEditDialog("en", "prompt en")
     edit.edit.setPlainText("prompt mới")
@@ -376,10 +394,43 @@ def test_language_dialogs_collect_and_edit_values(app) -> None:
     manage.table.item(0, 1).setText("prompt mới")
     manage._remove("ja")
     assert manage.table.rowCount() == 1
+
+    monkeypatch_dialog = False
+    mock_prompt_val = "prompt từ modal"
+    class MockPromptEditDialog:
+        def __init__(self, *args, **kwargs):
+            pass
+        def exec(self):
+            return 1  # Accepted
+        def value(self):
+            return mock_prompt_val
+        def deleteLater(self):
+            pass
+
+    import ui.tab_script as ts
+    orig = ts._PromptEditDialog
+    ts._PromptEditDialog = MockPromptEditDialog
+    try:
+        mock_prompt_val = "prompt từ click"
+        manage._on_cell_clicked(0, 1)
+        assert manage.table.item(0, 1).text() == "prompt từ click"
+
+        mock_prompt_val = "prompt từ dblclick"
+        manage._on_cell_double_clicked(0, 0)
+        assert manage.table.item(0, 1).text() == "prompt từ dblclick"
+
+        mock_prompt_val = "prompt từ edit_btn"
+        row0_action = manage.table.cellWidget(0, 2)
+        row0_edit_btn = row0_action.layout().itemAt(0).widget()
+        row0_edit_btn.click()
+        assert manage.table.item(0, 1).text() == "prompt từ edit_btn"
+    finally:
+        ts._PromptEditDialog = orig
+
     manage._accept()
     profiles = manage.profiles()
     assert [(p.language, p.prompt, p.id) for p in profiles] == [
-        ("en", "prompt mới", "id1")]
+        ("en", "prompt từ edit_btn", "id1")]
 
 
 

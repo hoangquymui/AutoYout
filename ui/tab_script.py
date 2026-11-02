@@ -194,15 +194,16 @@ class _LanguagePromptDialog(QDialog):
 class _PromptEditDialog(QDialog):
     """Modal to edit one language's adaptation prompt."""
 
-    def __init__(self, language: str, prompt: str, parent=None) -> None:
+    def __init__(self, language: str, prompt: str, parent=None, title_name: str = "") -> None:
         super().__init__(parent)
-        self.setWindowTitle(f"Sửa prompt — {language_name(language)}")
+        title = title_name or language_name(language)
+        self.setWindowTitle(f"Sửa prompt — {title}")
         self.setModal(True)
-        self.resize(560, 360)
+        self.resize(600, 420)
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
-        layout.addWidget(QLabel("Prompt (cách làm sạch / chuyển thể câu chuyện)"))
+        layout.addWidget(QLabel("Prompt (cách làm sạch / chuyển thể câu chuyện):"))
         self.edit = QPlainTextEdit()
         self.edit.setPlainText(prompt)
         self.edit.setPlaceholderText(
@@ -259,28 +260,32 @@ class _CleanPromptDialog(QDialog):
 
 
 class _ManageLanguagesDialog(QDialog):
-    """Modal listing every language profile; click a prompt cell to edit it."""
+    """Modal listing every language profile; click a prompt cell or edit button to edit it."""
 
     def __init__(self, profiles: List[LanguageProfile], parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Sửa prompt ngôn ngữ")
         self.setModal(True)
-        self.resize(680, 420)
+        self.resize(720, 440)
         self._profiles: List[LanguageProfile] = [
             LanguageProfile(p.language, p.prompt, p.id, getattr(p, "name", "")) for p in profiles]
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
         layout.addWidget(QLabel(
-            "Bấm vào ô Prompt để sửa, hoặc bấm thùng rác để xoá ngôn ngữ:"))
+            "Bấm vào ô Prompt hoặc bấm nút bút chì để sửa prompt, hoặc bấm thùng rác để xoá:"))
         self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Ngôn ngữ", "Prompt", ""])
+        self.table.setHorizontalHeaderLabels(["Ngôn ngữ", "Prompt", "Thao tác"])
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(42)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(2, 105)
         self.table.cellClicked.connect(self._on_cell_clicked)
+        self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()
@@ -298,38 +303,68 @@ class _ManageLanguagesDialog(QDialog):
     def _rebuild(self) -> None:
         self.table.setRowCount(len(self._profiles))
         for row, profile in enumerate(self._profiles):
+            self.table.setRowHeight(row, 42)
             name = getattr(profile, "name", "")
             display_name = f"{name} ({profile.language})" if name and profile.language not in name else (name or language_name(profile.language))
             lang_item = QTableWidgetItem(display_name)
-            lang_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            lang_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             lang_item.setData(Qt.ItemDataRole.UserRole, profile.language)
 
             prompt_item = QTableWidgetItem(profile.prompt)
+            prompt_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             prompt_item.setToolTip(profile.prompt or "Bấm để sửa prompt")
 
-            delete = QPushButton()
-            set_icon(delete, "trash", "muted", 13)
-            delete.setToolTip("Xoá ngôn ngữ này")
-            delete.clicked.connect(
+            action_widget = QWidget()
+            action_layout = QHBoxLayout(action_widget)
+            action_layout.setContentsMargins(6, 1, 6, 7)
+            action_layout.setSpacing(8)
+            action_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            edit_btn = QPushButton()
+            edit_btn.setObjectName("iconButton")
+            set_icon(edit_btn, "edit", "accent", 14)
+            edit_btn.setToolTip("Sửa prompt")
+            edit_btn.setFixedSize(26, 26)
+            edit_btn.clicked.connect(lambda _checked=False, r=row: self._open_edit_dialog(r))
+
+            del_btn = QPushButton()
+            del_btn.setObjectName("iconButton")
+            set_icon(del_btn, "trash", "muted", 14)
+            del_btn.setToolTip("Xoá ngôn ngữ này")
+            del_btn.setFixedSize(26, 26)
+            del_btn.clicked.connect(
                 lambda _checked=False, code=profile.language: self._remove(code))
+
+            action_layout.addWidget(edit_btn)
+            action_layout.addWidget(del_btn)
+
             self.table.setItem(row, 0, lang_item)
             self.table.setItem(row, 1, prompt_item)
-            self.table.setCellWidget(row, 2, delete)
+            self.table.setCellWidget(row, 2, action_widget)
+        self.table.horizontalHeader().resizeSection(2, 105)
 
     def _on_cell_clicked(self, row: int, column: int) -> None:
-        if column != 1:
-            return
+        if column == 1:
+            self._open_edit_dialog(row)
+
+    def _on_cell_double_clicked(self, row: int, _column: int) -> None:
+        self._open_edit_dialog(row)
+
+    def _open_edit_dialog(self, row: int) -> None:
         lang_item = self.table.item(row, 0)
-        prompt_item = self.table.item(row, 2)
+        prompt_item = self.table.item(row, 1)
         if lang_item is None or prompt_item is None:
             return
         code = str(lang_item.data(Qt.ItemDataRole.UserRole) or "")
-        dialog = _PromptEditDialog(code, prompt_item.text(), self)
+        dialog = _PromptEditDialog(code, prompt_item.text(), self, title_name=lang_item.text())
         try:
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
-            prompt_item.setText(dialog.value())
-            prompt_item.setToolTip(dialog.value())
+            new_prompt = dialog.value()
+            prompt_item.setText(new_prompt)
+            prompt_item.setToolTip(new_prompt)
+            if 0 <= row < len(self._profiles):
+                self._profiles[row].prompt = new_prompt
         finally:
             dialog.deleteLater()
 
@@ -340,6 +375,7 @@ class _ManageLanguagesDialog(QDialog):
 
     def _collect(self) -> List[LanguageProfile]:
         ids = {p.language: p.id for p in self._profiles}
+        names = {p.language: getattr(p, "name", "") for p in self._profiles}
         updated: List[LanguageProfile] = []
         for row in range(self.table.rowCount()):
             lang_item = self.table.item(row, 0)
@@ -349,8 +385,11 @@ class _ManageLanguagesDialog(QDialog):
             if not code:
                 continue
             prompt_item = self.table.item(row, 1)
+            name = names.get(code, "")
             profile = LanguageProfile(
-                code, prompt_item.text().strip() if prompt_item else "")
+                code, prompt_item.text().strip() if prompt_item else "",
+                name=name
+            )
             if code in ids:
                 profile.id = ids[code]
             updated.append(profile)
@@ -666,14 +705,14 @@ class ScriptTab(QWidget):
         self.result_table.setHorizontalHeaderLabels(
             ["Ngôn ngữ", "Trạng thái", "Thao tác"])
         self.result_table.verticalHeader().setVisible(False)
+        self.result_table.verticalHeader().setDefaultSectionSize(42)
         self.result_table.setEditTriggers(
             QAbstractItemView.EditTrigger.NoEditTriggers)
         header = self.result_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-        header.resizeSection(
-            2, _ACTION_BTN * 4 + _ACTION_GAP * 3 + _ITEM_H_PAD + 16)
+        header.resizeSection(2, 130)
         self.result_table.setMinimumHeight(150)
         layout.addWidget(self.result_table, 1)
 
@@ -762,6 +801,7 @@ class ScriptTab(QWidget):
         if self._source_lang:
             row = self.result_table.rowCount()
             self.result_table.insertRow(row)
+            self.result_table.setRowHeight(row, 42)
             self._source_row = row
             self.result_table.setItem(
                 row, 0, QTableWidgetItem(language_name(self._source_lang)))
@@ -781,6 +821,7 @@ class ScriptTab(QWidget):
                 continue
             row = self.result_table.rowCount()
             self.result_table.insertRow(row)
+            self.result_table.setRowHeight(row, 42)
             self._result_rows[profile.language] = row
             display_name = getattr(profile, "name", "") or language_name(profile.language)
             if getattr(profile, "name", "") and profile.language not in display_name:
@@ -790,8 +831,6 @@ class ScriptTab(QWidget):
             widget = self._make_action_widget(
                 on_save=lambda _checked=False, lang=profile.language:
                 self._save_language(lang),
-                on_edit=lambda _checked=False, lang=profile.language:
-                self._edit_language_prompt(lang),
                 on_view=lambda _checked=False, lang=profile.language:
                 self._view_language(lang),
                 on_delete=lambda _checked=False, lang=profile.language:
@@ -802,7 +841,7 @@ class ScriptTab(QWidget):
             self._set_result_status(row, f"Xong · {len(text)} ký tự", "success")
         if self._profiles:
             self.target_hint.setText(
-                f"{len(self._profiles)} ngôn ngữ · sửa prompt bằng nút bút chì.")
+                f"{len(self._profiles)} ngôn ngữ · cấu hình prompt tại nút “Sửa prompt…” bên trên.")
         else:
             self.target_hint.setText(
                 "Chưa có ngôn ngữ — bấm “Thêm ngôn ngữ” để tạo.")
@@ -934,6 +973,7 @@ class ScriptTab(QWidget):
         if row is None:
             row = self.result_table.rowCount()
             self.result_table.insertRow(row)
+            self.result_table.setRowHeight(row, 42)
             self._result_rows[language] = row
             profile = next((p for p in self._profiles if p.language == language), None)
             display_name = getattr(profile, "name", "") or language_name(language)
@@ -943,7 +983,6 @@ class ScriptTab(QWidget):
                 row, 0, QTableWidgetItem(display_name))
             widget = self._make_action_widget(
                 on_save=lambda _checked=False, lang=language: self._save_language(lang),
-                on_edit=lambda _checked=False, lang=language: self._edit_language_prompt(lang),
                 on_view=lambda _checked=False, lang=language: self._view_language(lang),
                 on_delete=lambda _checked=False, lang=language: self._delete_language(lang),
             )
@@ -973,21 +1012,18 @@ class ScriptTab(QWidget):
     def _make_action_widget(
         self,
         on_save=None,
-        on_edit=None,
         on_view=None,
         on_delete=None,
     ) -> QWidget:
         container = QWidget()
         layout = QHBoxLayout(container)
-        layout.setContentsMargins(2, 0, 2, 0)
-        layout.setSpacing(_ACTION_GAP)
+        layout.setContentsMargins(6, 1, 6, 7)
+        layout.setSpacing(6)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         actions = []
         if on_save is not None:
             actions.append((on_save, "download", "Lưu file TXT này vào SCRIPT", "accent"))
-        if on_edit is not None:
-            actions.append((on_edit, "edit", "Sửa prompt chuyển thể", "text"))
         if on_view is not None:
             actions.append((on_view, "eye", "Xem nội dung trên ô soạn thảo", "text"))
         if on_delete is not None:
@@ -1002,24 +1038,6 @@ class ScriptTab(QWidget):
             button.clicked.connect(on_click)
             layout.addWidget(button)
         return container
-
-    def _edit_language_prompt(self, language: str) -> None:
-        profile = next((p for p in self._profiles if p.language == language), None)
-        current_prompt = profile.prompt if profile else ""
-        dialog = _PromptEditDialog(language, current_prompt, self)
-        try:
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                return
-            new_prompt = dialog.value()
-            if profile:
-                profile.prompt = new_prompt
-            else:
-                self._profiles.append(LanguageProfile(language, new_prompt))
-            self._persist_profiles()
-            paint_status(self.status_label, "success")
-            self.status_label.setText(f"Đã cập nhật prompt cho {language_name(language)}.")
-        finally:
-            dialog.deleteLater()
 
     def _show_text(self, text: str) -> None:
         with QSignalBlocker(self.script_edit):
