@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.languages import language_choices, normalize_language
+from core.settings import ROOT, default_h2mtts_path
 from core.tts_engine import SynthesisCancelled, TTSEngine
 from ui.components.audio_player import AudioPreview
 from ui.components.icons import set_icon
@@ -120,7 +121,7 @@ class TTSConfigTab(QWidget):
         model_form.setHorizontalSpacing(12)
         model_form.setVerticalSpacing(5)
         self.h2m_edit = QLineEdit()
-        self.h2m_edit.setPlaceholderText("D:\\mui\\f375\\tts\\H2MTTS")
+        self.h2m_edit.setPlaceholderText(default_h2mtts_path())
         h2m_row = QHBoxLayout()
         h2m_row.setSpacing(6)
         h2m_row.addWidget(self.h2m_edit, 1)
@@ -290,7 +291,12 @@ class TTSConfigTab(QWidget):
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
         tts = settings.get("tts") or {}
-        self.h2m_edit.setText(str((settings.get("paths") or {}).get("h2mtts") or ""))
+        raw_h2m = str((settings.get("paths") or {}).get("h2mtts") or "").strip()
+        if not raw_h2m or raw_h2m.replace("\\", "/").lower() == "d:/mui/f375/tts/h2mtts":
+            raw_h2m = default_h2mtts_path()
+        elif not Path(raw_h2m).is_absolute():
+            raw_h2m = str((ROOT / raw_h2m).resolve().as_posix())
+        self.h2m_edit.setText(raw_h2m)
         self._set_combo(self.engine_combo, tts.get("engine", "turbo"))
         self._set_combo(self.backend_combo, tts.get("backend", "auto"))
         self._set_combo(self.language_combo,

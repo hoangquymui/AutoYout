@@ -176,3 +176,35 @@ def test_h2mtts_huggingface_packages_and_detection(app, tmp_path: Path) -> None:
     assert "Đã cài đủ" in card.status_badge.text()
 
 
+def test_h2mtts_default_path_in_project(app) -> None:
+    from core.settings import ROOT, default_h2mtts_path, load_settings
+    from core.tts_engine import H2MLayout
+    from ui.tab_settings import H2MTTSCard, SettingsTab
+
+    default_path = default_h2mtts_path()
+    assert str(ROOT).replace("\\", "/") in default_path.replace("\\", "/")
+    assert "H2MTTS" in default_path
+
+    # H2MTTSCard defaults to project path
+    card = H2MTTSCard()
+    assert card.path_edit.text() == default_path
+
+    # SettingsTab defaults to project path
+    tab = SettingsTab()
+    assert tab.general_page.h2mtts_edit.text() == default_path
+    assert tab.card_h2mtts.path_edit.text() == default_path
+
+    # Legacy external path migration
+    legacy_settings = {
+        "paths": {"h2mtts": "D:/mui/f375/tts/H2MTTS"},
+    }
+    tab.load_from(legacy_settings)
+    assert tab.general_page.h2mtts_edit.text() == default_path
+    assert tab.card_h2mtts.path_edit.text() == default_path
+
+    # H2MLayout resolves to project path
+    layout = H2MLayout("")
+    assert layout.root == Path(default_path)
+
+
+

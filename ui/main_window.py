@@ -27,7 +27,7 @@ from core.ffmpeg_renderer import FFmpegRenderer
 from core.pipeline_worker import PipelineWorker
 from core.project_manager import ProjectManager
 from core.settings import save_settings
-from core.tts_engine import TTSEngine
+from core.tts_engine import H2MLayout, TTSEngine
 from core.youtube_uploader import YouTubeUploader
 from ui import theme
 from ui.components.icons import (
@@ -324,7 +324,7 @@ class MainWindow(QMainWindow):
     # ── status ───────────────────────────────────────────────────────────────
     def _ensure_tts_engine(self) -> Optional[TTSEngine]:
         raw = str((self.settings.get("paths") or {}).get("h2mtts") or "")
-        expected = Path(raw).expanduser() if raw else Path("")
+        expected = H2MLayout(raw).root
         if self.tts_engine is None or self.tts_engine.layout.root != expected:
             self.tts_engine = TTSEngine(self.settings)
             self.tts_tab.set_engine(self.tts_engine)

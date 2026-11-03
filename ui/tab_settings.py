@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.settings import ROOT, default_h2mtts_path
 from ui import theme
 from ui.components.icons import icon, set_icon
 from ui.components.page import PageHeader, icon_button, paint_status, wrap_scroll
@@ -184,7 +185,10 @@ def detect_hardware(h2mtts_path: str = "") -> Dict[str, Any]:
         specs["note"] = "• Chạy bằng CPU - khuyến nghị dùng GPU NVIDIA để tăng tốc đọc"
 
     # 5. H2MTTS directory check
-    check_dir = Path(h2mtts_path) if h2mtts_path else Path("D:/mui/f375/tts/H2MTTS")
+    raw_path = h2mtts_path.strip() if h2mtts_path else default_h2mtts_path()
+    check_dir = Path(raw_path)
+    if not check_dir.is_absolute():
+        check_dir = (ROOT / check_dir).resolve()
     specs["installed"] = check_dir.exists() and (
         (check_dir / "models").exists() or (check_dir / "modules").exists()
     )
@@ -889,7 +893,7 @@ class H2MTTSCard(QFrame):
         path_row.setSpacing(6)
         path_lbl = QLabel("Thư mục H2MTTS:")
         path_lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
-        self.path_edit = QLineEdit("D:/mui/f375/tts/H2MTTS")
+        self.path_edit = QLineEdit(default_h2mtts_path())
         self.path_edit.textChanged.connect(self._on_path_changed)
         btn_browse = icon_button(
             "folder-open", "Chọn thư mục H2MTTS…", role="muted", size=14, side=30
@@ -1263,7 +1267,7 @@ class GeneralSettingsPage(QWidget):
 
         # H2MTTS path
         h2_row = QHBoxLayout()
-        self.h2mtts_edit = QLineEdit("D:/mui/f375/tts/H2MTTS")
+        self.h2mtts_edit = QLineEdit(default_h2mtts_path())
         btn_h2 = icon_button("folder", "Chọn thư mục H2MTTS", role="muted", size=14, side=30)
         btn_h2.clicked.connect(lambda: self._browse_dir(self.h2mtts_edit, "Chọn thư mục H2MTTS"))
         h2_row.addWidget(self.h2mtts_edit, 1)
@@ -1555,7 +1559,13 @@ class SettingsTab(QWidget):
             api = settings.get("api") or {}
 
             # General paths
-            h2 = str(paths.get("h2mtts") or "D:/mui/f375/tts/H2MTTS")
+            raw_h2 = str(paths.get("h2mtts") or "").strip()
+            if not raw_h2 or raw_h2.replace("\\", "/").lower() == "d:/mui/f375/tts/h2mtts":
+                h2 = default_h2mtts_path()
+            elif not Path(raw_h2).is_absolute():
+                h2 = str((ROOT / raw_h2).resolve().as_posix())
+            else:
+                h2 = raw_h2
             self.general_page.h2mtts_edit.setText(h2)
             self.card_h2mtts.path_edit.setText(h2)
             self.card_h2mtts.detect_specs()

@@ -10,6 +10,8 @@ __pycache__/
 logs/
 preview/
 bin/
+H2MTTS/
+tts/
 
 # Local secrets and per-user settings
 config/user_settings.json

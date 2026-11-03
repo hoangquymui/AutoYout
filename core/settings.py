@@ -24,6 +24,13 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
     return result
 
 
+def default_h2mtts_path() -> str:
+    """Return default H2MTTS directory path inside this project."""
+    if (ROOT / "tts" / "H2MTTS").is_dir():
+        return str((ROOT / "tts" / "H2MTTS").as_posix())
+    return str((ROOT / "H2MTTS").as_posix())
+
+
 def load_settings() -> Dict[str, Any]:
     defaults = load_json(DEFAULT_SETTINGS_PATH, {}) or {}
     user = load_json(USER_SETTINGS_PATH, {}) or {}
@@ -34,6 +41,12 @@ def load_settings() -> Dict[str, Any]:
     merged.setdefault("video", {})
     merged.setdefault("youtube", {})
     merged.setdefault("app", {})
+
+    # Default h2mtts to inside this project if unset or legacy external path
+    h2 = str(merged["paths"].get("h2mtts") or "").strip()
+    if not h2 or h2.replace("\\", "/").lower() == "d:/mui/f375/tts/h2mtts":
+        merged["paths"]["h2mtts"] = default_h2mtts_path()
+
     return merged
 
 

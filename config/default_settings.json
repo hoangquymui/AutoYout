@@ -1,6 +1,6 @@
 {
   "paths": {
-    "h2mtts": "D:/mui/f375/tts/H2MTTS",
+    "h2mtts": "H2MTTS",
     "ffmpeg": "ffmpeg",
     "ffprobe": "ffprobe"
   },
