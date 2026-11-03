@@ -637,7 +637,7 @@ class ServiceCard(QFrame):
         )
 
 
-# ── H2MTTS Hugging Face Packages (https://huggingface.co/hoangmui410) ─────────
+# ── H2MTTS Model Packages ────────────────────────────────────────────────────
 H2M_PACKAGES: List[Dict[str, Any]] = [
     {
         "id": "turbo",
@@ -787,7 +787,7 @@ class H2MDownloadWorker(QThread):
 
 
 class H2MTTSCard(QFrame):
-    """Local H2MTTS engine, hardware specifications detector, and Hugging Face downloader."""
+    """Local H2MTTS engine, hardware specifications detector, and resource downloader."""
 
     changed = Signal()
 
@@ -903,7 +903,7 @@ class H2MTTSCard(QFrame):
         path_row.addWidget(btn_browse)
         layout.addLayout(path_row)
 
-        # ── 4. Hugging Face Download Manager Box ─────────────────────────────
+        # ── 4. Download Manager Box ──────────────────────────────────────────
         self.downloads_box = QFrame()
         self.downloads_box.setObjectName("DownloadsBox")
         dl_layout = QVBoxLayout(self.downloads_box)
