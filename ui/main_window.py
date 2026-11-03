@@ -50,6 +50,7 @@ from ui.tab_dubbing import DubbingTab
 from ui.tab_frame import FrameTab
 from ui.tab_video import VideoConfigTab
 from ui.tab_youtube import YouTubeConfigTab
+from ui.console_window import ConsoleWindow
 from utils.logger import (
     APP_LOGGER_NAME,
     LogEmitter,
@@ -110,6 +111,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1000, 680)
         self.resize(1400, 920)
 
+        self.console_window = ConsoleWindow(self)
         self._build_ui()
         self._apply_theme(theme.current_mode())
         self._apply_responsive_layout()
@@ -265,6 +267,16 @@ class MainWindow(QMainWindow):
         self.btn_refresh_status.clicked.connect(self._refresh_statuses)
         layout.addWidget(self.btn_refresh_status)
 
+        self.btn_console = icon_button(
+            "terminal",
+            "Mở cửa sổ Console (Xem log)",
+            role="muted",
+            size=16,
+            side=32,
+        )
+        self.btn_console.clicked.connect(self._toggle_console_window)
+        layout.addWidget(self.btn_console)
+
         self.btn_theme = icon_button(
             "sun",
             "Chuyển sang giao diện sáng",
@@ -280,9 +292,21 @@ class MainWindow(QMainWindow):
     def _attach_logging(self) -> None:
         self._log_emitter = LogEmitter(self)
         self._log_emitter.message.connect(self.automation_tab.log_console.append)
+        self._log_emitter.message.connect(self.console_window.append_log)
         self._log_handler = attach_qt_handler(
             logging.getLogger(APP_LOGGER_NAME), self._log_emitter, logging.INFO
         )
+
+    def _toggle_console_window(self) -> None:
+        if self.console_window.isVisible():
+            if self.console_window.isMinimized():
+                self.console_window.showNormal()
+            self.console_window.activateWindow()
+            self.console_window.raise_()
+        else:
+            self.console_window.show()
+            self.console_window.activateWindow()
+            self.console_window.raise_()
 
     # ── startup / settings ───────────────────────────────────────────────────
     def _load_settings_into_tabs(self) -> None:
@@ -719,6 +743,8 @@ class MainWindow(QMainWindow):
         self.video_tab.apply_theme()
         self.frame_tab.apply_theme()
         self.youtube_tab.apply_theme()
+        if hasattr(self, "console_window"):
+            self.console_window.apply_theme()
         self._sync_theme_button()
         if persist:
             self.settings.setdefault("app", {})["theme"] = active

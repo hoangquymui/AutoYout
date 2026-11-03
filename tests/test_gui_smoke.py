@@ -72,6 +72,14 @@ def test_window_builds_all_tabs(window) -> None:
 
 
 def test_log_console_and_status(window) -> None:
+    assert hasattr(window, "btn_console")
+    assert window.console_window is not None
+    window._toggle_console_window()
+    assert window.console_window.isVisible()
+    window.console_window.append_log("INFO", "test floating console")
+    assert "test floating console" in window.console_window.console.view.toPlainText()
+    window.console_window.hide()
+
     window.automation_tab.log_console.append("INFO", "xin chào")
     window.automation_tab.log_console.append("ERROR", "lỗi thử")
     text = window.automation_tab.log_console.view.toPlainText()
