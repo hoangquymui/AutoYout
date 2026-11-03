@@ -68,26 +68,6 @@ def build() -> int:
             else:
                 shutil.copy2(src, dst)
 
-    # Create convenient launcher script in dist
-    bat_content = (
-        "@echo off\r\n"
-        "title AutoYout Launcher\r\n"
-        "cd /d \"%~dp0\"\r\n"
-        "start \"\" AutoYout.exe\r\n"
-    )
-    (dist_dir / "Chay_AutoYout.bat").write_text(bat_content, encoding="utf-8")
-
-    # Debug launcher script with console output
-    debug_bat = (
-        "@echo off\r\n"
-        "title AutoYout (Debug Console)\r\n"
-        "cd /d \"%~dp0\"\r\n"
-        "echo Dang khoi dong AutoYout o che do debug console...\r\n"
-        "AutoYout.exe\r\n"
-        "pause\r\n"
-    )
-    (dist_dir / "Chay_AutoYout_Debug.bat").write_text(debug_bat, encoding="utf-8")
-
     elapsed = round(time.time() - start_time, 1)
     exe_path = dist_dir / "AutoYout.exe"
 
