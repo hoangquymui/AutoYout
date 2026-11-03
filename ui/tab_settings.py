@@ -414,7 +414,7 @@ class ServiceCard(QFrame):
         # ── 4. Collapsible Endpoint ──────────────────────────────────────────
         if has_endpoint:
             ep_toggle_row = QHBoxLayout()
-            self.ep_toggle_btn = QPushButton("v Endpoint tùy chỉnh")
+            self.ep_toggle_btn = QPushButton("Endpoint tùy chỉnh")
             self.ep_toggle_btn.setFlat(True)
             self.ep_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             self.ep_toggle_btn.setStyleSheet(
@@ -520,9 +520,7 @@ class ServiceCard(QFrame):
             return
         is_hidden = self.ep_container.isHidden()
         self.ep_container.setVisible(is_hidden)
-        self.ep_toggle_btn.setText(
-            "^ Endpoint tùy chỉnh" if is_hidden else "v Endpoint tùy chỉnh"
-        )
+        self.ep_toggle_btn.setText("Endpoint tùy chỉnh")
 
     def _on_key_changed(self, text: str) -> None:
         if text.strip():
@@ -748,7 +746,7 @@ class H2MDownloadWorker(QThread):
             current_pct = int((idx / total_pkgs) * 100)
             self.progress.emit(
                 current_pct,
-                f"Đang tải {pkg['name']} ({idx + 1}/{total_pkgs}) từ Hugging Face…",
+                f"Đang tải {pkg['name']} ({idx + 1}/{total_pkgs})…",
             )
             self.pkg_status_changed.emit(pkg_id, "downloading", "Đang tải…")
 
@@ -914,24 +912,17 @@ class H2MTTSCard(QFrame):
 
         # Header of downloads box
         dl_header = QHBoxLayout()
-        dl_title = QLabel("📦 Tải mô hình từ Hugging Face (@hoangmui410)")
+        dl_title = QLabel("📦 Tải tài nguyên mô hình H2MTTS")
         dl_title_font = QFont()
         dl_title_font.setBold(True)
         dl_title_font.setPointSize(10)
         dl_title.setFont(dl_title_font)
         dl_header.addWidget(dl_title)
         dl_header.addStretch(1)
-
-        btn_hf_link = QPushButton("Mở Hugging Face ↗")
-        btn_hf_link.setFlat(True)
-        btn_hf_link.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_hf_link.setStyleSheet("color: #0284C7; font-size: 11px; text-decoration: underline;")
-        btn_hf_link.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://huggingface.co/hoangmui410")))
-        dl_header.addWidget(btn_hf_link)
         dl_layout.addLayout(dl_header)
 
         dl_desc = QLabel(
-            "Tự động tải các model và voice-packs H2MTTS từ https://huggingface.co/hoangmui410 về thư mục trên máy để chạy offline."
+            "Tự động tải các model và voice-packs H2MTTS về thư mục trên máy để chạy offline."
         )
         dl_desc.setWordWrap(True)
         dl_desc.setStyleSheet("color: #64748B; font-size: 11px;")
@@ -1017,7 +1008,7 @@ class H2MTTSCard(QFrame):
             title_row.addStretch(1)
             info_col.addLayout(title_row)
 
-            sub_lbl = QLabel(f"{pkg['repo']} · {pkg['size']} — {pkg['desc']}")
+            sub_lbl = QLabel(f"{pkg['size']} — {pkg['desc']}")
             sub_lbl.setStyleSheet("color: #64748B; font-size: 10.5px;")
             sub_lbl.setWordWrap(True)
             info_col.addWidget(sub_lbl)
@@ -1157,7 +1148,7 @@ class H2MTTSCard(QFrame):
 
         self.progress_container.setVisible(True)
         self.progress_bar.setValue(0)
-        self.lbl_progress.setText("Đang khởi tạo kết nối Hugging Face…")
+        self.lbl_progress.setText("Đang khởi tạo kết nối tải dữ liệu…")
         self.btn_install.setEnabled(False)
         self.btn_dl_all.setEnabled(False)
 
@@ -1444,7 +1435,6 @@ class SettingsTab(QWidget):
             title="Google Gemini TTS",
             shared_from="Gemini Flash",
             models=GEMINI_TTS_MODELS,
-            price_note="Đơn giá: ≈ $20 / 1M ký tự (ước tính)",
             has_key_input=False,
             key_provider=self.card_gemini.get_key,
             parent=page,
@@ -1503,7 +1493,6 @@ class SettingsTab(QWidget):
             title="Google Gemini – Ảnh AI",
             shared_from="Gemini Flash",
             models=GEMINI_IMAGE_MODELS,
-            price_note="Đơn giá: ≈ $0.039 / ảnh 1K (ước tính)",
             has_key_input=False,
             key_provider=self.card_gemini.get_key,
             parent=page,
@@ -1519,7 +1508,6 @@ class SettingsTab(QWidget):
             tag="Video AI",
             shared_from="Gemini Flash",
             models=VEO_VIDEO_MODELS,
-            price_note="Đơn giá: $0.05 / giây (720p)",
             has_key_input=False,
             key_provider=self.card_gemini.get_key,
             parent=page,
