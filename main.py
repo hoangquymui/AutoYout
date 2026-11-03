@@ -2,11 +2,24 @@
 from __future__ import annotations
 
 import ctypes
+import io
 import logging
 import os
 import sys
 import traceback
 from pathlib import Path
+
+# Provide safe dummy stream when stdout/stderr are None (e.g. in PyInstaller windowed apps)
+class _SafeStream(io.StringIO):
+    def write(self, s: str) -> int:
+        return len(s) if s else 0
+    def flush(self) -> None:
+        pass
+
+if sys.stdout is None:
+    sys.stdout = _SafeStream()
+if sys.stderr is None:
+    sys.stderr = _SafeStream()
 
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QMessageBox

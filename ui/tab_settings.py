@@ -701,18 +701,46 @@ class H2MDownloadWorker(QThread):
         parent=None,
     ) -> None:
         super().__init__(parent)
-        self.target_root = Path(target_root)
+        raw = str(target_root or "").strip()
+        if not raw:
+            self.target_root = Path(default_h2mtts_path())
+        else:
+            p = Path(raw)
+            self.target_root = (ROOT / p).resolve() if not p.is_absolute() else p
         self.packages = packages
         self._is_cancelled = False
+        self.errors: Dict[str, str] = {}
 
     def cancel(self) -> None:
         self._is_cancelled = True
 
     def run(self) -> None:
+        import io
+        import os
+        import sys
+
+        # Ensure streams exist in windowed GUI (PyInstaller windowed apps have sys.stdout/stderr as None)
+        if sys.stdout is None:
+            sys.stdout = io.StringIO()
+        if sys.stderr is None:
+            sys.stderr = io.StringIO()
+
+        # Disable console terminal progress bars from huggingface_hub so tqdm never writes to null streams
+        os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+        os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+        os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+
+        try:
+            from huggingface_hub.utils import disable_progress_bars
+            disable_progress_bars()
+        except Exception:
+            pass
+
         from huggingface_hub import snapshot_download
 
         total_pkgs = len(self.packages)
         success_count = 0
+        self.errors.clear()
 
         for idx, pkg in enumerate(self.packages):
             if self._is_cancelled:
@@ -732,11 +760,24 @@ class H2MDownloadWorker(QThread):
             self.pkg_status_changed.emit(pkg_id, "downloading", "Đang tải…")
 
             try:
-                snapshot_download(
-                    repo_id=repo_id,
-                    local_dir=str(target_dir),
-                    repo_type="model",
-                )
+                # 1. Try primary Hugging Face endpoint
+                try:
+                    snapshot_download(
+                        repo_id=repo_id,
+                        local_dir=str(target_dir),
+                        repo_type="model",
+                    )
+                except Exception as primary_exc:
+                    logger.warning(
+                        "Không tải được từ endpoint chính (%s). Thử lại qua mirror hf-mirror.com...",
+                        primary_exc,
+                    )
+                    snapshot_download(
+                        repo_id=repo_id,
+                        local_dir=str(target_dir),
+                        repo_type="model",
+                        endpoint="https://hf-mirror.com",
+                    )
 
                 if pkg.get("is_zip"):
                     zip_file = target_dir / "runtime.zip"
@@ -754,16 +795,22 @@ class H2MDownloadWorker(QThread):
                 success_count += 1
                 self.pkg_status_changed.emit(pkg_id, "installed", "✓ Đã có")
             except Exception as exc:
+                err_text = str(exc)
                 logger.error("Lỗi khi tải %s: %s", repo_id, exc)
-                self.pkg_status_changed.emit(pkg_id, "error", f"Lỗi: {exc}")
+                self.errors[pkg_id] = err_text
+                self.pkg_status_changed.emit(pkg_id, "error", "Lỗi tải")
 
         self.progress.emit(100, "Hoàn tất quá trình tải.")
         all_ok = success_count == total_pkgs
-        msg = (
-            f"Đã tải thành công {success_count}/{total_pkgs} gói tài nguyên."
-            if all_ok
-            else f"Tải xong {success_count}/{total_pkgs} gói (có lỗi xảy ra)."
-        )
+        if all_ok:
+            msg = f"Đã tải thành công {success_count}/{total_pkgs} gói tài nguyên."
+        else:
+            first_err = next(iter(self.errors.values()), "Có lỗi xảy ra")
+            # Keep message concise and readable
+            short_err = first_err.split("\n")[0]
+            if len(short_err) > 60:
+                short_err = short_err[:57] + "..."
+            msg = f"Tải xong {success_count}/{total_pkgs} gói ({short_err})."
         self.all_finished.emit(all_ok, msg)
 
 
@@ -1046,10 +1093,16 @@ class H2MTTSCard(QFrame):
         self.check_packages_status()
         self.changed.emit()
 
-    def check_packages_status(self) -> None:
-        path = Path(self.path_edit.text().strip())
+    def check_packages_status(self, errors: Optional[Dict[str, str]] = None) -> None:
+        raw = self.path_edit.text().strip()
+        if not raw:
+            path = Path(default_h2mtts_path())
+        else:
+            p = Path(raw)
+            path = (ROOT / p).resolve() if not p.is_absolute() else p
         all_core_ok = True
         has_any = False
+        errors = errors or {}
 
         for pkg in H2M_PACKAGES:
             pkg_id = pkg["id"]
@@ -1060,15 +1113,27 @@ class H2MTTSCard(QFrame):
             if is_installed:
                 has_any = True
                 w["status_badge"].setText("✓ Đã có")
+                w["status_badge"].setToolTip("Gói tài nguyên đã được tải đầy đủ.")
                 w["status_badge"].setStyleSheet(
                     "background: rgba(16, 185, 129, 0.15); color: #10B981; "
                     "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
                 )
                 w["btn_dl"].setText("Tải lại")
+            elif pkg_id in errors:
+                if pkg.get("core"):
+                    all_core_ok = False
+                w["status_badge"].setText("Lỗi tải")
+                w["status_badge"].setToolTip(f"Lỗi: {errors[pkg_id]}")
+                w["status_badge"].setStyleSheet(
+                    "background: rgba(239, 68, 68, 0.15); color: #EF4444; "
+                    "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+                )
+                w["btn_dl"].setText("Thử lại")
             else:
                 if pkg.get("core"):
                     all_core_ok = False
                 w["status_badge"].setText("Chưa tải")
+                w["status_badge"].setToolTip("Gói chưa được tải về máy.")
                 w["status_badge"].setStyleSheet(
                     "background: rgba(245, 158, 11, 0.15); color: #F59E0B; "
                     "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
@@ -1131,6 +1196,8 @@ class H2MTTSCard(QFrame):
         self.progress_container.setVisible(True)
         self.progress_bar.setValue(0)
         self.lbl_progress.setText("Đang khởi tạo kết nối tải dữ liệu…")
+        self.btn_cancel_dl.setText("Hủy")
+        self.btn_cancel_dl.setEnabled(True)
         self.btn_install.setEnabled(False)
         self.btn_dl_all.setEnabled(False)
 
@@ -1154,31 +1221,43 @@ class H2MTTSCard(QFrame):
                 "background: rgba(2, 132, 199, 0.15); color: #0284C7; "
                 "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
             )
+            w["status_badge"].setToolTip("Đang tải dữ liệu từ Hugging Face…")
         elif status_kind == "installed":
             w["status_badge"].setStyleSheet(
                 "background: rgba(16, 185, 129, 0.15); color: #10B981; "
                 "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
             )
+            w["status_badge"].setToolTip("Gói tài nguyên đã cài đặt đầy đủ.")
             w["btn_dl"].setText("Tải lại")
+        elif status_kind == "error":
+            w["status_badge"].setStyleSheet(
+                "background: rgba(239, 68, 68, 0.15); color: #EF4444; "
+                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+            )
+            w["btn_dl"].setText("Thử lại")
 
     def _on_download_finished(self, success: bool, message: str) -> None:
+        errors = dict(getattr(self._downloader, "errors", {})) if self._downloader else {}
         self._downloader = None
         self.btn_install.setEnabled(True)
         self.btn_dl_all.setEnabled(True)
+        self.btn_cancel_dl.setText("Đóng")
         self.lbl_progress.setText(message)
         if success:
             paint_status(self.engine_status, "success")
         else:
             paint_status(self.engine_status, "warning")
         self.engine_status.setText(message)
-        self.check_packages_status()
+        self.check_packages_status(errors=errors)
         self.detect_specs()
         self.changed.emit()
 
     def _cancel_download_clicked(self) -> None:
-        if self._downloader:
+        if self._downloader and self._downloader.isRunning():
             self._downloader.cancel()
             self.lbl_progress.setText("Đang hủy tải…")
+        else:
+            self.progress_container.setVisible(False)
 
     def detect_specs(self) -> None:
         path = self.path_edit.text().strip()

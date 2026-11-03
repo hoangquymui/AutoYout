@@ -18,8 +18,8 @@ from core.languages import language_name
 
 
 def test_normalize_model_remaps_retired_ids() -> None:
-    assert normalize_model("gemini-2.0-flash") == DEFAULT_MODEL
-    assert normalize_model("gemini-1.5-pro") == DEFAULT_MODEL
+    assert normalize_model("gemini-1.5-flash") == "gemini-2.5-flash"
+    assert normalize_model("gemini-1.5-pro") == "gemini-2.5-pro"
     assert normalize_model("") == DEFAULT_MODEL
     assert normalize_model("gemini-custom") == "gemini-custom"
     assert DEFAULT_MODEL in MODEL_CHOICES

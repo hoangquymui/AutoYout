@@ -77,10 +77,14 @@ def setup_logging(log_dir: Optional[Path] = None, level: int = logging.INFO) -> 
         except OSError:
             pass
 
-    stream = logging.StreamHandler(sys.stderr)
-    stream.setLevel(level)
-    stream.setFormatter(logging.Formatter(_CONSOLE_FORMAT))
-    logger.addHandler(stream)
+    if sys.stderr is not None:
+        try:
+            stream = logging.StreamHandler(sys.stderr)
+            stream.setLevel(level)
+            stream.setFormatter(logging.Formatter(_CONSOLE_FORMAT))
+            logger.addHandler(stream)
+        except Exception:
+            pass
     logger._autoyout_ready = True  # type: ignore[attr-defined]
     return logger
 

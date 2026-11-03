@@ -222,4 +222,47 @@ def test_h2mtts_default_path_in_project(app) -> None:
     assert layout2.root == Path(default_path)
 
 
+def test_h2mtts_download_worker_error_propagation_and_ui_handling(app, tmp_path: Path) -> None:
+    from ui.tab_settings import H2M_PACKAGES, H2MTTSCard
+
+    card = H2MTTSCard()
+    card.path_edit.setText(str(tmp_path / "test_h2m"))
+
+    # Simulate error status on one package
+    card._on_pkg_status_changed("turbo", "error", "Lỗi tải")
+    assert card.pkg_widgets["turbo"]["status_badge"].text() == "Lỗi tải"
+    assert card.pkg_widgets["turbo"]["btn_dl"].text() == "Thử lại"
+
+    # Simulate finish with errors
+    errors = {"turbo": "Connection reset by peer"}
+    card.check_packages_status(errors=errors)
+    assert card.pkg_widgets["turbo"]["status_badge"].text() == "Lỗi tải"
+    assert "Connection reset" in card.pkg_widgets["turbo"]["status_badge"].toolTip()
+
+    # Cancel button changes to Đóng when done
+    card.progress_container.setVisible(True)
+    card.btn_cancel_dl.setText("Đóng")
+    card._cancel_download_clicked()
+    assert not card.progress_container.isVisible()
+
+
+def test_h2mtts_download_worker_null_streams_safe(app, tmp_path: Path, monkeypatch) -> None:
+    import sys
+    from ui.tab_settings import H2MDownloadWorker
+
+    worker = H2MDownloadWorker(str(tmp_path), [])
+    # Set sys.stdout and sys.stderr to None to simulate windowed PyInstaller app
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+
+    # Calling run on empty packages should complete cleanly without AttributeError
+    finished_called = []
+    worker.all_finished.connect(lambda ok, msg: finished_called.append((ok, msg)))
+    worker.run()
+    assert len(finished_called) == 1
+    assert finished_called[0][0] is True
+
+
+
+
 
