@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
 from core.ai_client import (
     DEFAULT_CLEAN_PROMPT,
     DEFAULT_MODEL,
-    MODEL_CHOICES,
+    GEMINI_TEXT_MODELS,
     AICancelled,
     AIError,
     build_clean_prompt,
@@ -631,23 +631,15 @@ class ScriptTab(QWidget):
         grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(8)
         grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(3, 1)
 
-        grid.addWidget(QLabel("Api key Gemini"), 0, 0)
-        self.api_key_edit = QLineEdit()
-        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_edit.setMinimumWidth(150)
-        self.api_key_edit.setPlaceholderText(
-            "Dán API key Gemini (để trống dùng key ở tab Video)")
-        grid.addWidget(self.api_key_edit, 0, 1)
-
-        grid.addWidget(QLabel("Model AI"), 0, 2)
+        grid.addWidget(QLabel("Model AI"), 0, 0)
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
-        self.model_combo.addItems(MODEL_CHOICES)
+        for label, model_id in GEMINI_TEXT_MODELS:
+            self.model_combo.addItem(label, model_id)
         self.model_combo.setToolTip(
-            "Model Gemini dùng để chuyển thể — có thể gõ tên model khác")
-        grid.addWidget(self.model_combo, 0, 3)
+            "Model Gemini dùng để làm sạch và chuyển thể — có thể gõ tên model khác")
+        grid.addWidget(self.model_combo, 0, 1, 1, 3)
 
         clean_row = QHBoxLayout()
         clean_row.setSpacing(6)
@@ -730,23 +722,41 @@ class ScriptTab(QWidget):
         return box
 
     # ── settings ─────────────────────────────────────────────────────────────
+    def _current_model(self) -> str:
+        idx = self.model_combo.currentIndex()
+        txt = self.model_combo.currentText().strip()
+        if idx >= 0 and self.model_combo.itemText(idx) == txt:
+            data = self.model_combo.itemData(idx)
+            if data:
+                return str(data)
+        return txt or DEFAULT_MODEL
+
+    def _set_model(self, model_name: str) -> None:
+        if not model_name:
+            return
+        idx = self.model_combo.findData(model_name)
+        if idx >= 0:
+            self.model_combo.setCurrentIndex(idx)
+            return
+        idx = self.model_combo.findText(model_name)
+        if idx >= 0:
+            self.model_combo.setCurrentIndex(idx)
+            return
+        self.model_combo.setEditText(model_name)
+
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
         cfg = settings.setdefault("script", {})
-        key = str(cfg.get("api_key") or
-                  (settings.get("video") or {}).get("ai_api_key") or "")
-        self.api_key_edit.setText(key)
-        model = normalize_model(str(cfg.get("model") or DEFAULT_MODEL))
+        model = normalize_model(str(cfg.get("model") or (settings.get("api") or {}).get("gemini_model") or DEFAULT_MODEL))
         cfg["model"] = model
-        self.model_combo.setCurrentText(model)
+        self._set_model(model)
         self._clean_prompt = str(cfg.get("transcript_clean_prompt") or DEFAULT_CLEAN_PROMPT)
         self._profiles = load_profiles()
         self._reload_targets()
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         cfg = settings.setdefault("script", {})
-        cfg["api_key"] = self.api_key_edit.text().strip()
-        cfg["model"] = self.model_combo.currentText().strip() or DEFAULT_MODEL
+        cfg["model"] = self._current_model()
         cfg["transcript_clean_prompt"] = self._clean_prompt.strip()
         self._settings = settings
 
@@ -889,7 +899,7 @@ class ScriptTab(QWidget):
         has_project = self._script_dir is not None
         self._set_actions_enabled(not busy and has_project)
         self.cancel_button.setEnabled(busy)
-        for widget in (self.url_edit, self.topic_edit, self.api_key_edit, self.model_combo,
+        for widget in (self.url_edit, self.topic_edit, self.model_combo,
                        self.clean_prompt_button, self.add_language_button,
                        self.edit_prompts_button):
             widget.setEnabled(not busy)
@@ -1128,14 +1138,14 @@ class ScriptTab(QWidget):
             return
         api_key = self._api_key()
         if not api_key:
-            self._warn("Thiếu API key Gemini — dán key vào ô trên hoặc tab Video.")
+            self._warn("Chưa cấu hình API key Gemini — hãy nhập API key trong tab Cài đặt.")
             return
         prompt = self._clean_prompt.strip() or DEFAULT_CLEAN_PROMPT
         spec = {
             "kind": "clean",
             "text": self._script_text,
             "api_key": api_key,
-            "model": self.model_combo.currentText().strip() or DEFAULT_MODEL,
+            "model": self._current_model(),
             "clean_prompt": prompt,
         }
         self.progress_bar.setValue(0)
@@ -1157,7 +1167,7 @@ class ScriptTab(QWidget):
             return
         api_key = self._api_key()
         if not api_key:
-            self._warn("Thiếu API key Gemini — dán key vào ô trên hoặc tab Video.")
+            self._warn("Chưa cấu hình API key Gemini — hãy nhập API key trong tab Cài đặt.")
             return
         source = normalize_language(
             str(self._meta.get("source_language") or DEFAULT_LANGUAGE),
@@ -1172,7 +1182,7 @@ class ScriptTab(QWidget):
             "kind": "translate",
             "text": self._script_text,
             "api_key": api_key,
-            "model": self.model_combo.currentText().strip() or DEFAULT_MODEL,
+            "model": self._current_model(),
             "source_lang": source,
             "profiles": [p.to_dict() for p in self._profiles],
         }
@@ -1182,8 +1192,14 @@ class ScriptTab(QWidget):
         self._start_worker(spec)
 
     def _api_key(self) -> str:
-        return (self.api_key_edit.text().strip()
-                or str((self._settings.get("video") or {}).get("ai_api_key") or ""))
+        api = self._settings.get("api") or {}
+        script = self._settings.get("script") or {}
+        video = self._settings.get("video") or {}
+        return (
+            str(api.get("gemini_key") or "").strip()
+            or str(script.get("api_key") or "").strip()
+            or str(video.get("ai_api_key") or "").strip()
+        )
 
     def _write_text_file(self, language: str, text: str) -> Optional[Path]:
         base = self._base_name()

@@ -15,20 +15,30 @@ from typing import Callable, List, Optional
 
 from core.languages import language_name, normalize_language
 
-DEFAULT_MODEL = "gemini-3.8-flash"
-MODEL_CHOICES = (
-    "gemini-3.8-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-)
+DEFAULT_MODEL = "gemini-3.1-flash-lite"
+GEMINI_TEXT_MODELS: List[tuple[str, str]] = [
+    ("Gemini 3.1 Flash Lite (Khuyên dùng · 15 RPM)", "gemini-3.1-flash-lite"),
+    ("Gemini 2.5 Flash (Tiêu chuẩn)", "gemini-2.5-flash"),
+    ("Gemini 2.5 Flash Lite (Siêu nhẹ)", "gemini-2.5-flash-lite"),
+    ("Gemini 2.5 Pro (Tư duy sâu)", "gemini-2.5-pro"),
+    ("Gemini 3 Flash", "gemini-3-flash"),
+    ("Gemini 3.1 Pro", "gemini-3.1-pro"),
+    ("Gemini 3.5 Flash Lite (15 RPM / 500 RPD)", "gemini-3.5-flash-lite"),
+    ("Gemini 3.6 Flash", "gemini-3.6-flash"),
+    ("Gemini 3.8 Flash", "gemini-3.8-flash"),
+    ("Gemini 4 Argon (Thế hệ 4)", "gemini-4-argon"),
+    ("Gemini 2 Flash", "gemini-2.0-flash"),
+    ("Gemini 2 Flash Lite", "gemini-2.0-flash-lite"),
+    ("Gemini Omni 1.1 Flash (Đa phương thức)", "gemini-omni-1.1-flash"),
+    ("Gemma 4 26B (Open Model)", "gemma-4-26b"),
+    ("Gemma 4 31B (Open Model)", "gemma-4-31b"),
+]
+MODEL_CHOICES = tuple(m[1] for m in GEMINI_TEXT_MODELS)
+
 # Retired IDs still stored in older settings files; remapped so requests keep working.
 LEGACY_MODEL_ALIASES = {
-    "gemini-1.5-flash": DEFAULT_MODEL,
-    "gemini-1.5-pro": DEFAULT_MODEL,
-    "gemini-2.0-flash": DEFAULT_MODEL,
-    "gemini-2.0-flash-lite": DEFAULT_MODEL,
-    "gemini-2.5-flash": DEFAULT_MODEL,
+    "gemini-1.5-flash": "gemini-2.5-flash",
+    "gemini-1.5-pro": "gemini-2.5-pro",
 }
 _ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"

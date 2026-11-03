@@ -307,6 +307,7 @@ class MainWindow(QMainWindow):
     def _on_settings_tab_changed(self) -> None:
         self.settings_tab.apply_to(self.settings)
         save_settings(self.settings)
+        self.tts_tab.load_from(self.settings)
         self.video_tab.load_from(self.settings)
         self.script_tab.load_from(self.settings)
         self._refresh_statuses()

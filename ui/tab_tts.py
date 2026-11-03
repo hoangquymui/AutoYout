@@ -81,6 +81,7 @@ class _PreviewWorker(QThread):
 
 
 class TTSConfigTab(QWidget):
+    changed = Signal()
     busy_changed = Signal(bool)
     engine_reload_requested = Signal()
 
@@ -122,6 +123,7 @@ class TTSConfigTab(QWidget):
         model_form.setVerticalSpacing(5)
         self.h2m_edit = QLineEdit()
         self.h2m_edit.setPlaceholderText(default_h2mtts_path())
+        self.h2m_edit.textChanged.connect(lambda _: self.changed.emit())
         h2m_row = QHBoxLayout()
         h2m_row.setSpacing(6)
         h2m_row.addWidget(self.h2m_edit, 1)
@@ -468,8 +470,10 @@ class TTSConfigTab(QWidget):
         start = self.h2m_edit.text().strip() or str(Path.home())
         chosen = QFileDialog.getExistingDirectory(self, "Chọn thư mục H2MTTS", start)
         if chosen:
+            chosen = str(Path(chosen).resolve().as_posix())
             self.h2m_edit.setText(chosen)
             self.engine_reload_requested.emit()
+            self.changed.emit()
 
     def _start_preview(self) -> None:
         if self._worker is not None:

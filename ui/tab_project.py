@@ -175,6 +175,7 @@ class ProjectTab(QWidget):
         start = self.project_edit.text().strip() or str(Path.home())
         chosen = QFileDialog.getExistingDirectory(self, "Chọn thư mục Project", start)
         if chosen:
+            chosen = str(Path(chosen).resolve().as_posix())
             self.project_edit.setText(chosen)
             self._set_root(chosen)
             self.reload_requested.emit()

@@ -332,17 +332,13 @@ def test_script_tab_profiles_and_api_key(window, monkeypatch, tmp_path: Path) ->
     tab.load_from(window.settings)
     assert [p.language for p in tab._profiles] == ["en", "ja"]
     assert tab.result_table.rowCount() == 0
-    assert tab.api_key_edit.echoMode() == tab.api_key_edit.EchoMode.Password
     assert tab.add_language_button.isEnabled() is True
     assert tab.edit_prompts_button.isEnabled() is True
     assert tab.model_combo.isEditable() is True
-    assert tab.model_combo.currentText() == "gemini-3.8-flash"
-    assert window.settings["script"]["model"] == "gemini-3.8-flash"
 
-    tab.model_combo.setCurrentText("gemini-3.6-flash")
+    tab._set_model("gemini-3.6-flash")
     tab.apply_to(window.settings)
     assert window.settings["script"]["model"] == "gemini-3.6-flash"
-    tab.model_combo.setCurrentText("gemini-3.8-flash")
 
     tab._translations["en"] = "bản dịch thử"
     tab._reload_targets()
@@ -353,13 +349,12 @@ def test_script_tab_profiles_and_api_key(window, monkeypatch, tmp_path: Path) ->
     tab._reload_targets(keep=False)
     assert tab.result_table.rowCount() == 0
 
-    tab.api_key_edit.setText("  test-key  ")
-    tab.apply_to(window.settings)
-    assert window.settings["script"]["api_key"] == "test-key"
-    assert tab._api_key() == "test-key"
+    window.settings["api"] = {"gemini_key": "api-key-test"}
+    tab.load_from(window.settings)
+    assert tab._api_key() == "api-key-test"
 
-    tab.api_key_edit.setText("")
-    window.settings["script"]["api_key"] = ""
+    window.settings["api"]["gemini_key"] = ""
+    window.settings.setdefault("script", {})["api_key"] = ""
     window.settings.setdefault("video", {})["ai_api_key"] = "video-key"
     tab.load_from(window.settings)
     assert tab._api_key() == "video-key"

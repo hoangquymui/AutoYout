@@ -44,24 +44,7 @@ from utils.logger import get_logger
 
 logger = get_logger("ui.settings")
 
-# ── Google Gemini Models matching Google AI Studio Rate Limit ────────────────
-GEMINI_TEXT_MODELS: List[Tuple[str, str]] = [
-    ("Gemini 3.1 Flash Lite (Khuyên dùng · 15 RPM)", "gemini-3.1-flash-lite"),
-    ("Gemini 2.5 Flash (Tiêu chuẩn)", "gemini-2.5-flash"),
-    ("Gemini 2.5 Flash Lite (Siêu nhẹ)", "gemini-2.5-flash-lite"),
-    ("Gemini 2.5 Pro (Tư duy sâu)", "gemini-2.5-pro"),
-    ("Gemini 3 Flash", "gemini-3-flash"),
-    ("Gemini 3.1 Pro", "gemini-3.1-pro"),
-    ("Gemini 3.5 Flash Lite (15 RPM / 500 RPD)", "gemini-3.5-flash-lite"),
-    ("Gemini 3.6 Flash", "gemini-3.6-flash"),
-    ("Gemini 3.8 Flash", "gemini-3.8-flash"),
-    ("Gemini 4 Argon (Thế hệ 4)", "gemini-4-argon"),
-    ("Gemini 2 Flash", "gemini-2.0-flash"),
-    ("Gemini 2 Flash Lite", "gemini-2.0-flash-lite"),
-    ("Gemini Omni 1.1 Flash (Đa phương thức)", "gemini-omni-1.1-flash"),
-    ("Gemma 4 26B (Open Model)", "gemma-4-26b"),
-    ("Gemma 4 31B (Open Model)", "gemma-4-31b"),
-]
+from core.ai_client import GEMINI_TEXT_MODELS
 
 GEMINI_TTS_MODELS: List[Tuple[str, str]] = [
     ("Gemini 2.5 Flash TTS (Tiêu chuẩn)", "gemini-2.5-flash-tts"),
@@ -1052,6 +1035,7 @@ class H2MTTSCard(QFrame):
         start = self.path_edit.text().strip() or str(Path.home())
         chosen = QFileDialog.getExistingDirectory(self, "Chọn thư mục H2MTTS", start)
         if chosen:
+            chosen = str(Path(chosen).resolve().as_posix())
             self.path_edit.setText(chosen)
             self.detect_specs()
             self.check_packages_status()
@@ -1328,6 +1312,7 @@ class GeneralSettingsPage(QWidget):
         start = edit.text().strip() or str(Path.home())
         chosen = QFileDialog.getExistingDirectory(self, title, start)
         if chosen:
+            chosen = str(Path(chosen).resolve().as_posix())
             edit.setText(chosen)
             self.changed.emit()
 
@@ -1374,6 +1359,24 @@ class SettingsTab(QWidget):
         self._build_text_ai_page()
         self._build_tts_page()
         self._build_media_ai_page()
+
+        # Two-way sync between General page and H2MTTS card path inputs
+        def _sync_h2_from_card(text: str) -> None:
+            if self.general_page.h2mtts_edit.text() != text:
+                self.general_page.h2mtts_edit.blockSignals(True)
+                self.general_page.h2mtts_edit.setText(text)
+                self.general_page.h2mtts_edit.blockSignals(False)
+
+        def _sync_h2_from_general(text: str) -> None:
+            if self.card_h2mtts.path_edit.text() != text:
+                self.card_h2mtts.path_edit.blockSignals(True)
+                self.card_h2mtts.path_edit.setText(text)
+                self.card_h2mtts.path_edit.blockSignals(False)
+                self.card_h2mtts.detect_specs()
+                self.card_h2mtts.check_packages_status()
+
+        self.card_h2mtts.path_edit.textChanged.connect(_sync_h2_from_card)
+        self.general_page.h2mtts_edit.textChanged.connect(_sync_h2_from_general)
 
         self.inner_tabs.addTab(api_wrapper, "API")
 
