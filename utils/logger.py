@@ -48,9 +48,52 @@ if _HAS_QT:
                 # Emitter destroyed (window closed) while a worker still logs.
                 pass
 
+
+    class QtStreamWriter:
+        """Redirects stdout / stderr writes to a Qt LogEmitter signal."""
+
+        def __init__(self, emitter: "LogEmitter", level: str = "INFO", fallback=None) -> None:
+            self.emitter = emitter
+            self.level = level
+            self.fallback = fallback
+            self._buffer = ""
+
+        def write(self, text: str) -> int:
+            if not text:
+                return 0
+            if self.fallback and hasattr(self.fallback, "write"):
+                try:
+                    self.fallback.write(text)
+                except Exception:
+                    pass
+            self._buffer += str(text)
+            while "\n" in self._buffer:
+                line, self._buffer = self._buffer.split("\n", 1)
+                line = line.strip("\r")
+                if line.strip():
+                    try:
+                        self.emitter.message.emit(self.level, line)
+                    except Exception:
+                        pass
+            return len(text)
+
+        def flush(self) -> None:
+            if self._buffer.strip():
+                try:
+                    self.emitter.message.emit(self.level, self._buffer.strip("\r"))
+                except Exception:
+                    pass
+                self._buffer = ""
+            if self.fallback and hasattr(self.fallback, "flush"):
+                try:
+                    self.fallback.flush()
+                except Exception:
+                    pass
+
 else:  # pragma: no cover
     LogEmitter = None  # type: ignore[assignment]
     QtLogHandler = None  # type: ignore[assignment]
+    QtStreamWriter = None  # type: ignore[assignment]
 
 
 def setup_logging(log_dir: Optional[Path] = None, level: int = logging.INFO) -> logging.Logger:

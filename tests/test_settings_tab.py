@@ -263,6 +263,29 @@ def test_h2mtts_download_worker_null_streams_safe(app, tmp_path: Path, monkeypat
     assert finished_called[0][0] is True
 
 
+def test_console_window_receives_backend_streams_and_clear_action(app) -> None:
+    from ui.console_window import ConsoleWindow
+    from utils.logger import LogEmitter, QtStreamWriter
+
+    cw = ConsoleWindow()
+    cw.append_log("INFO", "H2MTTS model download starting...")
+    assert "H2MTTS" in cw.console.view.toPlainText()
+
+    # Test QtStreamWriter
+    emitter = LogEmitter()
+    received = []
+    emitter.message.connect(lambda level, msg: received.append((level, msg)))
+    writer = QtStreamWriter(emitter, level="INFO")
+    writer.write("Processing line 1\nProcessing line 2\n")
+    assert ("INFO", "Processing line 1") in received
+    assert ("INFO", "Processing line 2") in received
+
+    # Test clear
+    cw._clear_logs()
+    assert cw.console.view.toPlainText() == ""
+
+
+
 
 
 

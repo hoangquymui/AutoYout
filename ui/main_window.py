@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -54,6 +55,7 @@ from ui.console_window import ConsoleWindow
 from utils.logger import (
     APP_LOGGER_NAME,
     LogEmitter,
+    QtStreamWriter,
     attach_qt_handler,
     detach_handler,
     get_logger,
@@ -293,16 +295,24 @@ class MainWindow(QMainWindow):
         self._log_emitter = LogEmitter(self)
         self._log_emitter.message.connect(self.automation_tab.log_console.append)
         self._log_emitter.message.connect(self.console_window.append_log)
+
+        # 1. Catch AutoYout logger records
         self._log_handler = attach_qt_handler(
             logging.getLogger(APP_LOGGER_NAME), self._log_emitter, logging.INFO
         )
+        # 2. Catch root logger for 3rd-party backend libraries (huggingface_hub, requests, urllib3, etc.)
+        self._root_log_handler = attach_qt_handler(
+            logging.getLogger(), self._log_emitter, logging.INFO
+        )
+        # 3. Intercept sys.stdout & sys.stderr to capture raw backend print outputs
+        self._orig_stdout = sys.stdout
+        self._orig_stderr = sys.stderr
+        sys.stdout = QtStreamWriter(self._log_emitter, level="INFO", fallback=self._orig_stdout)
+        sys.stderr = QtStreamWriter(self._log_emitter, level="WARNING", fallback=self._orig_stderr)
 
     def _toggle_console_window(self) -> None:
         if self.console_window.isVisible():
-            if self.console_window.isMinimized():
-                self.console_window.showNormal()
-            self.console_window.activateWindow()
-            self.console_window.raise_()
+            self.console_window.hide()
         else:
             self.console_window.show()
             self.console_window.activateWindow()
@@ -838,6 +848,13 @@ class MainWindow(QMainWindow):
             self._collect_all()
         except Exception:
             logger.exception("Không lưu được cài đặt khi thoát.")
+        if hasattr(self, "_orig_stdout") and self._orig_stdout is not None:
+            sys.stdout = self._orig_stdout
+        if hasattr(self, "_orig_stderr") and self._orig_stderr is not None:
+            sys.stderr = self._orig_stderr
+        if getattr(self, "_root_log_handler", None) is not None:
+            detach_handler(logging.getLogger(), self._root_log_handler)
+            self._root_log_handler = None
         if self._log_handler is not None:
             detach_handler(
                 logging.getLogger(APP_LOGGER_NAME), self._log_handler

@@ -689,6 +689,35 @@ H2M_PACKAGES: List[Dict[str, Any]] = [
 ]
 
 
+try:
+    from tqdm.std import tqdm
+
+    class H2MLogTqdm(tqdm):
+        """Custom tqdm that emits download progress lines to logger for live console view."""
+
+        def __init__(self, *args, **kwargs):
+            kwargs["file"] = sys.stderr
+            super().__init__(*args, **kwargs)
+            self._last_log_pct = -1
+
+        def update(self, n=1):
+            super().update(n)
+            if self.total and self.total > 0:
+                pct = int((self.n / self.total) * 100)
+                if (pct - self._last_log_pct >= 20 or pct == 100) and pct > 0:
+                    self._last_log_pct = pct
+                    desc = self.desc or "Dữ liệu"
+                    logger.info(
+                        "  → [Tiến trình %s]: %d%% (%s/%s)",
+                        desc,
+                        pct,
+                        self.format_sizeof(self.n, "B"),
+                        self.format_sizeof(self.total, "B"),
+                    )
+except Exception:
+    H2MLogTqdm = None
+
+
 class H2MDownloadWorker(QThread):
     progress = Signal(int, str)  # percent, text
     pkg_status_changed = Signal(str, str, str)  # pkg_id, status_kind, text
@@ -742,8 +771,14 @@ class H2MDownloadWorker(QThread):
         success_count = 0
         self.errors.clear()
 
+        logger.info("=" * 60)
+        logger.info("BẮT ĐẦU TẢI TÀI NGUYÊN H2MTTS: %d gói cần tải", total_pkgs)
+        logger.info("Thư mục lưu trữ đích: %s", self.target_root)
+        logger.info("=" * 60)
+
         for idx, pkg in enumerate(self.packages):
             if self._is_cancelled:
+                logger.info("Tiến trình tải đã bị hủy bởi người dùng.")
                 self.all_finished.emit(False, "Đã hủy tiến trình tải.")
                 return
 
@@ -759,6 +794,16 @@ class H2MDownloadWorker(QThread):
             )
             self.pkg_status_changed.emit(pkg_id, "downloading", "Đang tải…")
 
+            logger.info(
+                "[%d/%d] Đang tải gói: %s (%s)",
+                idx + 1,
+                total_pkgs,
+                pkg["name"],
+                pkg.get("size", ""),
+            )
+            logger.info("  • Kho lưu trữ: https://huggingface.co/%s", repo_id)
+            logger.info("  • Thư mục đích: %s", target_dir)
+
             try:
                 # 1. Try primary Hugging Face endpoint
                 try:
@@ -766,10 +811,11 @@ class H2MDownloadWorker(QThread):
                         repo_id=repo_id,
                         local_dir=str(target_dir),
                         repo_type="model",
+                        tqdm_class=H2MLogTqdm,
                     )
                 except Exception as primary_exc:
                     logger.warning(
-                        "Không tải được từ endpoint chính (%s). Thử lại qua mirror hf-mirror.com...",
+                        "Không tải được từ endpoint chính (%s). Tự động thử lại qua mirror https://hf-mirror.com...",
                         primary_exc,
                     )
                     snapshot_download(
@@ -777,11 +823,13 @@ class H2MDownloadWorker(QThread):
                         local_dir=str(target_dir),
                         repo_type="model",
                         endpoint="https://hf-mirror.com",
+                        tqdm_class=H2MLogTqdm,
                     )
 
                 if pkg.get("is_zip"):
                     zip_file = target_dir / "runtime.zip"
                     if zip_file.exists():
+                        logger.info("  → Đang giải nén %s vào %s...", zip_file.name, target_dir)
                         self.progress.emit(
                             current_pct,
                             f"Đang giải nén runtime vào {target_dir.name}…",
@@ -789,10 +837,12 @@ class H2MDownloadWorker(QThread):
                         try:
                             with zipfile.ZipFile(zip_file, "r") as zf:
                                 zf.extractall(target_dir)
+                            logger.info("  ✓ Giải nén thành công: %s", zip_file.name)
                         except Exception as exc:
                             logger.warning("Lỗi giải nén runtime.zip: %s", exc)
 
                 success_count += 1
+                logger.info("✓ Tải thành công gói: %s", pkg["name"])
                 self.pkg_status_changed.emit(pkg_id, "installed", "✓ Đã có")
             except Exception as exc:
                 err_text = str(exc)
@@ -811,6 +861,10 @@ class H2MDownloadWorker(QThread):
             if len(short_err) > 60:
                 short_err = short_err[:57] + "..."
             msg = f"Tải xong {success_count}/{total_pkgs} gói ({short_err})."
+
+        logger.info("=" * 60)
+        logger.info("KẾT THÚC TIẾN TRÌNH: %s", msg)
+        logger.info("=" * 60)
         self.all_finished.emit(all_ok, msg)
 
 
@@ -1084,6 +1138,7 @@ class H2MTTSCard(QFrame):
         if chosen:
             chosen = str(Path(chosen).resolve().as_posix())
             self.path_edit.setText(chosen)
+            logger.info("Đã chọn thư mục H2MTTS: %s", chosen)
             self.detect_specs()
             self.check_packages_status()
             self.changed.emit()
@@ -1200,6 +1255,7 @@ class H2MTTSCard(QFrame):
         self.btn_cancel_dl.setEnabled(True)
         self.btn_install.setEnabled(False)
         self.btn_dl_all.setEnabled(False)
+        logger.info("Bắt đầu tác vụ tải %d gói tài nguyên H2MTTS vào thư mục: %s", len(pkgs), root_path)
 
         self._downloader = H2MDownloadWorker(root_path, pkgs, parent=self)
         self._downloader.progress.connect(self._on_download_progress)

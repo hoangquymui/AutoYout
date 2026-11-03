@@ -91,6 +91,13 @@ class ConsoleWindow(QDialog):
 
         top_bar.addStretch(1)
 
+        # Button: Clear
+        self.btn_clear = QPushButton("Xóa")
+        set_icon(self.btn_clear, "trash", "muted", 12)
+        self.btn_clear.setToolTip("Xóa toàn bộ nội dung hiển thị trong console")
+        self.btn_clear.clicked.connect(self._clear_logs)
+        top_bar.addWidget(self.btn_clear)
+
         # Button: Copy All
         self.btn_copy = QPushButton("Copy log")
         set_icon(self.btn_copy, "file", "muted", 12)
@@ -130,6 +137,9 @@ class ConsoleWindow(QDialog):
         bg = "#0F172A" if is_dark else "#F8FAFC"
         border = "#334155" if is_dark else "#E2E8F0"
         self.setStyleSheet(f"QDialog#ConsoleWindow {{ background-color: {bg}; }}")
+
+    def _clear_logs(self) -> None:
+        self.console.clear()
 
     def _copy_all_logs(self) -> None:
         plain_text = self.console.view.toPlainText()
