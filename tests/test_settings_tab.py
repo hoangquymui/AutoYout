@@ -285,6 +285,22 @@ def test_console_window_receives_backend_streams_and_clear_action(app) -> None:
     assert cw.console.view.toPlainText() == ""
 
 
+def test_h2mtts_download_cancellation_realtime(app, tmp_path: Path) -> None:
+    from ui.tab_settings import H2MDownloadWorker, H2MLogTqdm, H2MDownloadCancelled
+
+    worker = H2MDownloadWorker(str(tmp_path), [{"id": "dummy", "name": "Dummy", "repo": "dummy/repo", "target_subpath": "dummy"}])
+    worker.cancel()
+    assert worker._is_cancelled is True
+
+    # Test H2MLogTqdm detects cancellation
+    if H2MLogTqdm is not None:
+        H2MLogTqdm.cancel_check = lambda: True
+        with pytest.raises(H2MDownloadCancelled):
+            H2MLogTqdm(total=100)
+        H2MLogTqdm.cancel_check = None
+
+
+
 
 
 

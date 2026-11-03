@@ -691,19 +691,28 @@ H2M_PACKAGES: List[Dict[str, Any]] = [
 ]
 
 
+class H2MDownloadCancelled(Exception):
+    """Raised when the user cancels the download process."""
+
+
 try:
     from tqdm.std import tqdm
 
     class H2MLogTqdm(tqdm):
         """Custom tqdm that emits download progress lines to logger for live console view."""
+        cancel_check: Optional[Callable[[], bool]] = None
 
         def __init__(self, *args, **kwargs):
+            if H2MLogTqdm.cancel_check and H2MLogTqdm.cancel_check():
+                raise H2MDownloadCancelled("Tiến trình tải đã bị hủy.")
             if "file" not in kwargs or kwargs["file"] is None:
                 kwargs["file"] = sys.stderr if getattr(sys, "stderr", None) is not None else io.StringIO()
             super().__init__(*args, **kwargs)
             self._last_log_pct = -1
 
         def update(self, n=1):
+            if H2MLogTqdm.cancel_check and H2MLogTqdm.cancel_check():
+                raise H2MDownloadCancelled("Tiến trình tải đã bị hủy.")
             super().update(n)
             if self.total and self.total > 0:
                 pct = int((self.n / self.total) * 100)
@@ -774,101 +783,126 @@ class H2MDownloadWorker(QThread):
         success_count = 0
         self.errors.clear()
 
+        if H2MLogTqdm is not None:
+            H2MLogTqdm.cancel_check = lambda: self._is_cancelled
+
         logger.info("=" * 60)
         logger.info("BẮT ĐẦU TẢI TÀI NGUYÊN H2MTTS: %d gói cần tải", total_pkgs)
         logger.info("Thư mục lưu trữ đích: %s", self.target_root)
         logger.info("=" * 60)
 
-        for idx, pkg in enumerate(self.packages):
-            if self._is_cancelled:
-                logger.info("Tiến trình tải đã bị hủy bởi người dùng.")
-                self.all_finished.emit(False, "Đã hủy tiến trình tải.")
-                return
+        try:
+            for idx, pkg in enumerate(self.packages):
+                if self._is_cancelled:
+                    logger.info("Tiến trình tải đã bị hủy bởi người dùng.")
+                    self.all_finished.emit(False, "Đã hủy tiến trình tải.")
+                    return
 
-            pkg_id = pkg["id"]
-            repo_id = pkg["repo"]
-            target_dir = self.target_root / pkg["target_subpath"]
-            target_dir.mkdir(parents=True, exist_ok=True)
+                pkg_id = pkg["id"]
+                repo_id = pkg["repo"]
+                target_dir = self.target_root / pkg["target_subpath"]
+                target_dir.mkdir(parents=True, exist_ok=True)
 
-            current_pct = int((idx / total_pkgs) * 100)
-            self.progress.emit(
-                current_pct,
-                f"Đang tải {pkg['name']} ({idx + 1}/{total_pkgs})…",
-            )
-            self.pkg_status_changed.emit(pkg_id, "downloading", "Đang tải…")
+                current_pct = int((idx / total_pkgs) * 100)
+                self.progress.emit(
+                    current_pct,
+                    f"Đang tải {pkg['name']} ({idx + 1}/{total_pkgs})…",
+                )
+                self.pkg_status_changed.emit(pkg_id, "downloading", "Đang tải…")
 
-            logger.info(
-                "[%d/%d] Đang tải gói: %s (%s)",
-                idx + 1,
-                total_pkgs,
-                pkg["name"],
-                pkg.get("size", ""),
-            )
-            logger.info("  • Kho lưu trữ: https://huggingface.co/%s", repo_id)
-            logger.info("  • Thư mục đích: %s", target_dir)
+                logger.info(
+                    "[%d/%d] Đang tải gói: %s (%s)",
+                    idx + 1,
+                    total_pkgs,
+                    pkg["name"],
+                    pkg.get("size", ""),
+                )
+                logger.info("  • Kho lưu trữ: https://huggingface.co/%s", repo_id)
+                logger.info("  • Thư mục đích: %s", target_dir)
 
-            try:
-                # 1. Try primary Hugging Face endpoint
                 try:
-                    snapshot_download(
-                        repo_id=repo_id,
-                        local_dir=str(target_dir),
-                        repo_type="model",
-                        tqdm_class=H2MLogTqdm,
-                    )
-                except Exception as primary_exc:
-                    logger.warning(
-                        "Không tải được từ endpoint chính (%s). Tự động thử lại qua mirror https://hf-mirror.com...",
-                        primary_exc,
-                    )
-                    snapshot_download(
-                        repo_id=repo_id,
-                        local_dir=str(target_dir),
-                        repo_type="model",
-                        endpoint="https://hf-mirror.com",
-                        tqdm_class=H2MLogTqdm,
-                    )
+                    if self._is_cancelled:
+                        raise H2MDownloadCancelled("Đã hủy tiến trình tải.")
 
-                if pkg.get("is_zip"):
-                    zip_file = target_dir / "runtime.zip"
-                    if zip_file.exists():
-                        logger.info("  → Đang giải nén %s vào %s...", zip_file.name, target_dir)
-                        self.progress.emit(
-                            current_pct,
-                            f"Đang giải nén runtime vào {target_dir.name}…",
+                    # 1. Try primary Hugging Face endpoint
+                    try:
+                        snapshot_download(
+                            repo_id=repo_id,
+                            local_dir=str(target_dir),
+                            repo_type="model",
+                            tqdm_class=H2MLogTqdm,
                         )
-                        try:
-                            with zipfile.ZipFile(zip_file, "r") as zf:
-                                zf.extractall(target_dir)
-                            logger.info("  ✓ Giải nén thành công: %s", zip_file.name)
-                        except Exception as exc:
-                            logger.warning("Lỗi giải nén runtime.zip: %s", exc)
+                    except H2MDownloadCancelled:
+                        raise
+                    except Exception as primary_exc:
+                        if self._is_cancelled:
+                            raise H2MDownloadCancelled("Đã hủy tiến trình tải.")
+                        logger.warning(
+                            "Không tải được từ endpoint chính (%s). Tự động thử lại qua mirror https://hf-mirror.com...",
+                            primary_exc,
+                        )
+                        snapshot_download(
+                            repo_id=repo_id,
+                            local_dir=str(target_dir),
+                            repo_type="model",
+                            endpoint="https://hf-mirror.com",
+                            tqdm_class=H2MLogTqdm,
+                        )
 
-                success_count += 1
-                logger.info("✓ Tải thành công gói: %s", pkg["name"])
-                self.pkg_status_changed.emit(pkg_id, "installed", "✓ Đã có")
-            except Exception as exc:
-                err_text = str(exc)
-                logger.error("Lỗi khi tải %s: %s", repo_id, exc)
-                self.errors[pkg_id] = err_text
-                self.pkg_status_changed.emit(pkg_id, "error", "Lỗi tải")
+                    if self._is_cancelled:
+                        raise H2MDownloadCancelled("Đã hủy tiến trình tải.")
 
-        self.progress.emit(100, "Hoàn tất quá trình tải.")
-        all_ok = success_count == total_pkgs
-        if all_ok:
-            msg = f"Đã tải thành công {success_count}/{total_pkgs} gói tài nguyên."
-        else:
-            first_err = next(iter(self.errors.values()), "Có lỗi xảy ra")
-            # Keep message concise and readable
-            short_err = first_err.split("\n")[0]
-            if len(short_err) > 60:
-                short_err = short_err[:57] + "..."
-            msg = f"Tải xong {success_count}/{total_pkgs} gói ({short_err})."
+                    if pkg.get("is_zip"):
+                        zip_file = target_dir / "runtime.zip"
+                        if zip_file.exists():
+                            logger.info("  → Đang giải nén %s vào %s...", zip_file.name, target_dir)
+                            self.progress.emit(
+                                current_pct,
+                                f"Đang giải nén runtime vào {target_dir.name}…",
+                            )
+                            try:
+                                with zipfile.ZipFile(zip_file, "r") as zf:
+                                    zf.extractall(target_dir)
+                                logger.info("  ✓ Giải nén thành công: %s", zip_file.name)
+                            except Exception as exc:
+                                logger.warning("Lỗi giải nén runtime.zip: %s", exc)
 
-        logger.info("=" * 60)
-        logger.info("KẾT THÚC TIẾN TRÌNH: %s", msg)
-        logger.info("=" * 60)
-        self.all_finished.emit(all_ok, msg)
+                    success_count += 1
+                    logger.info("✓ Tải thành công gói: %s", pkg["name"])
+                    self.pkg_status_changed.emit(pkg_id, "installed", "✓ Đã có")
+                except H2MDownloadCancelled:
+                    logger.info("Đã dừng tiến trình tải gói %s theo yêu cầu người dùng.", pkg["name"])
+                    logger.info("=" * 60)
+                    logger.info("KẾT THÚC TIẾN TRÌNH: Đã hủy tải.")
+                    logger.info("=" * 60)
+                    self.pkg_status_changed.emit(pkg_id, "ready", "Chưa tải")
+                    self.all_finished.emit(False, "Đã hủy tiến trình tải.")
+                    return
+                except Exception as exc:
+                    err_text = str(exc)
+                    logger.error("Lỗi khi tải %s: %s", repo_id, exc)
+                    self.errors[pkg_id] = err_text
+                    self.pkg_status_changed.emit(pkg_id, "error", "Lỗi tải")
+
+            self.progress.emit(100, "Hoàn tất quá trình tải.")
+            all_ok = success_count == total_pkgs
+            if all_ok:
+                msg = f"Đã tải thành công {success_count}/{total_pkgs} gói tài nguyên."
+            else:
+                first_err = next(iter(self.errors.values()), "Có lỗi xảy ra")
+                # Keep message concise and readable
+                short_err = first_err.split("\n")[0]
+                if len(short_err) > 60:
+                    short_err = short_err[:57] + "..."
+                msg = f"Tải xong {success_count}/{total_pkgs} gói ({short_err})."
+
+            logger.info("=" * 60)
+            logger.info("KẾT THÚC TIẾN TRÌNH: %s", msg)
+            logger.info("=" * 60)
+            self.all_finished.emit(all_ok, msg)
+        finally:
+            if H2MLogTqdm is not None:
+                H2MLogTqdm.cancel_check = None
 
 
 class H2MTTSCard(QFrame):
@@ -1301,6 +1335,7 @@ class H2MTTSCard(QFrame):
         self.btn_install.setEnabled(True)
         self.btn_dl_all.setEnabled(True)
         self.btn_cancel_dl.setText("Đóng")
+        self.btn_cancel_dl.setEnabled(True)
         self.lbl_progress.setText(message)
         if success:
             paint_status(self.engine_status, "success")
@@ -1314,7 +1349,8 @@ class H2MTTSCard(QFrame):
     def _cancel_download_clicked(self) -> None:
         if self._downloader and self._downloader.isRunning():
             self._downloader.cancel()
-            self.lbl_progress.setText("Đang hủy tải…")
+            self.lbl_progress.setText("Đang dừng tiến trình tải…")
+            self.btn_cancel_dl.setEnabled(False)
         else:
             self.progress_container.setVisible(False)
 

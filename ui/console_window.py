@@ -91,13 +91,6 @@ class ConsoleWindow(QDialog):
 
         top_bar.addStretch(1)
 
-        # Button: Clear
-        self.btn_clear = QPushButton("Xóa")
-        set_icon(self.btn_clear, "trash", "muted", 12)
-        self.btn_clear.setToolTip("Xóa toàn bộ nội dung hiển thị trong console")
-        self.btn_clear.clicked.connect(self._clear_logs)
-        top_bar.addWidget(self.btn_clear)
-
         # Button: Copy All
         self.btn_copy = QPushButton("Copy log")
         set_icon(self.btn_copy, "file", "muted", 12)
@@ -112,18 +105,11 @@ class ConsoleWindow(QDialog):
         self.btn_open_folder.clicked.connect(self._open_log_folder)
         top_bar.addWidget(self.btn_open_folder)
 
-        # Button: Windows CMD (if on Windows)
-        if os.name == "nt":
-            self.btn_cmd = QPushButton("Mở CMD Console")
-            set_icon(self.btn_cmd, "terminal", "accent", 12)
-            self.btn_cmd.setToolTip("Mở cửa sổ Command Prompt (CMD console) gốc của Windows")
-            self.btn_cmd.clicked.connect(toggle_windows_console)
-            top_bar.addWidget(self.btn_cmd)
-
         layout.addLayout(top_bar)
 
         # ── Central Log Console ──────────────────────────────────────────────
         self.console = LogConsole(self)
+        self.console.clear_button.setVisible(False)
         layout.addWidget(self.console, 1)
 
         self.apply_theme()
