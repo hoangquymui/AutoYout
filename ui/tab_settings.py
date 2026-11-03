@@ -1,11 +1,13 @@
 """Settings tab: General options, system paths, and API & AI services."""
 from __future__ import annotations
 
+import io
 import json
 import os
 import platform
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import urllib.request
@@ -696,7 +698,8 @@ try:
         """Custom tqdm that emits download progress lines to logger for live console view."""
 
         def __init__(self, *args, **kwargs):
-            kwargs["file"] = sys.stderr
+            if "file" not in kwargs or kwargs["file"] is None:
+                kwargs["file"] = sys.stderr if getattr(sys, "stderr", None) is not None else io.StringIO()
             super().__init__(*args, **kwargs)
             self._last_log_pct = -1
 
