@@ -10,9 +10,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import urllib.request
 import urllib.error
+import zipfile
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QThread, Signal
-from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QThread, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QPainter
 from PySide6.QtWidgets import (
     QAbstractButton,
     QCheckBox,
@@ -26,6 +27,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -633,19 +635,171 @@ class ServiceCard(QFrame):
         )
 
 
+# ── H2MTTS Hugging Face Packages (https://huggingface.co/hoangmui410) ─────────
+H2M_PACKAGES: List[Dict[str, Any]] = [
+    {
+        "id": "turbo",
+        "name": "H2M-TTS v3 Turbo",
+        "tag": "Khuyên dùng · GPU & CPU",
+        "tag_color": "#0284C7",
+        "tag_bg": "rgba(2, 132, 199, 0.15)",
+        "repo": "hoangmui410/H2M-TTS-v3-Turbo",
+        "size": "~295 MB",
+        "desc": "Model chính đọc tiếng Việt tự nhiên (GGUF Q8, ONNX-Int8, G2P, Speaker Encoder, Denoiser).",
+        "target_subpath": "models/H2M-TTS-v3-Turbo",
+        "check_files": ["vieneu-v3-turbo-q8_0.gguf", "sea_g2p.bin", "denoiser.onnx", "onnx_int8", "update"],
+        "core": True,
+    },
+    {
+        "id": "moss",
+        "name": "MOSS Audio Tokenizer Nano",
+        "tag": "Bắt buộc cho Turbo",
+        "tag_color": "#D97706",
+        "tag_bg": "rgba(217, 119, 6, 0.15)",
+        "repo": "hoangmui410/MOSS-Audio-Tokenizer-Nano",
+        "size": "~85 MB",
+        "desc": "Audio Codec giải mã nơ-ron chất lượng 48kHz bắt buộc cho dòng Turbo.",
+        "target_subpath": "models/MOSS-Audio-Tokenizer-Nano",
+        "check_files": ["config.json", "model-00001-of-00001.safetensors"],
+        "core": True,
+    },
+    {
+        "id": "voice_packs",
+        "name": "H2M Voice Packs",
+        "tag": "25+ Giọng Việt",
+        "tag_color": "#059669",
+        "tag_bg": "rgba(5, 150, 105, 0.15)",
+        "repo": "hoangmui410/H2M-Voice-Packs",
+        "size": "~5 MB",
+        "desc": "Danh mục 25+ giọng đọc Bắc / Trung / Nam, preset cảm xúc và file embeddings.",
+        "target_subpath": "voice-packs",
+        "check_files": ["voice-catalog-v4.json", "voice-pack.json"],
+        "core": True,
+    },
+    {
+        "id": "nano",
+        "name": "H2M-TTS v3 Nano",
+        "tag": "Bản nhẹ · Tối ưu CPU",
+        "tag_color": "#64748B",
+        "tag_bg": "rgba(100, 116, 139, 0.15)",
+        "repo": "hoangmui410/H2M-TTS-v3-Nano",
+        "size": "~268 MB",
+        "desc": "Model ONNX Flow siêu nhẹ, chạy ổn định trên CPU máy văn phòng.",
+        "target_subpath": "models/H2M-TTS-v3-Nano",
+        "check_files": ["codec_decoder.onnx", "vector_estimator.onnx", "config.json"],
+        "core": False,
+    },
+    {
+        "id": "runtime",
+        "name": "Engine Runtime Windows",
+        "tag": "Tăng tốc GPU/DirectML",
+        "tag_color": "#7C3AED",
+        "tag_bg": "rgba(124, 58, 237, 0.15)",
+        "repo": "hoangmui410/runtime",
+        "size": "~89 MB",
+        "desc": "Thư viện C++ DirectML & ONNX Runtime tăng tốc GPU phần cứng trên Windows.",
+        "target_subpath": "engine-runtimes",
+        "check_files": ["DirectML.dll", "onnxruntime.dll", "runtime.zip"],
+        "core": False,
+        "is_zip": True,
+    },
+]
+
+
+class H2MDownloadWorker(QThread):
+    progress = Signal(int, str)  # percent, text
+    pkg_status_changed = Signal(str, str, str)  # pkg_id, status_kind, text
+    all_finished = Signal(bool, str)
+
+    def __init__(
+        self,
+        target_root: str,
+        packages: List[Dict[str, Any]],
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.target_root = Path(target_root)
+        self.packages = packages
+        self._is_cancelled = False
+
+    def cancel(self) -> None:
+        self._is_cancelled = True
+
+    def run(self) -> None:
+        from huggingface_hub import snapshot_download
+
+        total_pkgs = len(self.packages)
+        success_count = 0
+
+        for idx, pkg in enumerate(self.packages):
+            if self._is_cancelled:
+                self.all_finished.emit(False, "Đã hủy tiến trình tải.")
+                return
+
+            pkg_id = pkg["id"]
+            repo_id = pkg["repo"]
+            target_dir = self.target_root / pkg["target_subpath"]
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            current_pct = int((idx / total_pkgs) * 100)
+            self.progress.emit(
+                current_pct,
+                f"Đang tải {pkg['name']} ({idx + 1}/{total_pkgs}) từ Hugging Face…",
+            )
+            self.pkg_status_changed.emit(pkg_id, "downloading", "Đang tải…")
+
+            try:
+                snapshot_download(
+                    repo_id=repo_id,
+                    local_dir=str(target_dir),
+                    repo_type="model",
+                )
+
+                if pkg.get("is_zip"):
+                    zip_file = target_dir / "runtime.zip"
+                    if zip_file.exists():
+                        self.progress.emit(
+                            current_pct,
+                            f"Đang giải nén runtime vào {target_dir.name}…",
+                        )
+                        try:
+                            with zipfile.ZipFile(zip_file, "r") as zf:
+                                zf.extractall(target_dir)
+                        except Exception as exc:
+                            logger.warning("Lỗi giải nén runtime.zip: %s", exc)
+
+                success_count += 1
+                self.pkg_status_changed.emit(pkg_id, "installed", "✓ Đã có")
+            except Exception as exc:
+                logger.error("Lỗi khi tải %s: %s", repo_id, exc)
+                self.pkg_status_changed.emit(pkg_id, "error", f"Lỗi: {exc}")
+
+        self.progress.emit(100, "Hoàn tất quá trình tải.")
+        all_ok = success_count == total_pkgs
+        msg = (
+            f"Đã tải thành công {success_count}/{total_pkgs} gói tài nguyên."
+            if all_ok
+            else f"Tải xong {success_count}/{total_pkgs} gói (có lỗi xảy ra)."
+        )
+        self.all_finished.emit(all_ok, msg)
+
+
 class H2MTTSCard(QFrame):
-    """Local H2MTTS engine and hardware specifications detector."""
+    """Local H2MTTS engine, hardware specifications detector, and Hugging Face downloader."""
 
     changed = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("H2MTTSCard")
+        self._downloader: Optional[H2MDownloadWorker] = None
+        self.pkg_widgets: Dict[str, Dict[str, Any]] = {}
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
 
-        # ── Header ───────────────────────────────────────────────────────────
+        # ── 1. Header ────────────────────────────────────────────────────────
         top_row = QHBoxLayout()
         top_row.setSpacing(8)
 
@@ -677,14 +831,13 @@ class H2MTTSCard(QFrame):
         desc.setStyleSheet("color: #64748B; font-size: 11px;")
         layout.addWidget(desc)
 
-        # ── Hardware Specifications Box ──────────────────────────────────────
+        # ── 2. Hardware Specifications Box ───────────────────────────────────
         self.specs_box = QFrame()
         self.specs_box.setObjectName("SpecsBox")
         specs_layout = QVBoxLayout(self.specs_box)
         specs_layout.setContentsMargins(12, 10, 12, 10)
         specs_layout.setSpacing(8)
 
-        # Rating line
         rate_row = QHBoxLayout()
         self.rating_badge = QLabel("• Đánh giá cấu hình: TỐT - bản GPU")
         self.rating_badge.setStyleSheet(
@@ -706,11 +859,9 @@ class H2MTTSCard(QFrame):
         rate_row.addWidget(btn_redetect_text)
         specs_layout.addLayout(rate_row)
 
-        # Specs grid
         grid = QGridLayout()
         grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(4)
-
         grid.addWidget(self._make_spec_label("CPU"), 0, 0)
         self.lbl_cpu = QLabel("—")
         grid.addWidget(self.lbl_cpu, 0, 1)
@@ -726,22 +877,20 @@ class H2MTTSCard(QFrame):
         grid.addWidget(self._make_spec_label("Ổ đĩa trống"), 3, 0)
         self.lbl_disk = QLabel("—")
         grid.addWidget(self.lbl_disk, 3, 1)
-
         specs_layout.addLayout(grid)
 
         self.lbl_note = QLabel("• GPU ... - đọc nhanh hơn thời gian thực nhiều lần")
         self.lbl_note.setStyleSheet("color: #64748B; font-size: 11px;")
         specs_layout.addWidget(self.lbl_note)
-
         layout.addWidget(self.specs_box)
 
-        # ── Path row ─────────────────────────────────────────────────────────
+        # ── 3. Path row ──────────────────────────────────────────────────────
         path_row = QHBoxLayout()
         path_row.setSpacing(6)
         path_lbl = QLabel("Thư mục H2MTTS:")
         path_lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
         self.path_edit = QLineEdit("D:/mui/f375/tts/H2MTTS")
-        self.path_edit.textChanged.connect(lambda _: self.changed.emit())
+        self.path_edit.textChanged.connect(self._on_path_changed)
         btn_browse = icon_button(
             "folder-open", "Chọn thư mục H2MTTS…", role="muted", size=14, side=30
         )
@@ -752,27 +901,152 @@ class H2MTTSCard(QFrame):
         path_row.addWidget(btn_browse)
         layout.addLayout(path_row)
 
-        # ── Action buttons ───────────────────────────────────────────────────
-        act_row = QHBoxLayout()
-        act_row.setSpacing(10)
+        # ── 4. Hugging Face Download Manager Box ─────────────────────────────
+        self.downloads_box = QFrame()
+        self.downloads_box.setObjectName("DownloadsBox")
+        dl_layout = QVBoxLayout(self.downloads_box)
+        dl_layout.setContentsMargins(12, 12, 12, 12)
+        dl_layout.setSpacing(10)
 
-        self.btn_install = QPushButton("Tải & cài engine GPU (~4 GB)")
+        # Header of downloads box
+        dl_header = QHBoxLayout()
+        dl_title = QLabel("📦 Tải mô hình từ Hugging Face (@hoangmui410)")
+        dl_title_font = QFont()
+        dl_title_font.setBold(True)
+        dl_title_font.setPointSize(10)
+        dl_title.setFont(dl_title_font)
+        dl_header.addWidget(dl_title)
+        dl_header.addStretch(1)
+
+        btn_hf_link = QPushButton("Mở Hugging Face ↗")
+        btn_hf_link.setFlat(True)
+        btn_hf_link.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_hf_link.setStyleSheet("color: #0284C7; font-size: 11px; text-decoration: underline;")
+        btn_hf_link.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://huggingface.co/hoangmui410")))
+        dl_header.addWidget(btn_hf_link)
+        dl_layout.addLayout(dl_header)
+
+        dl_desc = QLabel(
+            "Tự động tải các model và voice-packs H2MTTS từ https://huggingface.co/hoangmui410 về thư mục trên máy để chạy offline."
+        )
+        dl_desc.setWordWrap(True)
+        dl_desc.setStyleSheet("color: #64748B; font-size: 11px;")
+        dl_layout.addWidget(dl_desc)
+
+        # Quick action buttons bar
+        btn_bar = QHBoxLayout()
+        btn_bar.setSpacing(8)
+
+        self.btn_install = QPushButton("🚀 Tải trọn bộ khuyên dùng (~385 MB)")
         self.btn_install.setObjectName("primaryButton")
-        set_icon(self.btn_install, "download", "white", 14)
-        self.btn_install.clicked.connect(self._install_or_check_clicked)
-        act_row.addWidget(self.btn_install)
+        set_icon(self.btn_install, "download", "white", 13)
+        self.btn_install.clicked.connect(self._download_recommended_clicked)
+        btn_bar.addWidget(self.btn_install)
 
-        self.btn_check_engine = QPushButton("Kiểm tra engine")
-        set_icon(self.btn_check_engine, "check-circle", "accent", 14)
-        self.btn_check_engine.clicked.connect(self.detect_specs)
-        act_row.addWidget(self.btn_check_engine)
+        self.btn_dl_all = QPushButton("📦 Tải tất cả gói (~742 MB)")
+        set_icon(self.btn_dl_all, "download", "accent", 13)
+        self.btn_dl_all.clicked.connect(self._download_all_clicked)
+        btn_bar.addWidget(self.btn_dl_all)
 
+        self.btn_check_engine = QPushButton("🔄 Quét lại")
+        set_icon(self.btn_check_engine, "check-circle", "muted", 12)
+        self.btn_check_engine.clicked.connect(self.check_packages_status)
+        btn_bar.addWidget(self.btn_check_engine)
+
+        btn_bar.addStretch(1)
+        dl_layout.addLayout(btn_bar)
+
+        # Progress panel (hidden by default)
+        self.progress_container = QWidget()
+        prog_layout = QVBoxLayout(self.progress_container)
+        prog_layout.setContentsMargins(0, 4, 0, 4)
+        prog_layout.setSpacing(4)
+
+        prog_top = QHBoxLayout()
+        self.lbl_progress = QLabel("Đang chuẩn bị tải…")
+        self.lbl_progress.setStyleSheet("font-size: 11px; color: #0284C7; font-weight: bold;")
+        prog_top.addWidget(self.lbl_progress, 1)
+
+        self.btn_cancel_dl = QPushButton("Hủy")
+        self.btn_cancel_dl.setFixedWidth(50)
+        self.btn_cancel_dl.clicked.connect(self._cancel_download_clicked)
+        prog_top.addWidget(self.btn_cancel_dl)
+        prog_layout.addLayout(prog_top)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setTextVisible(False)
+        prog_layout.addWidget(self.progress_bar)
+
+        self.progress_container.setVisible(False)
+        dl_layout.addWidget(self.progress_container)
+
+        # Package rows list
+        for pkg in H2M_PACKAGES:
+            row_frame = QFrame()
+            row_frame.setObjectName("PkgRow")
+            row_layout = QHBoxLayout(row_frame)
+            row_layout.setContentsMargins(10, 8, 10, 8)
+            row_layout.setSpacing(10)
+
+            # Left column: Info
+            info_col = QVBoxLayout()
+            info_col.setSpacing(2)
+
+            title_row = QHBoxLayout()
+            title_row.setSpacing(8)
+            name_lbl = QLabel(pkg["name"])
+            name_font = QFont()
+            name_font.setBold(True)
+            name_font.setPointSize(9)
+            name_lbl.setFont(name_font)
+            title_row.addWidget(name_lbl)
+
+            tag_lbl = QLabel(pkg["tag"])
+            tag_lbl.setStyleSheet(
+                f"background: {pkg['tag_bg']}; color: {pkg['tag_color']}; "
+                f"border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600;"
+            )
+            title_row.addWidget(tag_lbl)
+            title_row.addStretch(1)
+            info_col.addLayout(title_row)
+
+            sub_lbl = QLabel(f"{pkg['repo']} · {pkg['size']} — {pkg['desc']}")
+            sub_lbl.setStyleSheet("color: #64748B; font-size: 10.5px;")
+            sub_lbl.setWordWrap(True)
+            info_col.addWidget(sub_lbl)
+            row_layout.addLayout(info_col, 1)
+
+            # Right column: Status badge & Action button
+            status_badge = QLabel("Chưa kiểm tra")
+            status_badge.setFixedWidth(80)
+            status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            row_layout.addWidget(status_badge)
+
+            btn_dl = QPushButton("Tải về")
+            btn_dl.setFixedWidth(70)
+            btn_dl.clicked.connect(lambda _, p=pkg: self._download_single_clicked(p))
+            row_layout.addWidget(btn_dl)
+
+            self.pkg_widgets[pkg["id"]] = {
+                "frame": row_frame,
+                "status_badge": status_badge,
+                "btn_dl": btn_dl,
+                "pkg": pkg,
+            }
+            dl_layout.addWidget(row_frame)
+
+        layout.addWidget(self.downloads_box)
+
+        # Status text line
         self.engine_status = QLabel("")
-        act_row.addWidget(self.engine_status, 1)
-        layout.addLayout(act_row)
+        layout.addWidget(self.engine_status)
 
         self.apply_theme()
         self.detect_specs()
+        self.check_packages_status()
 
     @staticmethod
     def _make_spec_label(text: str) -> QLabel:
@@ -787,18 +1061,147 @@ class H2MTTSCard(QFrame):
         if chosen:
             self.path_edit.setText(chosen)
             self.detect_specs()
+            self.check_packages_status()
             self.changed.emit()
 
-    def _install_or_check_clicked(self) -> None:
+    def _on_path_changed(self, _text: str) -> None:
+        self.detect_specs()
+        self.check_packages_status()
+        self.changed.emit()
+
+    def check_packages_status(self) -> None:
         path = Path(self.path_edit.text().strip())
-        if path.exists():
+        all_core_ok = True
+        has_any = False
+
+        for pkg in H2M_PACKAGES:
+            pkg_id = pkg["id"]
+            w = self.pkg_widgets.get(pkg_id)
+            if not w:
+                continue
+            is_installed = self._is_pkg_installed(path, pkg)
+            if is_installed:
+                has_any = True
+                w["status_badge"].setText("✓ Đã có")
+                w["status_badge"].setStyleSheet(
+                    "background: rgba(16, 185, 129, 0.15); color: #10B981; "
+                    "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+                )
+                w["btn_dl"].setText("Tải lại")
+            else:
+                if pkg.get("core"):
+                    all_core_ok = False
+                w["status_badge"].setText("Chưa tải")
+                w["status_badge"].setStyleSheet(
+                    "background: rgba(245, 158, 11, 0.15); color: #F59E0B; "
+                    "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+                )
+                w["btn_dl"].setText("Tải về")
+
+        if path.exists() and all_core_ok:
+            self.status_badge.setText("Đã cài đủ")
+            self.status_badge.setStyleSheet(
+                "background: rgba(16, 185, 129, 0.18); color: #10B981; "
+                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+            )
+            self.btn_install.setText("🚀 Đã cài đủ gói khuyên dùng")
+        elif path.exists() and has_any:
+            self.status_badge.setText("Thiếu gói")
+            self.status_badge.setStyleSheet(
+                "background: rgba(245, 158, 11, 0.18); color: #F59E0B; "
+                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+            )
+            self.btn_install.setText("🚀 Tải trọn bộ khuyên dùng (~385 MB)")
+        else:
+            self.status_badge.setText("Chưa cài")
+            self.status_badge.setStyleSheet(
+                "background: rgba(239, 68, 68, 0.15); color: #EF4444; "
+                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+            )
+            self.btn_install.setText("🚀 Tải trọn bộ khuyên dùng (~385 MB)")
+
+    @staticmethod
+    def _is_pkg_installed(root: Path, pkg: Dict[str, Any]) -> bool:
+        if not root.exists():
+            return False
+        target = root / pkg["target_subpath"]
+        if not target.exists():
+            return False
+        for f in pkg.get("check_files", []):
+            if (target / f).exists():
+                return True
+        return False
+
+    def _download_single_clicked(self, pkg: Dict[str, Any]) -> None:
+        self._start_download([pkg])
+
+    def _download_recommended_clicked(self) -> None:
+        recommended = [p for p in H2M_PACKAGES if p.get("core")]
+        self._start_download(recommended)
+
+    def _download_all_clicked(self) -> None:
+        self._start_download(H2M_PACKAGES)
+
+    def _start_download(self, pkgs: List[Dict[str, Any]]) -> None:
+        if self._downloader is not None and self._downloader.isRunning():
+            return
+        root_path = self.path_edit.text().strip()
+        if not root_path:
+            paint_status(self.engine_status, "warning")
+            self.engine_status.setText("Vui lòng chọn thư mục cài đặt H2MTTS trước khi tải.")
+            return
+
+        self.progress_container.setVisible(True)
+        self.progress_bar.setValue(0)
+        self.lbl_progress.setText("Đang khởi tạo kết nối Hugging Face…")
+        self.btn_install.setEnabled(False)
+        self.btn_dl_all.setEnabled(False)
+
+        self._downloader = H2MDownloadWorker(root_path, pkgs, parent=self)
+        self._downloader.progress.connect(self._on_download_progress)
+        self._downloader.pkg_status_changed.connect(self._on_pkg_status_changed)
+        self._downloader.all_finished.connect(self._on_download_finished)
+        self._downloader.start()
+
+    def _on_download_progress(self, percent: int, text: str) -> None:
+        self.progress_bar.setValue(percent)
+        self.lbl_progress.setText(text)
+
+    def _on_pkg_status_changed(self, pkg_id: str, status_kind: str, text: str) -> None:
+        w = self.pkg_widgets.get(pkg_id)
+        if not w:
+            return
+        w["status_badge"].setText(text)
+        if status_kind == "downloading":
+            w["status_badge"].setStyleSheet(
+                "background: rgba(2, 132, 199, 0.15); color: #0284C7; "
+                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+            )
+        elif status_kind == "installed":
+            w["status_badge"].setStyleSheet(
+                "background: rgba(16, 185, 129, 0.15); color: #10B981; "
+                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+            )
+            w["btn_dl"].setText("Tải lại")
+
+    def _on_download_finished(self, success: bool, message: str) -> None:
+        self._downloader = None
+        self.btn_install.setEnabled(True)
+        self.btn_dl_all.setEnabled(True)
+        self.lbl_progress.setText(message)
+        if success:
             paint_status(self.engine_status, "success")
-            self.engine_status.setText(f"Thư mục H2MTTS đã sẵn sàng tại {path}.")
         else:
             paint_status(self.engine_status, "warning")
-            self.engine_status.setText(
-                f"Thư mục {path} chưa tồn tại. Vui lòng tạo hoặc giải nén H2MTTS vào thư mục này."
-            )
+        self.engine_status.setText(message)
+        self.check_packages_status()
+        self.detect_specs()
+        self.changed.emit()
+
+    def _cancel_download_clicked(self) -> None:
+        if self._downloader:
+            self._downloader.cancel()
+            self.lbl_progress.setText("Đang hủy tải…")
 
     def detect_specs(self) -> None:
         path = self.path_edit.text().strip()
@@ -810,21 +1213,6 @@ class H2MTTSCard(QFrame):
         self.lbl_disk.setText(data["disk"])
         self.lbl_note.setText(data["note"])
 
-        if data["installed"]:
-            self.status_badge.setText("Đã cài")
-            self.status_badge.setStyleSheet(
-                "background: rgba(16, 185, 129, 0.18); color: #10B981; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-            self.btn_install.setText("Engine GPU đã sẵn sàng")
-        else:
-            self.status_badge.setText("Chưa cài")
-            self.status_badge.setStyleSheet(
-                "background: rgba(239, 68, 68, 0.15); color: #EF4444; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-            self.btn_install.setText("Tải & cài engine GPU (~4 GB)")
-
         self.rating_badge.setText(f"• Đánh giá cấu hình: {data['rating']}")
 
     def apply_theme(self) -> None:
@@ -832,12 +1220,22 @@ class H2MTTSCard(QFrame):
         bg = "#111C2D" if dark else "#FFFFFF"
         border = "#2A3E59" if dark else "#E2E8F0"
         box_bg = "rgba(15, 23, 42, 0.4)" if dark else "rgba(241, 245, 249, 0.7)"
+        row_bg = "rgba(30, 41, 59, 0.5)" if dark else "#FFFFFF"
         self.setStyleSheet(
             f"QFrame#H2MTTSCard {{ background-color: {bg}; border: 1px solid {border}; border-radius: 8px; }}"
         )
         self.specs_box.setStyleSheet(
             f"QFrame#SpecsBox {{ background-color: {box_bg}; border: 1px solid {border}; border-radius: 6px; }}"
         )
+        if hasattr(self, "downloads_box"):
+            self.downloads_box.setStyleSheet(
+                f"QFrame#DownloadsBox {{ background-color: {box_bg}; border: 1px solid {border}; border-radius: 6px; }}"
+            )
+        if hasattr(self, "pkg_widgets"):
+            for w in self.pkg_widgets.values():
+                w["frame"].setStyleSheet(
+                    f"QFrame#PkgRow {{ background-color: {row_bg}; border: 1px solid {border}; border-radius: 6px; }}"
+                )
 
 
 class GeneralSettingsPage(QWidget):

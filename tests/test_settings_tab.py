@@ -139,3 +139,40 @@ def test_check_connection_shared_key_behavior(app) -> None:
     tab.card_gemini_image._on_check_done("gemini_image", True, "Kết nối thành công")
     assert "Hợp lệ (Dùng chung Gemini Flash)" in tab.card_gemini_image.status_badge.text()
 
+
+def test_h2mtts_huggingface_packages_and_detection(app, tmp_path: Path) -> None:
+    from ui.tab_settings import H2M_PACKAGES, H2MTTSCard
+
+    # 1. Verify Hugging Face packages are defined correctly
+    pkg_repos = [p["repo"] for p in H2M_PACKAGES]
+    assert "hoangmui410/H2M-TTS-v3-Turbo" in pkg_repos
+    assert "hoangmui410/MOSS-Audio-Tokenizer-Nano" in pkg_repos
+    assert "hoangmui410/H2M-Voice-Packs" in pkg_repos
+    assert "hoangmui410/H2M-TTS-v3-Nano" in pkg_repos
+    assert "hoangmui410/runtime" in pkg_repos
+
+    # 2. Test empty directory detection
+    card = H2MTTSCard()
+    card.path_edit.setText(str(tmp_path / "empty_h2m"))
+    card.check_packages_status()
+    for pkg_id in ("turbo", "moss", "voice_packs", "nano", "runtime"):
+        assert card.pkg_widgets[pkg_id]["status_badge"].text() == "Chưa tải"
+    assert "Chưa cài" in card.status_badge.text()
+
+    # 3. Simulate installed files in fake directory
+    fake_h2m = tmp_path / "fake_h2m"
+    (fake_h2m / "models" / "H2M-TTS-v3-Turbo").mkdir(parents=True)
+    (fake_h2m / "models" / "H2M-TTS-v3-Turbo" / "vieneu-v3-turbo-q8_0.gguf").write_text("dummy")
+    (fake_h2m / "models" / "MOSS-Audio-Tokenizer-Nano").mkdir(parents=True)
+    (fake_h2m / "models" / "MOSS-Audio-Tokenizer-Nano" / "config.json").write_text("{}")
+    (fake_h2m / "voice-packs").mkdir(parents=True)
+    (fake_h2m / "voice-packs" / "voice-catalog-v4.json").write_text("{}")
+
+    card.path_edit.setText(str(fake_h2m))
+    card.check_packages_status()
+    assert card.pkg_widgets["turbo"]["status_badge"].text() == "✓ Đã có"
+    assert card.pkg_widgets["moss"]["status_badge"].text() == "✓ Đã có"
+    assert card.pkg_widgets["voice_packs"]["status_badge"].text() == "✓ Đã có"
+    assert "Đã cài đủ" in card.status_badge.text()
+
+
