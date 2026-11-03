@@ -2,14 +2,20 @@
 from __future__ import annotations
 
 import copy
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from utils.files import load_json, write_json_atomic
 
-ROOT = Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False):
+    ROOT = Path(sys.executable).resolve().parent
+else:
+    ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
 DEFAULT_SETTINGS_PATH = CONFIG_DIR / "default_settings.json"
+if not DEFAULT_SETTINGS_PATH.is_file() and (ROOT / "_internal" / "config" / "default_settings.json").is_file():
+    DEFAULT_SETTINGS_PATH = ROOT / "_internal" / "config" / "default_settings.json"
 USER_SETTINGS_PATH = CONFIG_DIR / "user_settings.json"
 CREDENTIALS_DIR = CONFIG_DIR / "youtube_credentials"
 

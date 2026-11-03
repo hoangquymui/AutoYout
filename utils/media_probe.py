@@ -37,11 +37,16 @@ def resolve_tool(value: str | os.PathLike | None, default_name: str) -> str:
                 return found
 
     # Check project-local bin directory (e.g. <project>/bin/ffmpeg.exe)
-    project_bin = Path(__file__).resolve().parent.parent / "bin"
-    for ext in (".exe", "", ".cmd", ".bat"):
-        candidate = project_bin / f"{default_name}{ext}"
-        if candidate.is_file():
-            return str(candidate)
+    try:
+        from core.settings import ROOT
+        bin_dirs = [ROOT / "bin", ROOT / "_internal" / "bin"]
+    except Exception:
+        bin_dirs = [Path(__file__).resolve().parent.parent / "bin"]
+    for b_dir in bin_dirs:
+        for ext in (".exe", "", ".cmd", ".bat"):
+            candidate = b_dir / f"{default_name}{ext}"
+            if candidate.is_file():
+                return str(candidate)
 
     found = shutil.which(default_name)
     return found or default_name

@@ -28,7 +28,13 @@ except Exception:  # pragma: no cover
     QSvgRenderer = None  # type: ignore[assignment]
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
-LOGO_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "logo"
+LOGO_DIR = (Path(__file__).resolve().parent.parent.parent / "assets" / "logo")
+if not LOGO_DIR.is_dir():
+    try:
+        from core.settings import ROOT
+        LOGO_DIR = ROOT / "assets" / "logo"
+    except Exception:
+        pass
 
 DEFAULT_COLOR = "#E8EEF8"
 

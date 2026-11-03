@@ -838,6 +838,12 @@ class FrameTab(QWidget):
     def _insert_preset(self, path: str) -> None:
         p = Path(path)
         if not p.is_file():
+            try:
+                from core.settings import ROOT
+                p = ROOT / path
+            except Exception:
+                pass
+        if not p.is_file():
             return
         index = len(self._layout.images)
         offset = 0.03 * (index % 5)

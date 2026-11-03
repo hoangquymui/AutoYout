@@ -12,6 +12,8 @@ preview/
 bin/
 H2MTTS/
 tts/
+build/
+dist/
 
 # Local secrets and per-user settings
 config/user_settings.json
