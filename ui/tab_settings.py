@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.settings import ROOT, default_h2mtts_path
+from core.settings import ROOT, default_h2mtts_path, normalize_h2mtts_path
 from ui import theme
 from ui.components.icons import icon, set_icon
 from ui.components.page import PageHeader, icon_button, paint_status, wrap_scroll
@@ -130,9 +130,10 @@ def detect_hardware(h2mtts_path: str = "") -> Dict[str, Any]:
         specs["ram"] = "16 GB"
 
     # 3. Free disk
-    target_drive = "D:/" if os.path.exists("D:/") else "C:/"
-    if h2mtts_path and Path(h2mtts_path).drive:
-        target_drive = Path(h2mtts_path).drive + "/"
+    target_drive = str(ROOT.anchor) if ROOT.anchor else ("C:/" if os.path.exists("C:/") else "/")
+    norm_h2 = normalize_h2mtts_path(h2mtts_path)
+    if norm_h2 and Path(norm_h2).drive:
+        target_drive = Path(norm_h2).drive + "/"
     try:
         _, _, free = shutil.disk_usage(target_drive)
         specs["disk"] = f"{round(free / (1024**3))} GB"
@@ -185,10 +186,7 @@ def detect_hardware(h2mtts_path: str = "") -> Dict[str, Any]:
         specs["note"] = "• Chạy bằng CPU - khuyến nghị dùng GPU NVIDIA để tăng tốc đọc"
 
     # 5. H2MTTS directory check
-    raw_path = h2mtts_path.strip() if h2mtts_path else default_h2mtts_path()
-    check_dir = Path(raw_path)
-    if not check_dir.is_absolute():
-        check_dir = (ROOT / check_dir).resolve()
+    check_dir = Path(normalize_h2mtts_path(h2mtts_path))
     specs["installed"] = check_dir.exists() and (
         (check_dir / "models").exists() or (check_dir / "modules").exists()
     )
@@ -1548,12 +1546,7 @@ class SettingsTab(QWidget):
 
             # General paths
             raw_h2 = str(paths.get("h2mtts") or "").strip()
-            if not raw_h2 or raw_h2.replace("\\", "/").lower() == "d:/mui/f375/tts/h2mtts":
-                h2 = default_h2mtts_path()
-            elif not Path(raw_h2).is_absolute():
-                h2 = str((ROOT / raw_h2).resolve().as_posix())
-            else:
-                h2 = raw_h2
+            h2 = normalize_h2mtts_path(raw_h2)
             self.general_page.h2mtts_edit.setText(h2)
             self.card_h2mtts.path_edit.setText(h2)
             self.card_h2mtts.detect_specs()
@@ -1601,7 +1594,18 @@ class SettingsTab(QWidget):
 
         # Paths
         h2 = self.card_h2mtts.path_edit.text().strip() or self.general_page.h2mtts_edit.text().strip()
-        paths["h2mtts"] = h2
+        h2_norm = normalize_h2mtts_path(h2)
+        try:
+            h2_p = Path(h2_norm).resolve()
+            root_p = ROOT.resolve()
+            if h2_p == (root_p / "H2MTTS").resolve():
+                paths["h2mtts"] = "H2MTTS"
+            elif h2_p == (root_p / "tts" / "H2MTTS").resolve():
+                paths["h2mtts"] = "tts/H2MTTS"
+            else:
+                paths["h2mtts"] = h2_norm
+        except Exception:
+            paths["h2mtts"] = h2_norm
         paths["ffmpeg"] = self.general_page.ffmpeg_edit.text().strip() or "ffmpeg"
         paths["ffprobe"] = self.general_page.ffprobe_edit.text().strip() or "ffprobe"
 

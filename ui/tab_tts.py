@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.languages import language_choices, normalize_language
-from core.settings import ROOT, default_h2mtts_path
+from core.settings import ROOT, default_h2mtts_path, normalize_h2mtts_path
 from core.tts_engine import SynthesisCancelled, TTSEngine
 from ui.components.audio_player import AudioPreview
 from ui.components.icons import set_icon
@@ -291,11 +291,7 @@ class TTSConfigTab(QWidget):
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
         tts = settings.get("tts") or {}
-        raw_h2m = str((settings.get("paths") or {}).get("h2mtts") or "").strip()
-        if not raw_h2m or raw_h2m.replace("\\", "/").lower() == "d:/mui/f375/tts/h2mtts":
-            raw_h2m = default_h2mtts_path()
-        elif not Path(raw_h2m).is_absolute():
-            raw_h2m = str((ROOT / raw_h2m).resolve().as_posix())
+        raw_h2m = normalize_h2mtts_path(str((settings.get("paths") or {}).get("h2mtts") or "").strip())
         self.h2m_edit.setText(raw_h2m)
         self._set_combo(self.engine_combo, tts.get("engine", "turbo"))
         self._set_combo(self.backend_combo, tts.get("backend", "auto"))
@@ -313,7 +309,19 @@ class TTSConfigTab(QWidget):
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         paths = settings.setdefault("paths", {})
-        paths["h2mtts"] = self.h2m_edit.text().strip()
+        h2 = self.h2m_edit.text().strip()
+        h2_norm = normalize_h2mtts_path(h2)
+        try:
+            h2_p = Path(h2_norm).resolve()
+            root_p = ROOT.resolve()
+            if h2_p == (root_p / "H2MTTS").resolve():
+                paths["h2mtts"] = "H2MTTS"
+            elif h2_p == (root_p / "tts" / "H2MTTS").resolve():
+                paths["h2mtts"] = "tts/H2MTTS"
+            else:
+                paths["h2mtts"] = h2_norm
+        except Exception:
+            paths["h2mtts"] = h2_norm
         tts = settings.setdefault("tts", {})
         tts["engine"] = self.engine_combo.currentData() or "turbo"
         tts["backend"] = self.backend_combo.currentData() or "auto"

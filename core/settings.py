@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -37,6 +38,41 @@ def default_h2mtts_path() -> str:
     return str((ROOT / "H2MTTS").as_posix())
 
 
+def normalize_h2mtts_path(value: str | os.PathLike | None) -> str:
+    """Normalize H2MTTS path to a valid path on the current machine.
+
+    1. Empty value -> returns default_h2mtts_path().
+    2. Relative path -> resolves against current ROOT.
+    3. Legacy developer path (containing 'mui/f375') -> if it doesn't match ROOT or doesn't exist,
+       falls back to default_h2mtts_path() so other machines never keep hardcoded 'D:/mui/f375'.
+    4. Non-existent absolute path from another machine/drive -> falls back to default_h2mtts_path().
+    5. Existing valid directory -> returns its resolved POSIX path.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        return default_h2mtts_path()
+
+    p = Path(raw)
+    if not p.is_absolute():
+        resolved = (ROOT / p).resolve()
+        return str(resolved.as_posix())
+
+    norm_lower = raw.replace("\\", "/").lower()
+    root_norm = str(ROOT).replace("\\", "/").lower()
+
+    # Legacy developer external paths or paths from another machine
+    if norm_lower == "d:/mui/f375/tts/h2mtts":
+        return default_h2mtts_path()
+    if "mui/f375" in norm_lower and "mui/f375" not in root_norm:
+        return default_h2mtts_path()
+
+    # Absolute path that doesn't exist on this machine
+    if not p.exists():
+        return default_h2mtts_path()
+
+    return str(p.resolve().as_posix())
+
+
 def load_settings() -> Dict[str, Any]:
     defaults = load_json(DEFAULT_SETTINGS_PATH, {}) or {}
     user = load_json(USER_SETTINGS_PATH, {}) or {}
@@ -48,16 +84,55 @@ def load_settings() -> Dict[str, Any]:
     merged.setdefault("youtube", {})
     merged.setdefault("app", {})
 
-    # Default h2mtts to inside this project if unset or legacy external path
+    # Normalize h2mtts path so it always works on the current machine
     h2 = str(merged["paths"].get("h2mtts") or "").strip()
-    if not h2 or h2.replace("\\", "/").lower() == "d:/mui/f375/tts/h2mtts":
-        merged["paths"]["h2mtts"] = default_h2mtts_path()
+    merged["paths"]["h2mtts"] = normalize_h2mtts_path(h2)
+
+    # Normalize ffmpeg / ffprobe if they point to an invalid absolute path
+    for tool_key, default_tool in [("ffmpeg", "ffmpeg"), ("ffprobe", "ffprobe")]:
+        tool_val = str(merged["paths"].get(tool_key) or "").strip()
+        if tool_val and tool_val != default_tool:
+            p = Path(tool_val)
+            if p.is_absolute() and not p.exists():
+                merged["paths"][tool_key] = default_tool
+
+    # Reset last_project if from another machine and doesn't exist
+    last_proj = str(merged.get("project", {}).get("last_project") or "").strip()
+    if last_proj and Path(last_proj).is_absolute() and not Path(last_proj).exists():
+        merged["project"]["last_project"] = ""
 
     return merged
 
 
 def save_settings(settings: Dict[str, Any]) -> None:
-    write_json_atomic(USER_SETTINGS_PATH, settings)
+    settings_to_save = copy.deepcopy(settings)
+    paths = settings_to_save.get("paths")
+    if isinstance(paths, dict):
+        h2 = str(paths.get("h2mtts") or "").strip()
+        if h2:
+            try:
+                h2_p = Path(h2).resolve()
+                root_p = ROOT.resolve()
+                if h2_p == (root_p / "H2MTTS").resolve():
+                    paths["h2mtts"] = "H2MTTS"
+                elif h2_p == (root_p / "tts" / "H2MTTS").resolve():
+                    paths["h2mtts"] = "tts/H2MTTS"
+            except Exception:
+                pass
+        for tool_key in ("ffmpeg", "ffprobe"):
+            tool_val = str(paths.get(tool_key) or "").strip()
+            if tool_val:
+                try:
+                    t_p = Path(tool_val).resolve()
+                    root_p = ROOT.resolve()
+                    if (
+                        t_p == (root_p / "bin" / f"{tool_key}.exe").resolve()
+                        or t_p == (root_p / f"{tool_key}.exe").resolve()
+                    ):
+                        paths[tool_key] = tool_key
+                except Exception:
+                    pass
+    write_json_atomic(USER_SETTINGS_PATH, settings_to_save)
 
 
 def get_setting(settings: Dict[str, Any], dotted: str, default: Any = None) -> Any:

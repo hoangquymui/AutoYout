@@ -125,17 +125,9 @@ class H2MLayout:
     """All paths the app needs inside the H2MTTS model repository."""
 
     def __init__(self, root: str | os.PathLike | None) -> None:
-        from core.settings import ROOT, default_h2mtts_path
+        from core.settings import normalize_h2mtts_path
 
-        if root:
-            p = Path(root).expanduser()
-            if not p.is_absolute():
-                p = (ROOT / p).resolve()
-            elif str(p).replace("\\", "/").lower() == "d:/mui/f375/tts/h2mtts" and not p.exists():
-                p = Path(default_h2mtts_path())
-            self.root = p
-        else:
-            self.root = Path(default_h2mtts_path())
+        self.root = Path(normalize_h2mtts_path(root))
         models = self.root / "models"
         self.turbo_dir = models / "H2M-TTS-v3-Turbo"
         self.turbo_weights = self.turbo_dir / "update" / "model.safetensors"

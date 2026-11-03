@@ -202,9 +202,24 @@ def test_h2mtts_default_path_in_project(app) -> None:
     assert tab.general_page.h2mtts_edit.text() == default_path
     assert tab.card_h2mtts.path_edit.text() == default_path
 
+    # Relative path loads into project path
+    tab.load_from({"paths": {"h2mtts": "H2MTTS"}})
+    assert tab.card_h2mtts.path_edit.text() == default_path
+
+    # Path from another machine that does not exist resolves to default_path
+    tab.load_from({"paths": {"h2mtts": "Z:/another_machine/folder/H2MTTS"}})
+    assert tab.card_h2mtts.path_edit.text() == default_path
+
+    # Saving settings when pointing to default_path stores portable 'H2MTTS'
+    out_settings = {}
+    tab.apply_to(out_settings)
+    assert out_settings["paths"]["h2mtts"] in ("H2MTTS", "tts/H2MTTS")
+
     # H2MLayout resolves to project path
     layout = H2MLayout("")
     assert layout.root == Path(default_path)
+    layout2 = H2MLayout("Z:/nonexistent/path")
+    assert layout2.root == Path(default_path)
 
 
 
