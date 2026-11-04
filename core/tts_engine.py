@@ -150,12 +150,8 @@ class H2MLayout:
     def missing(self) -> List[str]:
         required = {
             "Turbo weights (update/model.safetensors)": self.turbo_weights.is_file(),
-            "Turbo ONNX (onnx_int8/config.json)": (self.turbo_onnx_dir / "config.json").is_file(),
-            "Nano model (config.json)": (self.nano_dir / "config.json").is_file(),
             "MOSS codec PyTorch (config.json)": (self.moss_torch_dir / "config.json").is_file(),
-            "MOSS codec ONNX (decode_full)": (self.moss_onnx_dir / "moss_audio_tokenizer_decode_full.onnx").is_file(),
             "Turbo voice pack": self.turbo_pack.is_file(),
-            "Nano voice pack": self.nano_pack.is_file(),
         }
         return [name for name, ok in required.items() if not ok]
 

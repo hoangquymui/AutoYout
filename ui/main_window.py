@@ -381,7 +381,6 @@ class MainWindow(QMainWindow):
                 return
             missing = engine.layout.missing()
             turbo = len(engine.voices("turbo"))
-            nano = len(engine.voices("nano"))
             if missing:
                 self.badge_tts.set_state("warn", f"Thiếu {len(missing)} tệp")
                 self.badge_tts.setToolTip(
@@ -390,7 +389,7 @@ class MainWindow(QMainWindow):
             else:
                 self.badge_tts.set_state("ok", f"{turbo} giọng")
                 self.badge_tts.setToolTip(
-                    f"{turbo} giọng Turbo · {nano} giọng Nano\n{engine.layout.root}"
+                    f"{turbo} giọng Turbo\n{engine.layout.root}"
                 )
         except Exception as exc:
             logger.error("Kiểm tra H2MTTS lỗi: %s", exc)

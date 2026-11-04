@@ -148,14 +148,13 @@ def test_h2mtts_huggingface_packages_and_detection(app, tmp_path: Path) -> None:
     assert "hoangmui410/H2M-TTS-v3-Turbo" in pkg_repos
     assert "hoangmui410/MOSS-Audio-Tokenizer-Nano" in pkg_repos
     assert "hoangmui410/H2M-Voice-Packs" in pkg_repos
-    assert "hoangmui410/H2M-TTS-v3-Nano" in pkg_repos
-    assert "hoangmui410/runtime" in pkg_repos
+    assert len(H2M_PACKAGES) == 3
 
     # 2. Test empty directory detection
     card = H2MTTSCard()
     card.path_edit.setText(str(tmp_path / "empty_h2m"))
     card.check_packages_status()
-    for pkg_id in ("turbo", "moss", "voice_packs", "nano", "runtime"):
+    for pkg_id in ("turbo", "moss", "voice_packs"):
         assert card.pkg_widgets[pkg_id]["status_badge"].text() == "Chưa tải"
     assert "Chưa cài" in card.status_badge.text()
 

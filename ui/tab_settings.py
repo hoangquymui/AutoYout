@@ -661,33 +661,6 @@ H2M_PACKAGES: List[Dict[str, Any]] = [
         "check_files": ["voice-catalog-v4.json", "voice-pack.json"],
         "core": True,
     },
-    {
-        "id": "nano",
-        "name": "H2M-TTS v3 Nano",
-        "tag": "Bản nhẹ · Tối ưu CPU",
-        "tag_color": "#64748B",
-        "tag_bg": "rgba(100, 116, 139, 0.15)",
-        "repo": "hoangmui410/H2M-TTS-v3-Nano",
-        "size": "~268 MB",
-        "desc": "Model ONNX Flow siêu nhẹ, chạy ổn định trên CPU máy văn phòng.",
-        "target_subpath": "models/H2M-TTS-v3-Nano",
-        "check_files": ["codec_decoder.onnx", "vector_estimator.onnx", "config.json"],
-        "core": False,
-    },
-    {
-        "id": "runtime",
-        "name": "Engine Runtime Windows",
-        "tag": "Tăng tốc GPU/DirectML",
-        "tag_color": "#7C3AED",
-        "tag_bg": "rgba(124, 58, 237, 0.15)",
-        "repo": "hoangmui410/runtime",
-        "size": "~89 MB",
-        "desc": "Thư viện C++ DirectML & ONNX Runtime tăng tốc GPU phần cứng trên Windows.",
-        "target_subpath": "engine-runtimes",
-        "check_files": ["DirectML.dll", "onnxruntime.dll", "runtime.zip"],
-        "core": False,
-        "is_zip": True,
-    },
 ]
 
 
@@ -1051,13 +1024,13 @@ class H2MTTSCard(QFrame):
         btn_bar = QHBoxLayout()
         btn_bar.setSpacing(8)
 
-        self.btn_install = QPushButton("🚀 Tải trọn bộ khuyên dùng (~385 MB)")
+        self.btn_install = QPushButton("🚀 Tải trọn bộ model (~385 MB)")
         self.btn_install.setObjectName("primaryButton")
         set_icon(self.btn_install, "download", "white", 13)
         self.btn_install.clicked.connect(self._download_recommended_clicked)
         btn_bar.addWidget(self.btn_install)
 
-        self.btn_dl_all = QPushButton("📦 Tải tất cả gói (~742 MB)")
+        self.btn_dl_all = QPushButton("📦 Tải tất cả gói (~385 MB)")
         set_icon(self.btn_dl_all, "download", "accent", 13)
         self.btn_dl_all.clicked.connect(self._download_all_clicked)
         btn_bar.addWidget(self.btn_dl_all)
@@ -1245,14 +1218,14 @@ class H2MTTSCard(QFrame):
                 "background: rgba(245, 158, 11, 0.18); color: #F59E0B; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
-            self.btn_install.setText("🚀 Tải trọn bộ khuyên dùng (~385 MB)")
+            self.btn_install.setText("🚀 Tải trọn bộ model (~385 MB)")
         else:
             self.status_badge.setText("Chưa cài")
             self.status_badge.setStyleSheet(
                 "background: rgba(239, 68, 68, 0.15); color: #EF4444; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
-            self.btn_install.setText("🚀 Tải trọn bộ khuyên dùng (~385 MB)")
+            self.btn_install.setText("🚀 Tải trọn bộ model (~385 MB)")
 
     @staticmethod
     def _is_pkg_installed(root: Path, pkg: Dict[str, Any]) -> bool:

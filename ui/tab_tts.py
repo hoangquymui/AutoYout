@@ -140,7 +140,6 @@ class TTSConfigTab(QWidget):
 
         self.engine_combo = QComboBox()
         self.engine_combo.addItem("v3 Turbo — chất lượng cao (48 kHz)", "turbo")
-        self.engine_combo.addItem("v3 Nano — siêu nhẹ (24 kHz)", "nano")
         model_form.addRow("Model", self.engine_combo)
 
         self.backend_combo = QComboBox()
@@ -364,29 +363,24 @@ class TTSConfigTab(QWidget):
             missing = layout.missing()
             try:
                 turbo = len(engine.voices("turbo"))
-                nano = len(engine.voices("nano"))
             except Exception as exc:
-                turbo = nano = 0
+                turbo = 0
                 missing = missing + [f"Lỗi đọc voice-packs: {exc}"]
             if missing:
                 self.model_status.setText(
-                    f"{turbo} giọng Turbo · {nano} giọng Nano · thiếu {len(missing)} thành phần."
+                    f"{turbo} giọng Turbo · thiếu {len(missing)} thành phần."
                 )
                 paint_status(self.model_status, "warning")
                 self.model_status.setToolTip("\n".join(missing))
             else:
                 self.model_status.setText(
-                    f"{turbo} giọng Turbo · {nano} giọng Nano · model đầy đủ."
+                    f"{turbo} giọng Turbo · model đầy đủ."
                 )
                 paint_status(self.model_status, "success")
                 self.model_status.setToolTip(str(layout.root))
         self._refresh_voice_list()
 
     def _on_engine_changed(self) -> None:
-        engine_key = self.engine_combo.currentData() or "turbo"
-        self.backend_combo.setEnabled(engine_key == "turbo")
-        if engine_key == "nano":
-            self._set_combo(self.backend_combo, "onnx")
         self._refresh_voice_list()
 
     def _refresh_voice_list(self) -> None:
