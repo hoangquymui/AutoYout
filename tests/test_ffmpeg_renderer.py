@@ -544,3 +544,32 @@ def test_render_with_frame_template(tmp_path: Path, ffmpeg: str) -> None:
     job = manager.get_video("one::tap_1")
     assert job is not None and job.state == VIDEO_DONE
     assert job.path.is_file() and job.path.stat().st_size > 3000
+
+
+def test_has_audio_and_skip_missing_audio(tmp_path: Path) -> None:
+    manager = _manager(tmp_path, 3)
+    renderer = _renderer()
+    cfg = _config(tmp_path)
+    jobs = renderer.build_jobs(manager, cfg)
+    
+    # Initially none have audio
+    for job in jobs:
+        assert renderer.has_audio(manager, job) is False
+        
+    # Create audio for only the first item
+    audio_dir = manager.audio_dir
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    (audio_dir / "tap_1.mp3").write_bytes(b"audio data")
+    manager.scan()
+    
+    assert renderer.has_audio(manager, jobs[0]) is True
+    assert renderer.has_audio(manager, jobs[1]) is False
+    assert renderer.has_audio(manager, jobs[2]) is False
+
+    # render_all with dummy audio should skip tap_2 and tap_3 without reporting errors for them
+    # Note: tap_1 would fail inside ffmpeg encode because b"audio data" is invalid, but tap_2 and tap_3 are skipped before ffmpeg!
+    done, errors = renderer.render_all(manager, cfg, skip_missing_audio=True)
+    # Check that neither tap_2 nor tap_3 are reported as "Chưa có audio"
+    for err in errors:
+        assert "tap_2" not in err
+        assert "tap_3" not in err

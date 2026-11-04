@@ -683,19 +683,52 @@ class FFmpegRenderer:
             else:
                 logger.info("Giữ thư mục tạm: %s", temp_dir)
 
+    @staticmethod
+    def has_audio(manager: ProjectManager, job: VideoJob) -> bool:
+        """Return True if all items in the job have an existing audio file on disk."""
+        items = manager.items_for(job.items)
+        if not items or len(items) != len(job.items):
+            return False
+        return all(manager.audio_exists(item) for item in items)
+
     def render_all(self, manager: ProjectManager, config: Optional[VideoConfig] = None,
                    force: bool = False, only: Optional[Iterable[str]] = None,
                    progress_cb: ProgressCb = None,
                    pause_cb: PauseCb = None,
                    cancel_cb: CancelCb = None,
-                   stop_on_error: bool = False) -> Tuple[List[VideoJob], List[str]]:
+                   stop_on_error: bool = False,
+                   skip_missing_audio: bool = True) -> Tuple[List[VideoJob], List[str]]:
         cfg = config or VideoConfig.from_settings({})
         jobs = self.build_jobs(manager, cfg, force=force)
         wanted = set(only) if only is not None else None
-        todo = [job for job in jobs if (wanted is None or job.id in wanted)
-                and self.needs_render(manager, job, force=force)]
-        done: List[VideoJob] = []
+
+        # "cái nào có audio thì tạo còn không có thì thôi"
+        # Chỉ render những job có đầy đủ audio; bỏ qua các job chưa có audio mà không báo lỗi.
         errors: List[str] = []
+        todo: List[VideoJob] = []
+        skipped_no_audio: List[VideoJob] = []
+        for job in jobs:
+            if wanted is not None and job.id not in wanted:
+                continue
+            if not self.has_audio(manager, job):
+                if wanted is not None and len(wanted) == 1 and not skip_missing_audio:
+                    items = manager.items_for(job.items)
+                    missing = [item.base for item in items if not manager.audio_exists(item)]
+                    errors.append(f"{job.title}: Chưa có audio cho: {', '.join(missing[:5])}")
+                else:
+                    skipped_no_audio.append(job)
+                continue
+            if self.needs_render(manager, job, force=force):
+                todo.append(job)
+
+        if skipped_no_audio:
+            logger.info(
+                "Bỏ qua %d video chưa có audio: %s",
+                len(skipped_no_audio),
+                ", ".join(j.id for j in skipped_no_audio[:5]),
+            )
+
+        done: List[VideoJob] = []
         for index, job in enumerate(todo):
             def job_progress(percent: int, message: str, _i=index, _job=job) -> None:
                 if progress_cb:

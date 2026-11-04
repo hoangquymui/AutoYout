@@ -166,7 +166,7 @@ class PipelineWorker(QThread):
                             f"Thử lại {_STAGE_LABELS[name].lower()} ({attempts}/{retries})…",
                             True,
                         )
-                        stage_errors = self._run_stage(name, start, end)
+                        stage_errors = self._run_stage(name, start, end, is_retry=True)
                 except (SynthesisCancelled, RenderCancelled, UploadCancelled) as exc:
                     raise PipelineCancelled(str(exc)) from exc
                 errors.extend(stage_errors)
@@ -237,11 +237,13 @@ class PipelineWorker(QThread):
             done = sum(1 for item in items if self.manager.audio_exists(item))
             parts.append(f"{done}/{len(items)} audio")
         if self.mode in ("video", "all"):
+            ready_videos = [job for job in videos if FFmpegRenderer.has_audio(self.manager, job)]
+            target_count = len(ready_videos) if ready_videos else len(videos)
             done = sum(
                 1 for job in videos
                 if job.path.is_file() and job.state in (VIDEO_DONE, VIDEO_UPLOAD_DONE)
             )
-            parts.append(f"{done}/{len(videos)} video")
+            parts.append(f"{done}/{target_count} video")
         if self.mode in ("upload", "all"):
             done = sum(1 for job in videos if job.youtube_video_id)
             parts.append(f"{done}/{len(videos)} đã đăng")
@@ -259,21 +261,21 @@ class PipelineWorker(QThread):
             offset += span
         return plan
 
-    def _run_stage(self, name: str, start: float, end: float) -> List[str]:
+    def _run_stage(self, name: str, start: float, end: float, is_retry: bool = False) -> List[str]:
         if name == "tts":
-            return self._stage_tts(start, end)
+            return self._stage_tts(start, end, is_retry=is_retry)
         if name == "video":
-            return self._stage_video(start, end)
+            return self._stage_video(start, end, is_retry=is_retry)
         return self._stage_upload(start, end)
 
     # ── TTS ──────────────────────────────────────────────────────────────────
-    def _tts_targets(self):
+    def _tts_targets(self, is_retry: bool = False):
         targets = []
         for item in self.manager.get_items():
             if not item.text.strip():
                 continue
             if (
-                self.force
+                (self.force and not is_retry)
                 or not self.manager.audio_exists(item)
                 or item.state in (ITEM_PENDING, ITEM_TTS_PROCESSING)
             ):
@@ -285,8 +287,8 @@ class PipelineWorker(QThread):
                     targets.append(item)
         return targets
 
-    def _stage_tts(self, start: float, end: float) -> List[str]:
-        targets = self._tts_targets()
+    def _stage_tts(self, start: float, end: float, is_retry: bool = False) -> List[str]:
+        targets = self._tts_targets(is_retry=is_retry)
         if not targets:
             logger.info("TTS: mọi file đã có audio, không cần tạo lại.")
             self.status_changed.emit("TTS: không có file cần tạo.", self.isRunning())
@@ -458,7 +460,7 @@ class PipelineWorker(QThread):
         return True
 
     # ── video ────────────────────────────────────────────────────────────────
-    def _stage_video(self, start: float, end: float) -> List[str]:
+    def _stage_video(self, start: float, end: float, is_retry: bool = False) -> List[str]:
         cfg = VideoConfig.from_settings(self.settings)
         problems = cfg.errors()
         if problems:
@@ -478,19 +480,28 @@ class PipelineWorker(QThread):
         done, errors = renderer.render_all(
             self.manager,
             cfg,
-            force=self.force,
+            force=(self.force and not is_retry),
             only=self.only,
             progress_cb=report,
             pause_cb=self.is_paused,
             cancel_cb=self.is_cancelled,
             stop_on_error=self._stop_on_error,
+            skip_missing_audio=True,
         )
         self.videos_updated.emit()
         self.items_updated.emit()
+        no_audio_count = sum(
+            1 for j in self.manager.videos.values()
+            if not renderer.has_audio(self.manager, j)
+        )
+        if no_audio_count > 0:
+            self._add_note(f"Video: bỏ qua {no_audio_count} video chưa có audio.")
+
         if not done and not errors:
             logger.info("Video: không có file nào cần render.")
             self.status_changed.emit("Video: không có file cần render.", self.isRunning())
-            self._add_note("Video: bỏ qua — không có file cần render.")
+            if no_audio_count == 0:
+                self._add_note("Video: bỏ qua — không có file cần render.")
         else:
             finished = sum(
                 1 for job in self.manager.videos.values()
