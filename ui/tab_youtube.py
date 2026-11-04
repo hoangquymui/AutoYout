@@ -187,16 +187,29 @@ class YouTubeConfigTab(QWidget):
         left.setSpacing(12)
         columns.addLayout(left, 1)
 
-        channel_box = QGroupBox("Kênh YouTube")
-        channel_layout = QVBoxLayout(channel_box)
-        channel_layout.setSpacing(8)
+        # 1. Hộp chọn phương thức đăng tải
+        method_box = QGroupBox("Phương thức đăng tải")
+        method_layout = QVBoxLayout(method_box)
+        method_layout.setSpacing(6)
         method_form = QFormLayout()
         method_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.method_combo = QComboBox()
         self.method_combo.addItem("YouTube Data API v3 (OAuth2)", "api")
         self.method_combo.addItem("Browser Automation (Playwright + Chrome)", "browser")
         method_form.addRow("Phương thức", self.method_combo)
-        channel_layout.addLayout(method_form)
+        method_layout.addLayout(method_form)
+        self.method_desc = QLabel()
+        self.method_desc.setObjectName("MutedLabel")
+        self.method_desc.setWordWrap(True)
+        method_layout.addWidget(self.method_desc)
+        left.addWidget(method_box)
+
+        # 2. Hộp xác thực YouTube Data API (chỉ hiện khi chọn API)
+        api_box = QGroupBox("Xác thực YouTube API (OAuth2)")
+        self.api_box = api_box
+        self.channel_box = api_box  # alias tương thích ngược
+        api_layout = QVBoxLayout(api_box)
+        api_layout.setSpacing(8)
 
         channel_row = QHBoxLayout()
         channel_row.setSpacing(8)
@@ -210,7 +223,7 @@ class YouTubeConfigTab(QWidget):
         channel_row.addWidget(QLabel("Kênh đã lưu"))
         channel_row.addWidget(self.channel_combo, 1)
         channel_row.addWidget(refresh_channels)
-        channel_layout.addLayout(channel_row)
+        api_layout.addLayout(channel_row)
 
         new_row = QHBoxLayout()
         new_row.setSpacing(8)
@@ -224,14 +237,14 @@ class YouTubeConfigTab(QWidget):
         set_icon(self.check_button, "check-circle", "accent", 14)
         self.check_button.clicked.connect(self._check_channel)
         new_row.addWidget(self.new_channel_edit, 1)
-        channel_layout.addLayout(new_row)
+        api_layout.addLayout(new_row)
 
         auth_row = QHBoxLayout()
         auth_row.setSpacing(8)
         auth_row.addWidget(self.login_button)
         auth_row.addWidget(self.check_button)
         auth_row.addStretch(1)
-        channel_layout.addLayout(auth_row)
+        api_layout.addLayout(auth_row)
 
         self.client_secret_edit = QLineEdit()
         self.client_secret_edit.setPlaceholderText("config/youtube_credentials/client_secret.json")
@@ -245,22 +258,65 @@ class YouTubeConfigTab(QWidget):
         secret_row.addWidget(secret_browse)
         secret_label = QLabel("client_secret.json")
         secret_label.setObjectName("FieldLabel")
-        channel_layout.addWidget(secret_label)
-        channel_layout.addLayout(secret_row)
+        api_layout.addWidget(secret_label)
+        api_layout.addLayout(secret_row)
         secret_hint = QLabel(
             "Token được lưu riêng cho từng kênh trong config/youtube_credentials/."
         )
         secret_hint.setObjectName("MutedLabel")
         secret_hint.setWordWrap(True)
-        channel_layout.addWidget(secret_hint)
+        api_layout.addWidget(secret_hint)
 
         self.auth_status = QLabel("Chưa kiểm tra kênh.")
         self.auth_status.setObjectName("MutedLabel")
         self.auth_status.setWordWrap(True)
-        channel_layout.addWidget(self.auth_status)
-        left.addWidget(channel_box)
+        api_layout.addWidget(self.auth_status)
+        left.addWidget(api_box)
 
+        # 3. Hộp Cấu hình Trình duyệt (chỉ hiện khi chọn Browser)
+        browser_box = QGroupBox("Cấu hình Trình duyệt (Playwright + Chrome)")
+        self.browser_box = browser_box
+        browser_form = QFormLayout(browser_box)
+        browser_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        self.browser_profile_edit = QLineEdit()
+        self.browser_profile_edit.setPlaceholderText(
+            "%LOCALAPPDATA%\\AutoYout\\chrome-profile (mặc định)"
+        )
+        profile_row = QHBoxLayout()
+        profile_row.setSpacing(6)
+        profile_row.addWidget(self.browser_profile_edit, 1)
+        profile_browse = icon_button(
+            "folder", "Chọn thư mục Chrome profile…", role="muted", size=15, side=30
+        )
+        profile_browse.clicked.connect(self._browse_profile)
+        profile_row.addWidget(profile_browse)
+        browser_form.addRow("Chrome profile", self._wrap(profile_row))
+        self.headless_check = QCheckBox("Chạy ẩn (headless)")
+        browser_form.addRow("", self.headless_check)
+        login_row = QHBoxLayout()
+        login_row.setSpacing(8)
+        self.browser_login_button = QPushButton("Đăng nhập bằng Chrome")
+        set_icon(self.browser_login_button, "log-in", "accent", 14)
+        self.browser_login_button.clicked.connect(self._browser_login)
+        login_row.addWidget(self.browser_login_button)
+        login_row.addStretch(1)
+        browser_form.addRow("", self._wrap(login_row))
+        self.browser_status = QLabel("Chưa đăng nhập Chrome.")
+        self.browser_status.setObjectName("MutedLabel")
+        self.browser_status.setWordWrap(True)
+        browser_form.addRow("", self.browser_status)
+        browser_hint = QLabel(
+            "Bấm Đăng nhập bằng Chrome để mở trình duyệt và đăng nhập tài khoản YouTube; "
+            "phiên đăng nhập sẽ được lưu trong profile cho các lần đăng video sau."
+        )
+        browser_hint.setObjectName("MutedLabel")
+        browser_hint.setWordWrap(True)
+        browser_form.addRow("", browser_hint)
+        left.addWidget(browser_box)
+
+        # 4. Hộp Lên lịch đăng (áp dụng cho cả 2 phương thức)
         schedule_box = QGroupBox("Lên lịch đăng")
+        self.schedule_box = schedule_box
         schedule_form = QFormLayout(schedule_box)
         schedule_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.schedule_combo = QComboBox()
@@ -310,45 +366,6 @@ class YouTubeConfigTab(QWidget):
         first_row.addWidget(self.first_edit, 1)
         schedule_form.addRow("", self._wrap(first_row))
         left.addWidget(schedule_box)
-
-        browser_box = QGroupBox("Browser Automation")
-        browser_form = QFormLayout(browser_box)
-        browser_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        self.browser_profile_edit = QLineEdit()
-        self.browser_profile_edit.setPlaceholderText(
-            "%LOCALAPPDATA%\\AutoYout\\chrome-profile (mặc định)"
-        )
-        profile_row = QHBoxLayout()
-        profile_row.setSpacing(6)
-        profile_row.addWidget(self.browser_profile_edit, 1)
-        profile_browse = icon_button(
-            "folder", "Chọn thư mục Chrome profile…", role="muted", size=15, side=30
-        )
-        profile_browse.clicked.connect(self._browse_profile)
-        profile_row.addWidget(profile_browse)
-        browser_form.addRow("Chrome profile", self._wrap(profile_row))
-        self.headless_check = QCheckBox("Chạy ẩn (headless)")
-        browser_form.addRow("", self.headless_check)
-        login_row = QHBoxLayout()
-        login_row.setSpacing(8)
-        self.browser_login_button = QPushButton("Đăng nhập bằng Chrome")
-        set_icon(self.browser_login_button, "log-in", "accent", 14)
-        self.browser_login_button.clicked.connect(self._browser_login)
-        login_row.addWidget(self.browser_login_button)
-        login_row.addStretch(1)
-        browser_form.addRow("", self._wrap(login_row))
-        self.browser_status = QLabel("Chưa đăng nhập Chrome.")
-        self.browser_status.setObjectName("MutedLabel")
-        self.browser_status.setWordWrap(True)
-        browser_form.addRow("", self.browser_status)
-        browser_hint = QLabel(
-            "Bấm Đăng nhập bằng Chrome để mở cửa sổ đăng nhập; phiên đăng nhập "
-            "được lưu trong profile cho các lần sau."
-        )
-        browser_hint.setObjectName("MutedLabel")
-        browser_hint.setWordWrap(True)
-        browser_form.addRow("", browser_hint)
-        left.addWidget(browser_box)
         left.addStretch(1)
 
         right = QVBoxLayout()
@@ -439,6 +456,7 @@ class YouTubeConfigTab(QWidget):
 
         self.accounts_page = self._build_accounts_page()
         self.sub_tabs.addTab(wrap_scroll(self.accounts_page), "Tài khoản")
+        self._on_method_changed()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -565,6 +583,22 @@ class YouTubeConfigTab(QWidget):
     # ── UI behaviour ─────────────────────────────────────────────────────────
     def _on_method_changed(self) -> None:
         browser = self.method_combo.currentData() == "browser"
+        if hasattr(self, "api_box"):
+            self.api_box.setVisible(not browser)
+        if hasattr(self, "browser_box"):
+            self.browser_box.setVisible(browser)
+        if hasattr(self, "method_desc"):
+            if browser:
+                self.method_desc.setText(
+                    "Đang dùng Browser Automation: Đăng tải trực tiếp qua trình duyệt Chrome "
+                    "(YouTube Studio), không cần file client_secret.json."
+                )
+            else:
+                self.method_desc.setText(
+                    "Đang dùng YouTube Data API v3: Đăng tải chính thức qua Google OAuth2 "
+                    "(yêu cầu file client_secret.json và tài khoản được cấp quyền)."
+                )
+
         self.browser_profile_edit.setEnabled(browser)
         self.headless_check.setEnabled(browser)
         self.browser_login_button.setVisible(browser)
@@ -573,6 +607,13 @@ class YouTubeConfigTab(QWidget):
         self.browser_login_button.setEnabled(enabled)
         self.login_button.setEnabled(enabled)
         self.check_button.setEnabled(enabled)
+
+        if hasattr(self, "sub_tabs") and self.sub_tabs.count() > 2:
+            self.sub_tabs.setTabVisible(2, not browser)
+            if browser and self.sub_tabs.currentIndex() == 2:
+                self.sub_tabs.setCurrentIndex(0)
+
+        self.channels_changed.emit()
 
     def _on_schedule_changed(self) -> None:
         mode = self.schedule_combo.currentData()

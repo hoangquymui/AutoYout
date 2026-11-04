@@ -113,13 +113,19 @@ def test_browser_login_button_follows_upload_method(window) -> None:
     assert browser_index >= 0
 
     tab.method_combo.setCurrentIndex(browser_index)
+    assert tab.browser_box.isHidden() is False
+    assert tab.api_box.isHidden() is True
     assert tab.browser_login_button.isHidden() is False
     assert tab.browser_status.isHidden() is False
     assert tab.browser_login_button.isEnabled() is True
+    assert tab.sub_tabs.isTabVisible(2) is False
 
     tab.method_combo.setCurrentIndex(api_index)
+    assert tab.browser_box.isHidden() is True
+    assert tab.api_box.isHidden() is False
     assert tab.browser_login_button.isHidden() is True
     assert tab.browser_status.isHidden() is True
+    assert tab.sub_tabs.isTabVisible(2) is True
 
 
 def test_youtube_tab_has_upload_and_thumbnail_pages(window) -> None:

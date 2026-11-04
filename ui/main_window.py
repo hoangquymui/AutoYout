@@ -429,6 +429,13 @@ class MainWindow(QMainWindow):
 
     def _refresh_youtube_badge(self) -> None:
         try:
+            yt_cfg = self.settings.get("youtube") or {}
+            method = str(yt_cfg.get("method") or "api").lower()
+            if method == "browser":
+                self.badge_youtube.set_state("ok", "Browser")
+                self.badge_youtube.setToolTip("Phương thức đăng tải: Browser Automation (Playwright + Chrome)")
+                return
+
             uploader = YouTubeUploader(self.settings)
             channels = uploader.channels()
             authorized = [ch for ch in channels if ch.authorized]
