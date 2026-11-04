@@ -477,13 +477,28 @@ class DubbingTab(QWidget):
         min_words = int(self.min_words_spin.value())
         max_words = int(self.max_words_spin.value())
 
+        # Ưu tiên 1: Tách các cue hiện tại theo số từ nhưng vẫn giữ timing
+        if self._cues:
+            jobs = dubbing.split_cues_by_words(self._cues, min_words, max_words)
+            if len(jobs) > len(self._cues):
+                save_cues(self._manager, self._base, jobs)
+                self._reload_from_disk()
+                self._set_status(f"Đã chia lại thành {len(self._cues)} đoạn.", "success")
+                self.reload_requested.emit()
+                return
+
         # Cách 1: Đọc lại file văn bản gốc và tách đoạn theo khoảng từ mới
         if txt_path.is_file():
             try:
                 text = read_text_smart(txt_path)
                 pieces = dubbing.split_by_words(text, min_words, max_words)
                 if pieces:
-                    jobs = dubbing._cues_from_pieces(pieces)
+                    total_dur = max((c.end for c in self._cues), default=0.0) if self._cues else 0.0
+                    if total_dur > 1.0:
+                        fake_cue = dubbing.CueJob(1, 0.0, total_dur, text)
+                        jobs = dubbing.split_cues_by_words([fake_cue], min_words, max_words)
+                    else:
+                        jobs = dubbing._cues_from_pieces(pieces)
                     save_cues(self._manager, self._base, jobs)
                     self._reload_from_disk()
                     self._set_status(f"Đã chia lại thành {len(self._cues)} đoạn.", "success")
@@ -496,9 +511,13 @@ class DubbingTab(QWidget):
         if self._cues:
             full_text = " ".join(c.text for c in self._cues if c.text)
             if full_text.strip():
-                pieces = dubbing.split_by_words(full_text, min_words, max_words)
-                if pieces:
+                total_dur = max(c.end for c in self._cues)
+                fake_cue = dubbing.CueJob(1, 0.0, total_dur, full_text)
+                jobs = dubbing.split_cues_by_words([fake_cue], min_words, max_words)
+                if not jobs or len(jobs) <= 1:
+                    pieces = dubbing.split_by_words(full_text, min_words, max_words)
                     jobs = dubbing._cues_from_pieces(pieces)
+                if jobs:
                     save_cues(self._manager, self._base, jobs)
                     self._reload_from_disk()
                     self._set_status(f"Đã chia lại thành {len(self._cues)} đoạn.", "success")

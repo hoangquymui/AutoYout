@@ -1346,7 +1346,7 @@ class FFmpegRenderer:
         if not text or end - start < 0.4:
             return []
         sentences = [part.strip() for part in
-                     re.split(r"(?<=[.!?…;])\s+|\n+", text) if part.strip()]
+                     re.split(r"(?<=[.!?…;])\s+|(?<=[。！？；])\s*|\n+", text) if part.strip()]
         if not sentences:
             sentences = [text]
         total = max(0.4, end - start)

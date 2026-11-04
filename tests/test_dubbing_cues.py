@@ -148,3 +148,19 @@ def test_import_txt_splits_by_word_range(tmp_path: Path) -> None:
     manager.scan()
     item = manager.get_item(base)
     assert item is not None and item.dub_mode == "srt"
+
+
+def test_split_cues_by_words_japanese_overlong_cue() -> None:
+    text = (
+        "前回の動画で私は皆さんにこう伝えました。Claude CodeやCodex自体がハーネスなので、わざわざ新しいハーネスを自作する必要はないと。"
+        "この言葉は、皆さんが個人のPCでエージェントを動かすための重要なポイントです。"
+        "今日は、その具体的な設定方法と活用のコツについて詳しく解説していきます。"
+        "まずは基本的な環境構築から始めましょう。"
+        "公式のドキュメントに従ってインストールを進めていきます。"
+        "これで準備は完了しました。次に実際の設定ファイルを編集していきましょう。"
+    )
+    cue = _cue(1, 0.0, 180.375, text)
+    pieces = split_cues_by_words([cue], min_words=50, max_words=70)
+    assert len(pieces) > 1
+    assert pieces[0].start == 0.0
+    assert abs(pieces[-1].end - 180.375) < 1e-4

@@ -31,7 +31,7 @@ from core.subtitles import (
     parse_vtt,
     write_srt,
 )
-from core.text_processor import split_by_words
+from core.text_processor import count_words, split_by_words
 from core.tts_engine import SynthesisCancelled, TTSEngine
 from utils.files import load_json, read_text_smart, safe_filename, write_json_atomic
 from utils.logger import get_logger
@@ -255,7 +255,7 @@ def split_cues_by_words(cues: Iterable[CueJob], min_words: int = 15,
     out: List[CueJob] = []
     for cue in cues:
         text = str(cue.text or "").strip()
-        if not text or len(text.split()) <= hi:
+        if not text or count_words(text) <= hi:
             out.append(cue)
             continue
         pieces = [piece for piece in split_by_words(text, lo, hi) if piece.strip()]

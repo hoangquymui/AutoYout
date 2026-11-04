@@ -59,6 +59,7 @@ from core.languages import (
     normalize_language,
 )
 from core.subtitles import cues_to_dicts
+from core.text_processor import count_words
 from ui.components.icons import set_icon
 from ui.components.page import PageHeader, paint_status, stack_columns, wrap_scroll
 from ui import theme
@@ -1053,7 +1054,7 @@ class ScriptTab(QWidget):
     def _show_text(self, text: str) -> None:
         with QSignalBlocker(self.script_edit):
             self.script_edit.setPlainText(text)
-        words = len(text.split())
+        words = count_words(text)
         self.count_label.setText(f"{words} từ · {len(text)} ký tự")
 
     def _view_source(self) -> None:
@@ -1104,7 +1105,7 @@ class ScriptTab(QWidget):
 
     def _on_script_edited(self) -> None:
         self._script_text = self.script_edit.toPlainText()
-        words = len(self._script_text.split())
+        words = count_words(self._script_text)
         self.count_label.setText(f"{words} từ · {len(self._script_text)} ký tự")
 
     # ── saving ───────────────────────────────────────────────────────────────

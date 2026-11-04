@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from core.text_processor import (
     chunk_text,
+    count_words,
     normalize_text,
     split_by_words,
     split_sentences,
@@ -81,3 +82,45 @@ def test_split_by_words_single_long_sentence_falls_back_to_words() -> None:
 def test_split_by_words_empty_input() -> None:
     assert split_by_words("") == []
     assert split_by_words("   ") == []
+
+
+def test_count_words_cjk_and_western() -> None:
+    # Vietnamese
+    assert count_words("Hôm nay trời rất đẹp, đi dạo thôi!") == 8
+    # English
+    assert count_words("Hello world from AutoYout 2026") == 5
+    # Japanese with mixed English
+    ja = "前回の動画で私は皆さんにこう伝えました。Claude CodeやCodex自体がハーネスなので。"
+    assert count_words(ja) > 30
+    assert "Claude" in ja and "Code" in ja
+    # Chinese
+    zh = "人工智能正在快速发展，改变着我们的生活和工作方式。"
+    assert count_words(zh) == 23
+
+
+def test_split_sentences_cjk() -> None:
+    ja = "前回の動画で私は皆さんにこう伝えました。Claude CodeやCodex自体がハーネスです！自作する必要はない？そうです。"
+    sentences = split_sentences(ja)
+    assert len(sentences) == 4
+    assert sentences[0] == "前回の動画で私は皆さんにこう伝えました。"
+    assert sentences[1] == "Claude CodeやCodex自体がハーネスです！"
+    assert sentences[2] == "自作する必要はない？"
+    assert sentences[3] == "そうです。"
+
+
+def test_split_by_words_cjk_japanese_splits_multiple_chunks() -> None:
+    # Exact scenario from user's bug report: 3-minute Japanese text
+    text = (
+        "前回の動画で私は皆さんにこう伝えました。Claude CodeやCodex自体がハーネスなので、わざわざ新しいハーネスを自作する必要はないと。"
+        "この言葉は、皆さんが個人のPCでエージェントを動かすための重要なポイントです。"
+        "今日は、その具体的な設定方法と活用のコツについて詳しく解説していきます。"
+        "まずは基本的な環境構築から始めましょう。"
+        "公式のドキュメントに従ってインストールを進めていきます。"
+        "これで準備は完了しました。次に実際の設定ファイルを編集していきましょう。"
+    )
+    # Range 50 - 70 words as configured in the user's UI
+    pieces = split_by_words(text, min_words=50, max_words=70)
+    assert len(pieces) > 1, f"Expected multiple chunks, got {len(pieces)}"
+    assert all(count_words(p) <= 75 for p in pieces)
+    for p in pieces[:-1]:
+        assert p.strip().endswith("。")
