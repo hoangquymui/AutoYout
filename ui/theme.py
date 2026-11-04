@@ -391,6 +391,10 @@ def current_mode() -> str:
     return _mode
 
 
+def is_dark() -> bool:
+    return _mode == "dark"
+
+
 def set_mode(mode: str) -> str:
     """Activate ``mode`` and refresh every token exported by this module."""
     global _mode

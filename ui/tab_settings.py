@@ -1820,3 +1820,16 @@ class SettingsTab(QWidget):
         if hasattr(self, "card_veo"):
             self.card_veo.apply_theme()
 
+
+    def set_pipeline_busy(self, busy: bool) -> None:
+        self._pipeline_busy = bool(busy)
+        for btn in self.findChildren(QPushButton):
+            btn.setEnabled(not busy)
+        for edit in self.findChildren(QLineEdit):
+            edit.setReadOnly(busy)
+        for combo in self.findChildren(QComboBox):
+            combo.setEnabled(not busy)
+        for spin in self.findChildren(QSpinBox):
+            spin.setEnabled(not busy)
+        for chk in self.findChildren(QCheckBox):
+            chk.setEnabled(not busy)

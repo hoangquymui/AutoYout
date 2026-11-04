@@ -557,3 +557,51 @@ def test_dubbing_tab_resplit_or_reload(window, tmp_path: Path) -> None:
     assert dub.table.item(0, 3).text() == "Chờ"
 
 
+def test_automation_workflow_nodes_and_glow(window) -> None:
+    tab = window.automation_tab
+    assert hasattr(tab, "card_tts")
+    assert hasattr(tab, "card_video")
+    assert hasattr(tab, "card_upload")
+    assert tab.card_tts.state == "idle"
+
+    tab.set_stage("Lồng tiếng")
+    assert tab.card_tts.state == "running"
+    assert tab.card_tts._shadow_effect.isEnabled() is True
+
+    tab.set_stage("Tạo video")
+    assert tab.card_tts.state == "done"
+    assert tab.card_video.state == "running"
+    assert tab.card_video._shadow_effect.isEnabled() is True
+
+    tab.set_stage("Đăng tải YouTube")
+    assert tab.card_video.state == "done"
+    assert tab.card_upload.state == "running"
+    assert tab.card_upload._shadow_effect.isEnabled() is True
+
+    tab.set_stage("Hoàn tất")
+    assert tab.card_upload.state == "done"
+
+
+def test_tabs_accessible_and_read_only_while_running(window) -> None:
+    class DummyWorker:
+        pass
+
+    window.worker = DummyWorker()
+    window._update_actions()
+
+    for i in range(window.tabs.count()):
+        assert window.tabs.isTabEnabled(i) is True
+
+    assert window.project_tab._pipeline_busy is True
+    assert window.settings_tab._pipeline_busy is True
+    assert window.video_tab._pipeline_busy is True
+    assert window.script_tab.clean_button.isEnabled() is False
+
+    window.worker = None
+    window._update_actions()
+
+    assert window.project_tab._pipeline_busy is False
+    assert window.settings_tab._pipeline_busy is False
+    assert window.video_tab._pipeline_busy is False
+
+

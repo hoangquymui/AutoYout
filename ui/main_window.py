@@ -777,11 +777,23 @@ class MainWindow(QMainWindow):
         running = self.worker is not None
         self.automation_tab.set_actions(idle, running)
         for position in range(self.tabs.count()):
-            if position != self._automation_index:
-                self.tabs.setTabEnabled(position, not running)
+            self.tabs.setTabEnabled(position, True)
         self.btn_header_project.setEnabled(not running)
-        self.btn_header_open.setEnabled(not running)
+        self.btn_header_open.setEnabled(True)
         self.btn_refresh_status.setEnabled(not running)
+
+        if hasattr(self, "project_tab"):
+            self.project_tab.set_pipeline_busy(running)
+        if hasattr(self, "settings_tab"):
+            self.settings_tab.set_pipeline_busy(running)
+        if hasattr(self, "script_tab"):
+            self.script_tab.set_pipeline_busy(running)
+        if hasattr(self, "tts_tab"):
+            self.tts_tab.set_busy(running)
+        if hasattr(self, "video_tab"):
+            self.video_tab.set_pipeline_busy(running)
+        if hasattr(self, "youtube_tab"):
+            self.youtube_tab.set_pipeline_busy(running)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
         if self.worker is not None:

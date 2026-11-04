@@ -1272,3 +1272,6 @@ class ScriptTab(QWidget):
             saved += 1
         if not saved:
             self._warn("Chưa có nội dung nào để lưu.")
+
+    def set_pipeline_busy(self, busy: bool) -> None:
+        self._set_busy(busy)

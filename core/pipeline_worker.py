@@ -466,10 +466,11 @@ class PipelineWorker(QThread):
 
         renderer = FFmpegRenderer(self.settings)
 
-        def report(percent: int, message: str) -> None:
-            percent = max(0, min(100, int(percent)))
-            self.task_changed.emit(percent)
-            self.overall_changed.emit(int(round(start + (end - start) * percent / 100.0)))
+        def report(percent: int, message: str, task_percent: int = None) -> None:
+            stage_pct = max(0, min(100, int(percent)))
+            task_val = max(0, min(100, int(task_percent))) if task_percent is not None else stage_pct
+            self.task_changed.emit(task_val)
+            self.overall_changed.emit(int(round(start + (end - start) * stage_pct / 100.0)))
             self.status_changed.emit(message, self.isRunning())
 
         self.status_changed.emit("Đang lập kế hoạch video...", True)
@@ -519,10 +520,11 @@ class PipelineWorker(QThread):
 
         uploader = YouTubeUploader(self.settings)
 
-        def report(percent: int, message: str) -> None:
-            percent = max(0, min(100, int(percent)))
-            self.task_changed.emit(percent)
-            self.overall_changed.emit(int(round(start + (end - start) * percent / 100.0)))
+        def report(percent: int, message: str, task_percent: int = None) -> None:
+            stage_pct = max(0, min(100, int(percent)))
+            task_val = max(0, min(100, int(task_percent))) if task_percent is not None else stage_pct
+            self.task_changed.emit(task_val)
+            self.overall_changed.emit(int(round(start + (end - start) * stage_pct / 100.0)))
             self.status_changed.emit(message, self.isRunning())
 
         results, errors = uploader.upload_all(

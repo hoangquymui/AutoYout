@@ -358,3 +358,9 @@ class ProjectTab(QWidget):
 
     def _warn_no_project(self) -> None:
         QMessageBox.information(self, "Project", "Hãy chọn Project trước.")
+
+    def set_pipeline_busy(self, busy: bool) -> None:
+        self._pipeline_busy = bool(busy)
+        self.force_check.setEnabled(not busy)
+        for btn in self.findChildren(QPushButton):
+            btn.setEnabled(not busy)

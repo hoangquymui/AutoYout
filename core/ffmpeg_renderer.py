@@ -700,7 +700,10 @@ class FFmpegRenderer:
             def job_progress(percent: int, message: str, _i=index, _job=job) -> None:
                 if progress_cb:
                     overall = int((_i * 100 + percent) / max(1, len(todo)))
-                    progress_cb(overall, f"[{_job.title}] {message}")
+                    try:
+                        progress_cb(overall, f"[{_job.title}] {message}", percent)
+                    except TypeError:
+                        progress_cb(overall, f"[{_job.title}] {message}")
             try:
                 done.append(self.render_job(
                     manager, job.id, cfg, job_progress, pause_cb, cancel_cb))
