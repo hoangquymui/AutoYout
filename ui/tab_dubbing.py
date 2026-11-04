@@ -431,10 +431,17 @@ class DubbingTab(QWidget):
         if self._worker is not None or self._join is not None:
             return
         self._manager = manager
-        self._base = ""
+        previous_base = self._base or str(self.file_combo.currentData() or "")
         self._refresh_file_list()
-        if self.file_combo.count():
+        if previous_base and self.file_combo.findData(previous_base) >= 0:
+            self._base = previous_base
+            self.file_combo.blockSignals(True)
+            self.file_combo.setCurrentIndex(self.file_combo.findData(previous_base))
+            self.file_combo.blockSignals(False)
+        elif self.file_combo.count():
             self._base = str(self.file_combo.currentData() or "")
+        else:
+            self._base = ""
         self._reload_from_disk()
 
     def _refresh_file_list(self) -> None:
@@ -443,14 +450,24 @@ class DubbingTab(QWidget):
             for item in self._manager.get_items():
                 if getattr(item, "dub_mode", "text") == "srt":
                     bases.append((item.display_name or item.base, item.base))
+        current = self._base or str(self.file_combo.currentData() or "")
         self.file_combo.blockSignals(True)
         self.file_combo.clear()
         for label, base in bases:
             self.file_combo.addItem(label, base)
-        if self._base:
-            index = self.file_combo.findData(self._base)
+        if current:
+            index = self.file_combo.findData(current)
             if index >= 0:
                 self.file_combo.setCurrentIndex(index)
+                self._base = current
+            elif self.file_combo.count():
+                self._base = str(self.file_combo.currentData() or "")
+            else:
+                self._base = ""
+        elif self.file_combo.count():
+            self._base = str(self.file_combo.currentData() or "")
+        else:
+            self._base = ""
         self.file_combo.blockSignals(False)
         self.file_label.setVisible(bool(bases))
         self.file_combo.setVisible(bool(bases))

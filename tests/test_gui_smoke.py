@@ -605,3 +605,40 @@ def test_tabs_accessible_and_read_only_while_running(window) -> None:
     assert window.video_tab._pipeline_busy is False
 
 
+def test_dubbing_tab_selection_preserved_on_reload(window, tmp_path: Path) -> None:
+    from core import dubbing
+    project = tmp_path / "project_preserve"
+    project.mkdir(parents=True)
+    scripts = project / "script"
+    scripts.mkdir(parents=True)
+    (scripts / "first_item.txt").write_text("Nội dung bài thứ nhất.", encoding="utf-8")
+    (scripts / "second_item.txt").write_text("Nội dung bài thứ hai.", encoding="utf-8")
+
+    window.project_tab.set_project(str(project))
+    window._reload_project()
+
+    dubbing.import_txt(window.manager, scripts / "first_item.txt", min_words=5, max_words=10)
+    dubbing.import_txt(window.manager, scripts / "second_item.txt", min_words=5, max_words=10)
+    window._reload_project()
+
+    dub = window.tts_tab
+    assert dub.file_combo.count() == 2
+
+    # Switch to second item
+    idx = dub.file_combo.findData("second_item")
+    assert idx >= 0
+    dub.file_combo.setCurrentIndex(idx)
+    assert dub._base == "second_item"
+
+    # Reloading project must PRESERVE second item selection
+    window._reload_project()
+    assert dub.file_combo.currentData() == "second_item"
+    assert dub._base == "second_item"
+
+    # Clicking 'Tải lại' button must also PRESERVE second item selection
+    dub.reload_btn.click()
+    assert dub.file_combo.currentData() == "second_item"
+    assert dub._base == "second_item"
+
+
+

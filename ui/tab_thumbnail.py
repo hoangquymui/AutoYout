@@ -417,16 +417,17 @@ class ThumbnailPanel(QWidget):
     # ── project / items ──────────────────────────────────────────────────────
     def set_project(self, manager) -> None:
         self._manager = manager
-        self._base = ""
+        previous_base = self._base or str(self.item_combo.currentData() or "")
         self._bg_path = None
         self._preview_file = None
         self._highlights = []
         self.highlight_list.clear()
         self.suggest_list.clear()
-        self._refresh_items()
+        self._refresh_items(previous_base)
 
-    def _refresh_items(self) -> None:
-        previous = self._base
+    def _refresh_items(self, previous: str = "") -> None:
+        if not previous:
+            previous = self._base or str(self.item_combo.currentData() or "")
         self.item_combo.blockSignals(True)
         self.item_combo.clear()
         if self._manager is not None:
