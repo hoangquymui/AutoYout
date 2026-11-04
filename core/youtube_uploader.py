@@ -1000,7 +1000,16 @@ class YouTubeUploader:
                 page.set_default_timeout(30_000)
                 report(6, "Đang mở YouTube Studio...")
                 page.goto("https://studio.youtube.com", wait_until="domcontentloaded")
-                page.wait_for_timeout(3500)
+                try:
+                    page.wait_for_selector(
+                        "#upload-icon, #upload-button, ytcp-button:has-text('Tạo'), "
+                        "ytcp-button:has-text('Create'), button[aria-label*='Tạo' i], "
+                        "button[aria-label*='Create' i]",
+                        timeout=25_000,
+                    )
+                except Exception:
+                    pass
+                page.wait_for_timeout(2000)
                 self._check_cancel(cancel_cb)
                 if "accounts.google.com" in page.url:
                     if cfg.browser_headless:
@@ -1017,10 +1026,23 @@ class YouTubeUploader:
                 report(10, "Chọn video để tải lên...")
                 self._open_upload(page)
                 self._attach_video(page, job.path)
+                self._handle_auth_dialog(page, cfg, report, cancel_cb)
                 report(16, "Đang tải video lên Studio...")
-                dialog = self._first(page, ["ytcp-uploads-dialog", "ytcp-upload-video-dialog"], 60_000)
-                if dialog is None:
-                    raise YouTubeError("Không mở được hộp thoại upload của YouTube Studio.")
+                dialog_ready = False
+                for sel in ("div[contenteditable='true'][aria-label*='tiêu đề' i]",
+                            "div[contenteditable='true'][aria-label*='title' i]",
+                            "#textbox", "ytcp-uploads-dialog", "ytcp-upload-video-dialog"):
+                    try:
+                        el = page.locator(sel).first
+                        if el.count():
+                            dialog_ready = True
+                            break
+                    except Exception:
+                        continue
+                if not dialog_ready:
+                    dialog = self._first(page, ["ytcp-uploads-dialog", "ytcp-upload-video-dialog", "#textbox"], 60_000)
+                    if dialog is None:
+                        raise YouTubeError("Không mở được hộp thoại upload của YouTube Studio.")
 
                 self._fill_browser_metadata(page, metadata, warnings, report)
                 self._browser_progress(page, report)
@@ -1038,10 +1060,24 @@ class YouTubeUploader:
                 self._check_cancel(cancel_cb)
                 report(88, "Đang xuất bản...")
                 self._wait_done_ready(page, cancel_cb, report)
-                done = self._first(page, ["#done-button", "ytcp-button#done-button"], 20_000)
+                done = self._first(page, [
+                    "#done-button",
+                    "ytcp-button#done-button",
+                    "button:has-text('Lưu')",
+                    "button:has-text('Xuất bản')",
+                    "button:has-text('Save')",
+                    "button:has-text('Publish')",
+                    "button:has-text('Schedule')",
+                ], 20_000)
                 if done is None:
-                    raise YouTubeError("Không tìm thấy nút Publish/Schedule.")
-                done.click()
+                    raise YouTubeError("Không tìm thấy nút Publish/Schedule/Lưu.")
+                try:
+                    done.click(force=True)
+                except Exception:
+                    try:
+                        done.locator("button, div#button").first.click(force=True)
+                    except Exception:
+                        done.click()
                 report(94, "Đang chờ YouTube xử lý...")
                 url = self._browser_video_url(page)
                 video_id = ""
@@ -1118,81 +1154,203 @@ class YouTubeUploader:
             page.wait_for_timeout(250)
 
     @staticmethod
-    def _click_first(page, selectors: Sequence[str], timeout_ms: int = 4000) -> bool:
+    def _click_first(page, selectors: Sequence[str], timeout_ms: int = 4000, force: bool = False) -> bool:
         locator = YouTubeUploader._first(page, selectors, timeout_ms)
         if locator is None:
             return False
         try:
-            locator.click()
+            locator.click(force=force)
             return True
         except Exception:
-            return False
+            try:
+                locator.click(force=True)
+                return True
+            except Exception:
+                return False
 
     def _open_upload(self, page) -> None:
-        if not self._click_first(page, ["#create-icon", "ytcp-button#create-icon",
-                                        "button[aria-label*='Create']", "button[title*='Create']"]):
-            raise YouTubeError("Không tìm thấy nút Create trong YouTube Studio.")
+        if page.locator("input[type='file']").first.count():
+            return
+        direct_selectors = [
+            "#upload-icon",
+            "ytcp-icon-button#upload-icon",
+            "#upload-button",
+            "ytcp-button#upload-button",
+            "ytcp-icon-button[aria-label*='Tải video lên' i]",
+            "ytcp-icon-button[aria-label*='Upload' i]",
+            "button[aria-label*='Tải video lên' i]",
+            "button[aria-label*='Upload' i]",
+            "button:has-text('Tải video lên')",
+            "button:has-text('Upload videos')",
+        ]
+        if self._click_first(page, direct_selectors, timeout_ms=3000):
+            page.wait_for_timeout(1000)
+            return
+
+        create_selectors = [
+            "ytcp-button:has-text('Tạo')",
+            "ytcp-button:has-text('Create')",
+            "#create-icon",
+            "ytcp-button#create-icon",
+            "button[aria-label*='Tạo' i]",
+            "button[aria-label*='Create' i]",
+            "button[title*='Tạo' i]",
+            "button[title*='Create' i]",
+            "button:has-text('Tạo')",
+            "button:has-text('Create')",
+        ]
+        if not self._click_first(page, create_selectors, timeout_ms=10_000):
+            raise YouTubeError("Không tìm thấy nút Tạo / Tải video lên trong YouTube Studio.")
         page.wait_for_timeout(700)
 
     def _attach_video(self, page, video: Path) -> None:
+        file_input = page.locator('input[type="file"]').first
+        if file_input.count():
+            try:
+                file_input.set_input_files(str(video))
+                return
+            except Exception:
+                pass
+
         item_selectors = [
             "tp-yt-paper-item#text-item-0",
+            "tp-yt-paper-item:has-text('Tải video lên')",
             "tp-yt-paper-item:has-text('Upload videos')",
             "#text-item-0",
+            "#select-files-button",
+            "ytcp-button#select-files-button",
+            "button:has-text('Chọn tệp')",
+            "button:has-text('Select files')",
         ]
         try:
-            with page.expect_file_chooser(timeout=20_000) as chooser:
+            with page.expect_file_chooser(timeout=10_000) as chooser:
                 if not self._click_first(page, item_selectors, 5000):
-                    page.get_by_text("Upload videos", exact=False).first.click(timeout=5000)
+                    try:
+                        page.get_by_text(re.compile(r"Tải video lên|Upload video", re.I)).first.click(timeout=4000)
+                    except Exception:
+                        pass
             chooser.value.set_files(str(video))
             return
         except Exception:
             logger.debug("Không bắt được file chooser, thử input[type=file].", exc_info=True)
+
         try:
-            page.locator('input[type="file"]').first.set_input_files(str(video))
+            file_input = page.locator('input[type="file"]').first
+            file_input.wait_for(state="attached", timeout=15000)
+            file_input.set_input_files(str(video))
             return
         except Exception as exc:
             raise YouTubeError("Không đưa được file video vào hộp thoại upload.") from exc
+
+    def _handle_auth_dialog(self, page, cfg: YouTubeConfig,
+                            report: Callable[[int, str], None],
+                            cancel_cb: CancelCb) -> None:
+        page.wait_for_timeout(1000)
+        auth_candidates = [
+            "ytcp-auth-confirmation-dialog",
+            "tp-yt-paper-dialog:has-text('Xác minh danh tính')",
+            "tp-yt-paper-dialog:has-text('Verify your identity')",
+            "tp-yt-paper-dialog:has-text('Verify it\'s you')",
+        ]
+        auth_dlg = None
+        for sel in auth_candidates:
+            try:
+                cand = page.locator(sel).first
+                if cand.count() and cand.is_visible():
+                    auth_dlg = cand
+                    break
+            except Exception:
+                continue
+        if auth_dlg is None:
+            return
+
+        if cfg.browser_headless:
+            raise AuthRequired(
+                "YouTube Studio yêu cầu xác minh danh tính ('Xác minh danh tính của bạn'). "
+                "Hãy tắt chế độ chạy ẩn (headless), mở Chrome đăng nhập và xác minh danh tính rồi thử lại."
+            )
+        report(12, "YouTube yêu cầu xác minh danh tính ('Xác minh danh tính của bạn'). "
+                   "Vui lòng hoàn tất xác minh trên cửa sổ Chrome vừa mở (chờ tối đa 5 phút)...")
+        next_btn = auth_dlg.locator(
+            "button:has-text('Tiếp theo'), button:has-text('Next'), ytcp-button#next-button"
+        ).first
+        if next_btn.count() and next_btn.is_visible():
+            try:
+                next_btn.click(force=True)
+            except Exception:
+                pass
+        deadline = time.time() + 300
+        while time.time() < deadline:
+            self._check_cancel(cancel_cb)
+            page.wait_for_timeout(2000)
+            try:
+                if not auth_dlg.is_visible():
+                    report(15, "Đã xác minh danh tính xong, tiếp tục tải lên...")
+                    return
+            except Exception:
+                return
+        raise AuthRequired("Chưa hoàn tất bước xác minh danh tính trên YouTube Studio sau 5 phút.")
 
     def _fill_browser_metadata(self, page, metadata: Dict[str, Any],
                                warnings: List[str],
                                report: Callable[[int, str], None]) -> None:
         title_box = self._first(page, [
+            'div[contenteditable="true"][aria-label*="tiêu đề" i]',
             'div[contenteditable="true"][aria-label*="title" i]',
-            "ytcp-uploads-dialog #textbox",
-            "#textbox",
+            'ytcp-social-suggestions-textbox[aria-label*="tiêu đề" i] #textbox',
+            'ytcp-social-suggestions-textbox[aria-label*="title" i] #textbox',
+            'ytcp-video-title #textbox',
+            'ytcp-uploads-dialog #textbox',
+            '#textbox',
         ], 20_000)
         if title_box is None:
             raise YouTubeError("Không tìm thấy ô tiêu đề của YouTube Studio.")
         self._fill_editable(title_box, metadata["title"])
 
         desc_box = self._first(page, [
+            'div[contenteditable="true"][aria-label*="người xem" i]',
             'div[contenteditable="true"][aria-label*="Tell viewers" i]',
-            "#description-textarea #textbox",
+            'div[contenteditable="true"][aria-label*="mô tả" i]',
+            'div[contenteditable="true"][aria-label*="description" i]',
+            '#description-textarea #textbox',
+            'ytcp-video-description #textbox',
             'ytcp-social-suggestions-textbox #textbox',
         ], 5000)
+        if desc_box is None and page.locator("#textbox").count() >= 2:
+            desc_box = page.locator("#textbox").nth(1)
         if desc_box is not None:
             self._fill_editable(desc_box, metadata["description"])
         else:
             warnings.append("Không tìm thấy ô mô tả.")
 
         try:
-            page.locator(
-                'tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]'
-            ).first.click(timeout=3000)
+            mfk = page.locator('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]').first
+            if mfk.count():
+                try:
+                    mfk.scroll_into_view_if_needed()
+                except Exception:
+                    pass
+                mfk.click(force=True)
+            else:
+                page.get_by_role("radio", name=re.compile(r"not made for kids|không dành cho trẻ em", re.I)).first.click(force=True, timeout=3000)
         except Exception:
             try:
-                page.get_by_role("radio", name=re.compile("not made for kids", re.I)).first.click(timeout=3000)
+                page.get_by_role("radio", name=re.compile(r"not made for kids|không dành cho trẻ em", re.I)).first.click(force=True, timeout=3000)
             except Exception:
                 warnings.append("Không chọn được tuỳ chọn 'không dành cho trẻ em'.")
 
         thumb = metadata.get("thumbnail")
-        if thumb is not None:
+        if thumb is not None and Path(thumb).is_file():
             try:
-                with page.expect_file_chooser(timeout=4000) as chooser:
-                    page.get_by_text(re.compile("Upload thumbnail", re.I)).first.click(timeout=4000)
-                chooser.value.set_files(str(thumb))
-                page.wait_for_timeout(1500)
+                thumb_input = page.locator('input#file-loader, input[type="file"][accept*="image"]').first
+                if thumb_input.count():
+                    thumb_input.set_input_files(str(thumb))
+                    page.wait_for_timeout(1500)
+                else:
+                    with page.expect_file_chooser(timeout=4000) as chooser:
+                        page.get_by_text(re.compile(r"Upload thumbnail|Tải hình thu nhỏ|Tải ảnh thu nhỏ", re.I)).first.click(force=True, timeout=4000)
+                    chooser.value.set_files(str(thumb))
+                    page.wait_for_timeout(1500)
             except Exception:
                 warnings.append("Không đặt được thumbnail trong Studio.")
         self._browser_progress(page, report)
@@ -1230,14 +1388,22 @@ class YouTubeUploader:
             report(pct, f"YouTube Studio: {text.strip()}")
 
     def _browser_next(self, page, step: str) -> None:
-        button = self._first(page, ["#next-button", "ytcp-button#next-button"], 10_000)
+        button = self._first(page, [
+            "#next-button",
+            "ytcp-button#next-button",
+            "button:has-text('Tiếp')",
+            "button:has-text('Next')",
+        ], 10_000)
         if button is None:
             raise YouTubeError(f"Không thấy nút Next ở bước {step}.")
         try:
-            button.click()
+            button.click(force=True)
         except Exception as exc:
-            raise YouTubeError(f"Không bấm được Next ở bước {step}: {exc}") from exc
-        page.wait_for_timeout(900)
+            try:
+                button.locator("button, div#button").first.click(force=True)
+            except Exception:
+                raise YouTubeError(f"Không bấm được Next ở bước {step}: {exc}") from exc
+        page.wait_for_timeout(1200)
 
     def _wait_done_ready(self, page, cancel_cb: CancelCb,
                          report: Callable[[int, str], None]) -> None:
@@ -1246,9 +1412,11 @@ class YouTubeUploader:
         while time.time() < deadline:
             self._check_cancel(cancel_cb)
             try:
-                button = page.locator("#done-button").first
-                if button.count() and button.is_visible() and button.is_enabled():
-                    return
+                button = page.locator("#done-button, ytcp-button#done-button").first
+                if button.count() and button.is_visible():
+                    aria_dis = button.get_attribute("aria-disabled")
+                    if aria_dis != "true" and button.is_enabled():
+                        return
             except Exception:
                 pass
             self._browser_progress(page, report)
@@ -1263,7 +1431,9 @@ class YouTubeUploader:
             scheduled = publish_at
             try:
                 radio = page.locator('tp-yt-paper-radio-button[name="SCHEDULE"]').first
-                radio.click(timeout=4000)
+                if not radio.count():
+                    radio = page.get_by_text(re.compile(r"Lên lịch|Schedule", re.I)).first
+                radio.click(force=True, timeout=4000)
                 when = parse_when(publish_at) or _local_now()
                 local = when.astimezone()
                 picker = page.locator("ytcp-datetime-picker").first
@@ -1284,11 +1454,21 @@ class YouTubeUploader:
                 scheduled = ""
         name = {"public": "PUBLIC", "unlisted": "UNLISTED"}.get(privacy, "PRIVATE")
         try:
-            page.locator(f'tp-yt-paper-radio-button[name="{name}"]').first.click(timeout=4000)
+            radio = page.locator(f'tp-yt-paper-radio-button[name="{name}"]').first
+            if radio.count():
+                radio.click(force=True, timeout=4000)
+            else:
+                label_patterns = {
+                    "PUBLIC": r"Công khai|Public",
+                    "UNLISTED": r"Không công khai|Unlisted",
+                    "PRIVATE": r"Riêng tư|Private",
+                }
+                pattern = label_patterns.get(name, r"Riêng tư|Private")
+                page.get_by_text(re.compile(pattern, re.I)).first.click(force=True, timeout=3000)
         except Exception:
             try:
                 label = {"PUBLIC": "Public", "UNLISTED": "Unlisted"}.get(name, "Private")
-                page.get_by_text(label, exact=True).first.click(timeout=3000)
+                page.get_by_text(label, exact=True).first.click(force=True, timeout=3000)
             except Exception:
                 warnings.append("Không chọn được chế độ hiển thị; giữ mặc định của Studio.")
         return scheduled
@@ -1298,7 +1478,7 @@ class YouTubeUploader:
         closed_at: Optional[float] = None
         while time.time() < deadline:
             for selector in ("a[href*='youtu.be/']", "a[href*='youtube.com/watch']",
-                             "a.ytcp-video-info", "#video-url"):
+                             "a.ytcp-video-info", "#video-url", ".video-url-fadeable"):
                 try:
                     locator = page.locator(selector).first
                     if locator.count():
@@ -1311,7 +1491,6 @@ class YouTubeUploader:
             try:
                 dialog = page.locator("ytcp-uploads-dialog").first
                 if dialog.count() and not dialog.is_visible():
-                    # The success dialog may still be rendering its link.
                     closed_at = closed_at or time.time()
                     if time.time() - closed_at > 2.0:
                         break
@@ -1320,6 +1499,13 @@ class YouTubeUploader:
             except Exception:
                 pass
             page.wait_for_timeout(500)
+        try:
+            content = page.content()
+            m = re.search(r"https://youtu\.be/([A-Za-z0-9_-]{11})", content)
+            if m:
+                return m.group(0)
+        except Exception:
+            pass
         return ""
 
     def _browser_screenshot(self, page, prefix: str) -> None:

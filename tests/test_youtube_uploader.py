@@ -144,3 +144,64 @@ def test_delete_channel_removes_token_and_meta(tmp_path: Path) -> None:
     assert uploader.delete_channel("test_channel") is True
     assert not token.is_file() and not meta.is_file()
     assert uploader.delete_channel("test_channel") is False
+
+
+def test_open_upload_vietnamese_selector() -> None:
+    from unittest.mock import MagicMock
+    uploader = YouTubeUploader({})
+    page = MagicMock()
+    
+    file_input = MagicMock()
+    file_input.first.count.return_value = 0
+    file_input.count.return_value = 0
+    
+    upload_icon = MagicMock()
+    upload_icon.count.return_value = 1
+    upload_icon.is_visible.return_value = True
+    
+    def mock_locator(sel: str):
+        mock_loc = MagicMock()
+        if sel == "input[type='file']":
+            return file_input
+        if "#upload-icon" in sel:
+            mock_loc.first = upload_icon
+        else:
+            empty = MagicMock()
+            empty.count.return_value = 0
+            mock_loc.first = empty
+        return mock_loc
+
+    page.locator.side_effect = mock_locator
+    uploader._open_upload(page)
+    upload_icon.click.assert_called_once()
+
+
+def test_handle_auth_dialog_headless_raises_auth_required() -> None:
+    import pytest
+    from unittest.mock import MagicMock
+    from core.youtube_uploader import AuthRequired
+
+    uploader = YouTubeUploader({})
+    page = MagicMock()
+
+    auth_dlg = MagicMock()
+    auth_dlg.count.return_value = 1
+    auth_dlg.is_visible.return_value = True
+
+    def mock_locator(sel: str):
+        mock_loc = MagicMock()
+        if "ytcp-auth-confirmation-dialog" in sel:
+            mock_loc.first = auth_dlg
+        else:
+            empty = MagicMock()
+            empty.count.return_value = 0
+            mock_loc.first = empty
+        return mock_loc
+
+    page.locator.side_effect = mock_locator
+    cfg = YouTubeConfig(browser_headless=True)
+    report = MagicMock()
+
+    with pytest.raises(AuthRequired) as exc_info:
+        uploader._handle_auth_dialog(page, cfg, report, lambda: False)
+    assert "xác minh danh tính" in str(exc_info.value).lower()
