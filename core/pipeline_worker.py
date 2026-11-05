@@ -323,7 +323,7 @@ class PipelineWorker(QThread):
                 gemini_generate,
                 translate_text,
             )
-            from core.project_manager import safe_filename
+            from utils.files import safe_filename
 
             cues, meta = get_youtube_transcript(
                 yt_url,
@@ -334,7 +334,22 @@ class PipelineWorker(QThread):
             logger.error("Lỗi lấy transcript: %s", exc)
             return [f"Kịch bản: Không lấy được transcript từ YouTube ({exc})"]
 
-        raw_text = " ".join(str(getattr(c, "text", "") or "") for c in cues).strip()
+        paragraphs = []
+        buffer = []
+        previous_end = None
+        for cue in cues:
+            txt = " ".join(str(getattr(cue, "text", "") or "").split())
+            if not txt:
+                continue
+            start = float(getattr(cue, "start", 0.0) or 0.0)
+            if buffer and previous_end is not None and start - previous_end > 2.0:
+                paragraphs.append(" ".join(buffer))
+                buffer = []
+            buffer.append(txt)
+            previous_end = float(getattr(cue, "end", 0.0) or 0.0)
+        if buffer:
+            paragraphs.append(" ".join(buffer))
+        raw_text = "\n\n".join(paragraphs).strip()
         if not raw_text:
             return ["Kịch bản: Transcript rỗng."]
 
@@ -388,20 +403,21 @@ class PipelineWorker(QThread):
                         cleaned_text,
                         api_key=api_key,
                         model=model,
-                        language=lang_code,
+                        source_lang=meta.get("source_language") or "vi",
+                        target_lang=lang_code,
                     )
                 except Exception as exc:
                     logger.warning("Dịch sang %s lỗi: %s, dùng bản tiếng gốc.", lang_code, exc)
                     errors.append(f"Dịch kịch bản {lang_code}: {exc}")
 
-            out_file = self.manager.input_dir / f"{base_name}_{lang_code}.txt"
+            out_file = self.manager.script_dir / f"{base_name}_{lang_code}.txt"
             try:
                 out_file.write_text(text_for_lang, encoding="utf-8")
                 logger.info("Đã tạo file kịch bản: %s", out_file.name)
             except Exception as exc:
                 errors.append(f"Lưu file {out_file.name}: {exc}")
 
-        self.manager.reload()
+        self.manager.scan()
         self.items_updated.emit()
         report(100, f"Đã chuẩn bị xong {len(target_langs)} bản kịch bản.")
         return errors
@@ -705,7 +721,7 @@ class PipelineWorker(QThread):
                 int((idx / total) * 100),
                 f"Tạo thumbnail ({idx + 1}/{total}): {item.display_name}",
             )
-            target_thumb = self.manager.thumbnail_dir / f"{item.base}.png"
+            target_thumb = self.manager.thumbs_dir / f"{item.base}.png"
             if target_thumb.is_file() and not self.force and not is_retry:
                 continue
 
@@ -717,7 +733,7 @@ class PipelineWorker(QThread):
                     style=str(thumb_cfg.get("style") or "cinematic"),
                     language=getattr(item, "language", "vi"),
                 )
-                bg_target = self.manager.thumbnail_dir / f"{item.base}_bg.png"
+                bg_target = self.manager.thumbs_dir / f"{item.base}_bg.png"
                 generate_image(
                     provider=provider,
                     prompt=prompt,

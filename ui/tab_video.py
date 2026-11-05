@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -36,7 +38,8 @@ from core.ai_images import (
     DEFAULT_STYLE as AI_DEFAULT_STYLE,
 )
 from ui.tab_frame import FrameTab
-from ui.components.icons import set_icon
+from ui import theme
+from ui.components.icons import pixmap, set_icon
 from ui.components.page import (
     PageHeader,
     icon_button,
@@ -67,6 +70,11 @@ class VideoConfigTab(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._settings: Dict[str, Any] = {}
+        self._pipeline_busy = False
+        self._manager = None
+        self._files_expanded = False
+        self._ready_count = 0
+        self._total_count = 0
         self.frame_tab = FrameTab(self)
 
         page = QVBoxLayout(self)
@@ -77,54 +85,48 @@ class VideoConfigTab(QWidget):
         self.inner_tabs.setDocumentMode(True)
         page.addWidget(self.inner_tabs, 1)
 
+        config_page = QWidget()
+        config_page.setObjectName("PageContent")
+        config_layout = QVBoxLayout(config_page)
+        config_layout.setContentsMargins(14, 10, 14, 10)
+        config_layout.setSpacing(10)
+
+        self.inner_tabs.addTab(config_page, "Cấu hình video")
+        self.inner_tabs.addTab(self.frame_tab, "Khung mẫu (Video Frame)")
+
+        config_layout.addWidget(PageHeader(
+            "Kết xuất Video",
+            "Chọn nguồn hình, âm thanh và cách ghép — rồi bấm Tạo video ở thanh dưới.",
+        ))
+
+        self.files_box = self._build_files_box()
+        config_layout.addWidget(self.files_box)
+
         content = QWidget()
         content.setObjectName("PageContent")
         scroller = wrap_scroll(content)
-        # The two option columns need ~1500px; allow scrolling on smaller windows.
-        scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-
-        self.inner_tabs.addTab(scroller, "Cấu hình video")
-        self.inner_tabs.addTab(self.frame_tab, "Khung mẫu (Video Frame)")
+        scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        config_layout.addWidget(scroller, 1)
 
         root = QVBoxLayout(content)
-        root.setContentsMargins(14, 14, 14, 14)
-        root.setSpacing(12)
-        header = PageHeader(
-            "Kết xuất Video",
-            "Tạo video từ audio với hình nền, nhạc nền và encoder GPU/CPU.",
-        )
-        root.addWidget(header)
-
-        run_row = QHBoxLayout()
-        run_row.setSpacing(10)
-        self.run_button = QPushButton("Tạo video")
-        self.run_button.setObjectName("primaryButton")
-        set_icon(self.run_button, "film", "white", 15)
-        self.run_button.setToolTip(
-            "Chạy bước ghép video cho toàn bộ project (như nút “2. Tạo Video”).")
-        self.run_button.clicked.connect(self.run_requested.emit)
-        run_row.addWidget(self.run_button)
-        run_hint = QLabel(
-            "Chạy bước ghép video cho toàn bộ project, dùng đúng các tuỳ chọn bên dưới.")
-        run_hint.setObjectName("MutedLabel")
-        run_hint.setWordWrap(True)
-        run_row.addWidget(run_hint, 1)
-        root.addLayout(run_row)
-
-        self._manager = None
-        self.files_box = self._build_files_box()
-        root.addWidget(self.files_box)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(10)
 
         columns = QHBoxLayout()
         columns.setSpacing(12)
         self._columns = columns
-        root.addLayout(columns, 1)
+        root.addLayout(columns)
 
         left = QVBoxLayout()
         left.setSpacing(12)
         columns.addLayout(left, 1)
 
-        visual_box = QGroupBox("Hình nền")
+        right = QVBoxLayout()
+        right.setSpacing(12)
+        columns.addLayout(right, 1)
+
+        # ── Card: Hình ảnh & nền ─────────────────────────────────────────────
+        visual_box = QGroupBox("Hình ảnh và nền")
         visual_layout = QVBoxLayout(visual_box)
         visual_layout.setSpacing(8)
         self.visual_combo = QComboBox()
@@ -185,6 +187,8 @@ class VideoConfigTab(QWidget):
         video_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.video_list = QListWidget()
         self.video_list.setMinimumHeight(92)
+        self.video_list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         video_form.addRow("Video nền", self.video_list)
         video_buttons = QHBoxLayout()
         video_buttons.setSpacing(6)
@@ -224,7 +228,7 @@ class VideoConfigTab(QWidget):
         pool_form.addRow("Số clip mỗi video", self.pool_count_spin)
         pool_hint = QLabel(
             "Mỗi lần render chọn ngẫu nhiên clip từ thư mục, ghép nối và lặp "
-            "đến khi hết audio. Đặt 0 để dùng toàn bộ clip (xáo trộn ngẫu nhiên)."
+            "đến khi hết audio. Đặt 0 để dùng toàn bộ clip."
         )
         pool_hint.setObjectName("MutedLabel")
         pool_hint.setWordWrap(True)
@@ -293,7 +297,8 @@ class VideoConfigTab(QWidget):
         self.visual_stack.addWidget(ai_page)
         left.addWidget(visual_box)
 
-        bgm_box = QGroupBox("Nhạc nền (BGM)")
+        # ── Card: Âm thanh ───────────────────────────────────────────────────
+        bgm_box = QGroupBox("Âm thanh (Nhạc nền)")
         bgm_layout = QVBoxLayout(bgm_box)
         bgm_layout.setSpacing(8)
         bgm_row = QHBoxLayout()
@@ -336,7 +341,7 @@ class VideoConfigTab(QWidget):
         bgm_layout.addLayout(duck_row)
         bgm_hint = QLabel(
             "Âm lượng -20 dB đến -15 dB để giọng vẫn rõ. Khi có giọng, nhạc "
-            "tự hạ xuống mức phần trăm bên dưới (ducking)."
+            "tự hạ xuống mức phần trăm bên trên (ducking)."
         )
         bgm_hint.setObjectName("MutedLabel")
         bgm_hint.setWordWrap(True)
@@ -344,15 +349,20 @@ class VideoConfigTab(QWidget):
         left.addWidget(bgm_box)
         left.addStretch(1)
 
-        right = QVBoxLayout()
-        right.setSpacing(12)
-        columns.addLayout(right, 1)
+        # ── Card: Ghép & Xuất ────────────────────────────────────────────────
+        render_box = QGroupBox("Ghép và xuất video")
+        render_layout = QVBoxLayout(render_box)
+        render_layout.setSpacing(8)
 
-        group_box = QGroupBox("Chế độ tạo video")
-        group_form = QFormLayout(group_box)
+        group_caption = QLabel("Cách ghép file")
+        group_caption.setObjectName("FieldLabel")
+        render_layout.addWidget(group_caption)
+
+        group_form = QFormLayout()
+        group_form.setContentsMargins(0, 0, 0, 0)
         group_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         group_form.setHorizontalSpacing(12)
-        group_form.setVerticalSpacing(8)
+        group_form.setVerticalSpacing(6)
 
         self.grouping_combo = QComboBox()
         self.grouping_combo.addItem("Mỗi file là một video", "one")
@@ -382,30 +392,51 @@ class VideoConfigTab(QWidget):
         self.group_hint.setObjectName("MutedLabel")
         self.group_hint.setWordWrap(True)
         group_form.addRow("", self.group_hint)
+        render_layout.addLayout(group_form)
 
-        self.grouping_combo.currentIndexChanged.connect(self._on_grouping_changed)
-        right.addWidget(group_box)
+        render_layout.addWidget(self._panel_sep())
 
-        output_box = QGroupBox("Xuất video")
-        output_form = QFormLayout(output_box)
+        output_caption = QLabel("Thông số xuất")
+        output_caption.setObjectName("FieldLabel")
+        render_layout.addWidget(output_caption)
+
+        output_form = QFormLayout()
+        output_form.setContentsMargins(0, 0, 0, 0)
         output_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         output_form.setHorizontalSpacing(12)
-        output_form.setVerticalSpacing(8)
+        output_form.setVerticalSpacing(6)
+
         self.resolution_combo = QComboBox()
         self.resolution_combo.addItem("1920×1080 (Full HD)", "1920x1080")
         self.resolution_combo.addItem("1280×720 (HD)", "1280x720")
-        output_form.addRow("Độ phân giải", self.resolution_combo)
         self.fps_spin = QSpinBox()
         self.fps_spin.setRange(24, 60)
-        output_form.addRow("FPS", self.fps_spin)
+        res_row = QHBoxLayout()
+        res_row.setSpacing(8)
+        res_row.addWidget(self.resolution_combo, 1)
+        res_row.addWidget(QLabel("FPS"))
+        res_row.addWidget(self.fps_spin)
+        output_form.addRow("Độ phân giải", self._wrap(res_row))
+
         self.encoder_combo = QComboBox()
         for value, label in _ENCODER_LABELS.items():
             self.encoder_combo.addItem(label, value)
         output_form.addRow("Encoder", self.encoder_combo)
+
         self.crf_spin = QSpinBox()
         self.crf_spin.setRange(0, 51)
-        self.crf_spin.setToolTip("CRF/CQ càng thấp càng nét và file càng lớn (20 là cân bằng).")
+        self.crf_spin.setToolTip(
+            "CRF/CQ càng thấp càng nét và file càng lớn (20 là cân bằng).")
+        self.crf_spin.setMaximumWidth(120)
         output_form.addRow("Chất lượng (CRF/CQ)", self.crf_spin)
+        render_layout.addLayout(output_form)
+
+        render_layout.addWidget(self._panel_sep())
+
+        overlay_caption = QLabel("Lớp phủ và phụ đề")
+        overlay_caption.setObjectName("FieldLabel")
+        render_layout.addWidget(overlay_caption)
+
         self.ken_burns_check = QCheckBox("Ken Burns (zoom nhẹ)")
         self.showwaves_check = QCheckBox("Hiển thị sóng nhạc")
         self.chapters_check = QCheckBox("Hiện tiêu đề chương trên hình")
@@ -417,8 +448,8 @@ class VideoConfigTab(QWidget):
         self.write_srt_check = QCheckBox("Xuất thêm phụ đề .srt cạnh video (từ lời đọc)")
         self.keep_temp_check = QCheckBox("Giữ thư mục tạm để kiểm tra")
 
-        output_form.addRow("", self.showwaves_check)
-        output_form.addRow("", self.srt_check)
+        render_layout.addWidget(self.subtitle_check)
+        render_layout.addWidget(self.srt_check)
 
         srt_row = QHBoxLayout()
         srt_row.setSpacing(6)
@@ -437,11 +468,25 @@ class VideoConfigTab(QWidget):
         )
         self.srt_clear.clicked.connect(lambda: self.srt_edit.setText(""))
         srt_row.addWidget(self.srt_clear)
-        output_form.addRow("File .srt", self._wrap(srt_row))
+        render_layout.addLayout(srt_row)
         self.srt_check.toggled.connect(self._set_srt_enabled)
         self._set_srt_enabled(self.srt_check.isChecked())
 
-        right.addWidget(output_box)
+        toggles = QGridLayout()
+        toggles.setHorizontalSpacing(12)
+        toggles.setVerticalSpacing(4)
+        toggles.addWidget(self.showwaves_check, 0, 0)
+        toggles.addWidget(self.chapters_check, 0, 1)
+        toggles.addWidget(self.ken_burns_check, 1, 0)
+        toggles.addWidget(self.write_srt_check, 1, 1)
+        toggles.addWidget(self.keep_temp_check, 2, 0)
+        render_layout.addLayout(toggles)
+        right.addWidget(render_box)
+        right.addStretch(1)
+
+        # ── Bottom row: FFmpeg tools + tips ─────────────────────────────────
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(12)
 
         tools_box = QGroupBox("Công cụ FFmpeg")
         tools_form = QFormLayout(tools_box)
@@ -482,33 +527,105 @@ class VideoConfigTab(QWidget):
         self.tools_status.setObjectName("MutedLabel")
         self.tools_status.setWordWrap(True)
         tools_form.addRow("", self.tools_status)
-        right.addWidget(tools_box)
+        bottom_row.addWidget(tools_box, 1)
 
         hint_box = QGroupBox("Gợi ý")
         hint_layout = QVBoxLayout(hint_box)
         hint = QLabel(
             "• Video luôn dài đúng bằng phần audio đã ghép (MP3).\n"
-            "• Ảnh nền nhận .png/.jpg/.webp; video nền và trình chiếu tự lặp "
-            "đến khi hết audio.\n"
-            "• Phụ đề: bật “Hiện phụ đề” để dùng lời đọc, hoặc “Gắn phụ đề từ "
-            "file .srt có sẵn” để chèn SRT của bạn.\n"
-            "• Ảnh AI theo chương: chế độ Thủ công dùng ảnh có sẵn, "
-            "Google Imagen tạo ảnh từ tiêu đề/nội dung chương.\n"
-            "• Ảnh Imagen được lưu trong thư mục ảnh và tái dùng, không tính phí lại.\n"
+            "• Video nền và trình chiếu tự lặp đến khi hết audio.\n"
             "• Chương và timestamps tự sinh khi gộp nhiều file.\n"
-            "• NVENC/QSV/AMF chỉ hiện khi ffmpeg và driver hỗ trợ."
+            "• NVENC/QSV/AMF chỉ hiện khi ffmpeg và driver hỗ trợ.\n"
+            "• Bố cục phụ đề, sóng âm và sticker chỉnh ở tab “Khung mẫu”."
         )
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
         hint_layout.addWidget(hint)
-        right.addWidget(hint_box)
-        right.addStretch(1)
+        hint_layout.addStretch(1)
+        bottom_row.addWidget(hint_box, 1)
+        root.addLayout(bottom_row)
+        root.addStretch(1)
+
+        # ── Sticky summary bar ──────────────────────────────────────────────
+        self.run_button = QPushButton("Tạo video")
+        self.run_button.setObjectName("runAllButton")
+        set_icon(self.run_button, "film", "white", 15)
+        self.run_button.setToolTip(
+            "Chạy bước ghép video cho toàn bộ project (như nút “2. Tạo Video”).")
+        self.run_button.clicked.connect(self.run_requested.emit)
+        config_layout.addWidget(self._build_summary_bar())
 
         self.visual_combo.currentIndexChanged.connect(self.visual_stack.setCurrentIndex)
         self.visual_combo.currentIndexChanged.connect(self._sync_visual_height)
         self.ai_mode_combo.currentIndexChanged.connect(self._on_ai_mode_changed)
+        self.grouping_combo.currentIndexChanged.connect(self._on_grouping_changed)
+        self.resolution_combo.currentIndexChanged.connect(self._update_summary)
+        self.encoder_combo.currentIndexChanged.connect(self._update_summary)
+        self.fps_spin.valueChanged.connect(self._update_summary)
+        self.group_size_spin.valueChanged.connect(self._update_summary)
         self._sync_visual_height()
         self._on_grouping_changed()
+        self._update_summary()
+
+    @staticmethod
+    def _panel_sep() -> QFrame:
+        sep = QFrame()
+        sep.setObjectName("PanelSep")
+        sep.setFixedHeight(1)
+        return sep
+
+    def _build_summary_bar(self) -> QFrame:
+        bar = QFrame()
+        bar.setObjectName("SummaryBar")
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(12, 8, 12, 8)
+        row.setSpacing(8)
+
+        icon = QLabel()
+        icon.setPixmap(pixmap("film", theme.icon_color("accent"), 16))
+        row.addWidget(icon)
+
+        self._chip_res = QLabel("1920×1080")
+        self._chip_fps = QLabel("30 FPS")
+        self._chip_enc = QLabel("Tự động")
+        self._chip_group = QLabel("Mỗi file một video")
+        for chip in (self._chip_res, self._chip_fps,
+                     self._chip_enc, self._chip_group):
+            chip.setObjectName("StageChip")
+            row.addWidget(chip)
+
+        self.summary_files = QLabel("Chưa mở project.")
+        self.summary_files.setObjectName("MutedLabel")
+        row.addWidget(self.summary_files)
+        row.addStretch(1)
+
+        self.summary_hint = QLabel("Chạy cho toàn bộ project")
+        self.summary_hint.setObjectName("MutedLabel")
+        row.addWidget(self.summary_hint)
+
+        row.addWidget(self.run_button)
+        return bar
+
+    def _update_summary(self, *_args) -> None:
+        resolution = self.resolution_combo.currentText().split(" (")[0]
+        fps = self.fps_spin.value()
+        encoder = self.encoder_combo.currentText().split(" (")[0]
+        mode = str(self.grouping_combo.currentData() or "one")
+        if mode == "all":
+            grouping = "Gộp 1 video"
+        elif mode == "group":
+            grouping = f"Nhóm {self.group_size_spin.value()} file"
+        else:
+            grouping = "Mỗi file một video"
+        self._chip_res.setText(resolution)
+        self._chip_fps.setText(f"{fps} FPS")
+        self._chip_enc.setText(encoder)
+        self._chip_group.setText(grouping)
+        if not self._manager:
+            self.summary_files.setText("Chưa mở project.")
+        else:
+            self.summary_files.setText(
+                f"{self._ready_count}/{self._total_count} audio sẵn sàng")
 
     def _on_grouping_changed(self) -> None:
         mode = str(self.grouping_combo.currentData() or "one")
@@ -530,12 +647,14 @@ class VideoConfigTab(QWidget):
             self.group_hint.setText(
                 "• Ghép theo nhóm: Chia dự án thành các phần video, mỗi video gồm số file quy định bên trên."
             )
+        self._update_summary()
 
-    def _build_files_box(self) -> QGroupBox:
-        box = QGroupBox("Danh sách file tạo video")
+    def _build_files_box(self) -> QFrame:
+        box = QFrame()
+        box.setObjectName("FilesPanel")
         layout = QVBoxLayout(box)
         layout.setSpacing(8)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setContentsMargins(12, 8, 12, 8)
 
         top_row = QHBoxLayout()
         top_row.setSpacing(8)
@@ -543,7 +662,14 @@ class VideoConfigTab(QWidget):
         self.files_summary.setObjectName("FieldLabel")
         top_row.addWidget(self.files_summary, 1)
 
-        self.btn_refresh_files = QPushButton("Làm mới danh sách")
+        self.files_toggle = QPushButton("Xem danh sách")
+        set_icon(self.files_toggle, "chevron-down", "accent", 13)
+        self.files_toggle.setCheckable(True)
+        self.files_toggle.setChecked(False)
+        self.files_toggle.toggled.connect(self._toggle_files)
+        top_row.addWidget(self.files_toggle)
+
+        self.btn_refresh_files = QPushButton("Làm mới")
         set_icon(self.btn_refresh_files, "rotate-cw", "accent", 13)
         self.btn_refresh_files.clicked.connect(self.refresh_files)
         top_row.addWidget(self.btn_refresh_files)
@@ -559,7 +685,8 @@ class VideoConfigTab(QWidget):
         self.files_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.files_table.setAlternatingRowColors(True)
         self.files_table.setMinimumHeight(140)
-        self.files_table.setMaximumHeight(230)
+        self.files_table.setMaximumHeight(210)
+        self.files_table.setVisible(self._files_expanded)
 
         header = self.files_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
@@ -571,14 +698,29 @@ class VideoConfigTab(QWidget):
         layout.addWidget(self.files_table)
         return box
 
+    def _toggle_files(self, expanded: bool) -> None:
+        self._files_expanded = bool(expanded)
+        self.files_table.setVisible(self._files_expanded)
+        self.files_toggle.setText(
+            "Thu gọn" if self._files_expanded else "Xem danh sách")
+        set_icon(
+            self.files_toggle,
+            "chevron-up" if self._files_expanded else "chevron-down",
+            "accent",
+            13,
+        )
+
     def set_project(self, manager: Any) -> None:
         self._manager = manager
         self.refresh_files()
 
     def refresh_files(self) -> None:
         self.files_table.setRowCount(0)
+        self._ready_count = 0
+        self._total_count = 0
         if not self._manager:
             self.files_summary.setText("Chưa mở project.")
+            self._update_summary()
             return
 
         items = list(self._manager.items.values()) if hasattr(self._manager, "items") else []
@@ -635,10 +777,15 @@ class VideoConfigTab(QWidget):
             self.files_table.setItem(row, 4, video_item)
 
         total = len(items)
+        self._ready_count = ready_count
+        self._total_count = total
         if total == 0:
             self.files_summary.setText("Chưa có file kịch bản hoặc audio nào trong project.")
         else:
             self.files_summary.setText(f"{ready_count}/{total} file audio sẵn sàng tạo video")
+        if total and not self._files_expanded:
+            self.files_toggle.setEnabled(True)
+        self._update_summary()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)

@@ -96,6 +96,7 @@ def test_video_stage_completes(app, tmp_path: Path, ffmpeg: str) -> None:
     manager.scan()
 
     settings = load_settings()
+    settings["frame"] = {"images": []}
     settings["video"].update({
         "grouping": "one", "visual": "image", "image": str(image),
         "resolution": "640x360", "encoder": "libx264", "crf": 30,
@@ -217,3 +218,45 @@ def test_retry_attempt_appends_note(app, tmp_path: Path, monkeypatch) -> None:
     assert completed and completed[0][0] is True, completed
     assert "Thử lại TTS (1/1) cho 1 mục lỗi." in completed[0][1]
     assert manager.get_item("tap_01").state == ITEM_TTS_DONE
+
+
+def test_stage_script_fetches_and_creates_files(tmp_path: Path, monkeypatch) -> None:
+    from core.input_pipeline import Cue
+    from core.project_manager import ProjectManager
+    from core.pipeline_worker import PipelineWorker
+    from core.settings import load_settings
+
+    fake_cues = [
+        Cue(index=1, start=0.0, end=1.5, text="Xin chào các bạn đã quay trở lại."),
+        Cue(index=2, start=1.6, end=3.5, text="Hôm nay chúng ta sẽ tìm hiểu về tự động hoá."),
+    ]
+    fake_meta = {
+        "title": "Video Huong Dan",
+        "video_id": "vid123",
+        "source_language": "vi",
+    }
+
+    def fake_get_transcript(url, progress_cb=None, cancel_cb=None):
+        return fake_cues, fake_meta
+
+    monkeypatch.setattr("core.input_pipeline.get_youtube_transcript", fake_get_transcript)
+    monkeypatch.setattr("core.ai_client.translate_text", lambda text, *a, **kw: f"[translated] {text}")
+
+    manager = ProjectManager(tmp_path)
+    manager.save_state()
+
+    settings = load_settings()
+    settings["automation"] = {
+        "youtube_url": "https://www.youtube.com/watch?v=vid123",
+        "target_languages": ["vi", "en"],
+    }
+
+    worker = PipelineWorker(settings, manager, mode="script")
+    errors = worker._stage_script(0.0, 20.0)
+    assert not errors, errors
+
+    items = manager.get_items()
+    assert len(items) == 2
+    bases = [it.base for it in items]
+    assert any("vi" in b for b in bases)
+    assert any("en" in b for b in bases)

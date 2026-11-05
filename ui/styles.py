@@ -67,6 +67,17 @@ QFrame#PlaybackBar {
     border: 1px solid $BORDER;
     border-radius: 12px;
 }
+QFrame#SummaryBar {
+    background: $SURFACE_ALT;
+    border: 1px solid $BORDER;
+    border-radius: 12px;
+}
+QFrame#FilesPanel {
+    background: $GROUP_BG;
+    border: 1px solid $GROUP_BORDER;
+    border-radius: 12px;
+}
+QFrame#PanelSep { background: $BORDER; border: none; }
 QLabel#Timecode {
     color: $TEXT_MUTED;
     font-family: "Cascadia Mono", "Consolas", monospace;

@@ -149,6 +149,9 @@ _PATHS = {
     ),
     "chevron-down": '<path d="m6 9 6 6 6-6"/>',
     "chevron-up": '<path d="m18 15-6-6-6 6"/>',
+    "rotate-cw": (
+        '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>'
+    ),
     "grid": (
         '<rect x="3" y="3" width="18" height="18" rx="2"/>'
         '<path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>'

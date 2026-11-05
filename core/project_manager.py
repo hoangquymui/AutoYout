@@ -21,6 +21,7 @@ from utils.files import (
     natural_key,
     natural_sorted,
     read_text_smart,
+    safe_filename,
     write_json_atomic,
 )
 from utils.logger import get_logger
@@ -335,6 +336,15 @@ class ProjectManager:
                     self.videos[job.id] = job
             except Exception as exc:  # corrupt entry: skip rather than fail the project
                 logger.warning("Bỏ qua video state lỗi: %s", exc)
+
+
+    @property
+    def input_dir(self) -> Path:
+        return self.script_dir
+
+    @property
+    def thumbnail_dir(self) -> Path:
+        return self.thumbs_dir
 
     def _resolve_dir(
         self, value: Optional[str | os.PathLike], fallback: str, key: str = ""
