@@ -299,6 +299,40 @@ def test_h2mtts_download_cancellation_realtime(app, tmp_path: Path) -> None:
         H2MLogTqdm.cancel_check = None
 
 
+def test_gemini_key_and_switch_persistence(app) -> None:
+    tab = SettingsTab()
+
+    # Initially empty, switch is False
+    assert tab.card_gemini.switch.isChecked() is False
+    assert "Thiếu key" in tab.card_gemini.status_badge.text()
+
+    # Type a key
+    tab.card_gemini.key_edit.setText("AIzaSyTestKey123")
+    assert tab.card_gemini.switch.isChecked() is True
+
+    # Click 'Lưu key'
+    tab.card_gemini.btn_save.click()
+    assert tab.card_gemini.switch.isChecked() is True
+    assert "Đã lưu key" in tab.card_gemini.status_badge.text()
+
+    # Save to settings dict
+    saved_settings = {}
+    tab.apply_to(saved_settings)
+    assert saved_settings["api"]["gemini_key"] == "AIzaSyTestKey123"
+    assert saved_settings["api"]["gemini_enabled"] is True
+    assert saved_settings["script"]["api_key"] == "AIzaSyTestKey123"
+
+    # Simulate reopening app: create fresh SettingsTab and load saved settings
+    fresh_tab = SettingsTab()
+    fresh_tab.load_from(saved_settings)
+
+    # Verify key and switch are restored and NOT turned off
+    assert fresh_tab.card_gemini.key_edit.text() == "AIzaSyTestKey123"
+    assert fresh_tab.card_gemini.switch.isChecked() is True
+    assert "Đã kích hoạt" in fresh_tab.card_gemini.status_badge.text()
+    assert "Thiếu key" not in fresh_tab.card_gemini.status_badge.text()
+
+
 
 
 

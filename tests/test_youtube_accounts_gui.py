@@ -24,6 +24,7 @@ def test_youtube_accounts_tab_structure(app, tmp_path: Path, monkeypatch) -> Non
     monkeypatch.setattr("core.youtube_uploader.credentials_dir", lambda: creds_dir)
 
     settings = load_settings()
+    settings.setdefault("youtube", {})["channel_languages"] = {}
 
     # Create dummy tokens for 2 channels
     (creds_dir / "token_default.json").write_text('{"token": "xyz"}', encoding="utf-8")

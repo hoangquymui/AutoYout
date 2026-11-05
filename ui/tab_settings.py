@@ -347,7 +347,7 @@ class ServiceCard(QFrame):
         top_row.addWidget(self.status_badge)
 
         self.switch = ToggleSwitch(checked=False)
-        self.switch.toggled.connect(lambda _: self.changed.emit())
+        self.switch.toggled.connect(self._on_switch_toggled)
         top_row.addWidget(self.switch)
         layout.addLayout(top_row)
 
@@ -505,19 +505,50 @@ class ServiceCard(QFrame):
         self.ep_container.setVisible(is_hidden)
         self.ep_toggle_btn.setText("Endpoint tùy chỉnh")
 
+    def _on_switch_toggled(self, checked: bool) -> None:
+        key = self.get_key()
+        if checked:
+            if key or self.service_id == "edge_tts":
+                self.set_status("valid", "• Đã kích hoạt")
+            elif self.shared_from:
+                self.set_status("needed", f"• Cần key {self.shared_from}")
+            else:
+                self.set_status("missing", "• Chưa kích hoạt / Thiếu key")
+        else:
+            self.set_status("needed", "• Đang tắt")
+        self.changed.emit()
+
     def _on_key_changed(self, text: str) -> None:
-        if text.strip():
-            self.set_status("active", "• Đã nhập key")
+        key = text.strip()
+        if key:
+            if not self.switch.isChecked():
+                self.switch.blockSignals(True)
+                self.switch.setChecked(True)
+                self.switch.blockSignals(False)
+            self.set_status("valid", "• Đã nhập key")
         elif self.shared_from:
             self.set_status("needed", f"• Cần key {self.shared_from}")
         else:
+            self.switch.blockSignals(True)
+            self.switch.setChecked(False)
+            self.switch.blockSignals(False)
             self.set_status("missing", "• Chưa kích hoạt / Thiếu key")
         self.changed.emit()
 
     def _save_clicked(self) -> None:
         key = self.get_key()
+        if key or self.service_id == "edge_tts":
+            self.switch.blockSignals(True)
+            self.switch.setChecked(True)
+            self.switch.blockSignals(False)
+            self.set_status("valid", "• Đã lưu key")
+        else:
+            self.switch.blockSignals(True)
+            self.switch.setChecked(False)
+            self.switch.blockSignals(False)
+            self.set_status("missing", "• Chưa kích hoạt / Thiếu key")
         self.save_requested.emit(self.service_id, key)
-        self.set_status("valid", "• Đã lưu key")
+        self.changed.emit()
 
     def _test_model_clicked(self) -> None:
         self.check_connection()
@@ -1554,6 +1585,7 @@ class SettingsTab(QWidget):
         )
         self.card_gemini.changed.connect(self._sync_shared_keys)
         self.card_gemini.changed.connect(self._on_changed)
+        self.card_gemini.save_requested.connect(lambda sid, k: self._on_changed())
         layout.addWidget(self.card_gemini)
 
         layout.addStretch(1)
@@ -1709,8 +1741,39 @@ class SettingsTab(QWidget):
             self.general_page.log_dir_edit.setText(str(app.get("log_dir") or "logs"))
 
             # Gemini key sync from script/video
-            gemini_val = str(api.get("gemini_key") or script.get("api_key") or video.get("ai_api_key") or "")
+            gemini_val = str(api.get("gemini_key") or script.get("api_key") or video.get("ai_api_key") or "").strip()
             self.card_gemini.key_edit.setText(gemini_val)
+
+            # Persist and restore switch states
+            gemini_enabled = bool(api.get("gemini_enabled", bool(gemini_val)))
+            self.card_gemini.switch.blockSignals(True)
+            self.card_gemini.switch.setChecked(gemini_enabled and bool(gemini_val))
+            self.card_gemini.switch.blockSignals(False)
+
+            if gemini_val:
+                if gemini_enabled:
+                    self.card_gemini.set_status("valid", "• Đã kích hoạt")
+                else:
+                    self.card_gemini.set_status("needed", "• Đang tắt")
+            else:
+                self.card_gemini.set_status("missing", "• Chưa kích hoạt / Thiếu key")
+
+            self.card_gemini_tts.switch.blockSignals(True)
+            self.card_gemini_tts.switch.setChecked(bool(api.get("gemini_tts_enabled", bool(gemini_val))))
+            self.card_gemini_tts.switch.blockSignals(False)
+
+            self.card_edge_tts.switch.blockSignals(True)
+            self.card_edge_tts.switch.setChecked(bool(api.get("edge_tts_enabled", True)))
+            self.card_edge_tts.switch.blockSignals(False)
+
+            self.card_gemini_image.switch.blockSignals(True)
+            self.card_gemini_image.switch.setChecked(bool(api.get("gemini_image_enabled", bool(gemini_val))))
+            self.card_gemini_image.switch.blockSignals(False)
+
+            if hasattr(self, "card_veo"):
+                self.card_veo.switch.blockSignals(True)
+                self.card_veo.switch.setChecked(bool(api.get("veo_enabled", False)))
+                self.card_veo.switch.blockSignals(False)
 
             # Model selections (normalizing legacy/retired models like gemini-2.0-flash)
             from core.ai_client import normalize_model
@@ -1766,20 +1829,31 @@ class SettingsTab(QWidget):
 
         # API keys & models
         gemini_k = self.card_gemini.get_key()
+        gemini_en = self.card_gemini.switch.isChecked()
         api["gemini_key"] = gemini_k
+        api["gemini_enabled"] = gemini_en
         if gemini_k:
             script["api_key"] = gemini_k
             video["ai_api_key"] = gemini_k
+        else:
+            script["api_key"] = ""
+            video["ai_api_key"] = ""
 
         api["gemini_model"] = self.card_gemini.get_model()
         script["model"] = self.card_gemini.get_model()
 
         api["gemini_tts_model"] = self.card_gemini_tts.get_model()
+        api["gemini_tts_enabled"] = self.card_gemini_tts.switch.isChecked()
+
+        api["edge_tts_enabled"] = self.card_edge_tts.switch.isChecked()
+
         api["gemini_image_model"] = self.card_gemini_image.get_model()
+        api["gemini_image_enabled"] = self.card_gemini_image.switch.isChecked()
         video["ai_image_model"] = self.card_gemini_image.get_model()
 
         if hasattr(self, "card_veo"):
             api["veo_model"] = self.card_veo.get_model()
+            api["veo_enabled"] = self.card_veo.switch.isChecked()
             video["ai_video_model"] = self.card_veo.get_model()
 
         self._settings = settings
