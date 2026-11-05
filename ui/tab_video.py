@@ -407,8 +407,11 @@ class VideoConfigTab(QWidget):
         output_form.setVerticalSpacing(6)
 
         self.resolution_combo = QComboBox()
-        self.resolution_combo.addItem("1920×1080 (Full HD)", "1920x1080")
-        self.resolution_combo.addItem("1280×720 (HD)", "1280x720")
+        self.resolution_combo.addItem("1920×1080 (16:9 Full HD)", "1920x1080")
+        self.resolution_combo.addItem("1280×720 (16:9 HD)", "1280x720")
+        self.resolution_combo.addItem("1080×1920 (9:16 Shorts/TikTok)", "1080x1920")
+        self.resolution_combo.addItem("720×1280 (9:16 Shorts)", "720x1280")
+        self.resolution_combo.addItem("1080×1080 (1:1 Vuông)", "1080x1080")
         self.fps_spin = QSpinBox()
         self.fps_spin.setRange(24, 60)
         res_row = QHBoxLayout()

@@ -510,7 +510,7 @@ class PipelineWorker(QThread):
                     cues_pending = any(cue.status != "DONE" for cue in cues) if cues else False
 
                     # Quick recovery: nếu đã có audio và cues đã xong (hoặc không có cues), chỉ thiếu srt:
-                    if has_audio and not cues_pending and not srt_path.is_file() and not (self.force and not is_retry):
+                    if has_audio and not cues_pending and not srt_path.is_file():
                         if cues:
                             try:
                                 engine = DubbingEngine(self.settings)
@@ -530,6 +530,7 @@ class PipelineWorker(QThread):
                         if sub_cues:
                             write_srt(sub_cues, srt_path)
                             logger.info("Đã tự động tạo SRT cho %s (%.1fs, %d đoạn).", srt_path.name, dur, len(sub_cues))
+                            self.manager.update_item(item.base, state=ITEM_TTS_DONE, error="")
                             report(100)
                             continue
 

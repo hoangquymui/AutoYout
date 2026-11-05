@@ -460,6 +460,18 @@ def test_build_filter_places_frame_waveform_and_overlay(tmp_path: Path) -> None:
     assert vlabel == "vframe0"
     assert "[vframe0]null[vout]" in graph
 
+    # Test hidden image and rotated image
+    img_hidden = FrameImage(path="h.png", visible=False)
+    img_rot = FrameImage(path="r.png", rotation=45.0, width=0.2, x=0.5, y=0.25)
+    graph2, vlabel2, _ = _renderer()._build_filter(
+        cfg, {"kind": "image", "path": str(tmp_path / "bg.png")},
+        [], 5.0, tmp_path, has_bgm=False, segments=[],
+        frame_images=[(2, img_hidden), (3, img_rot)])
+    assert "frameimg0" not in graph2  # hidden image is skipped
+    assert "rotate=" in graph2
+    assert "rotw(" in graph2
+    assert "overlay='320+(128-w)/2':'90+(128-h)/2'" in graph2
+
 
 def test_missing_frame_overlay_is_rejected(tmp_path: Path) -> None:
     manager = _manager(tmp_path, 1)

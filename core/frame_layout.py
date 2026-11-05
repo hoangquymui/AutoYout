@@ -64,6 +64,8 @@ class FrameImage:
     rotation: float = 0.0
     flip_h: bool = False
     flip_v: bool = False
+    visible: bool = True
+    locked: bool = False
 
     @property
     def name(self) -> str:
@@ -81,6 +83,8 @@ class FrameImage:
             self.rotation -= 360
         self.flip_h = bool(self.flip_h)
         self.flip_v = bool(self.flip_v)
+        self.visible = bool(self.visible)
+        self.locked = bool(self.locked)
         return self
 
     def to_dict(self) -> Dict[str, Any]:
@@ -98,6 +102,10 @@ class FrameImage:
             d["flip_h"] = True
         if self.flip_v:
             d["flip_v"] = True
+        if not self.visible:
+            d["visible"] = False
+        if self.locked:
+            d["locked"] = True
         return d
 
     @classmethod
@@ -117,6 +125,8 @@ class FrameImage:
             rotation=_as_float(raw.get("rotation"), 0.0),
             flip_h=bool(raw.get("flip_h")),
             flip_v=bool(raw.get("flip_v")),
+            visible=bool(raw.get("visible", True)),
+            locked=bool(raw.get("locked", False)),
         ).clamp()
 
 
@@ -125,6 +135,7 @@ class FrameLayout:
     """Normalised frame template shared by the editor and the renderer."""
 
     enabled: bool = False
+    aspect_ratio: str = "16:9"
     subtitle_x: float = 0.5
     subtitle_y: float = 0.9
     subtitle_scale: float = 1.0
@@ -139,6 +150,8 @@ class FrameLayout:
 
     # ── validation ───────────────────────────────────────────────────────────
     def clamp(self) -> "FrameLayout":
+        if self.aspect_ratio not in ("16:9", "9:16", "1:1", "4:5"):
+            self.aspect_ratio = "16:9"
         self.subtitle_x = round(_clamp(_as_float(self.subtitle_x, 0.5), 0.0, 1.0), 4)
         self.subtitle_y = round(_clamp(_as_float(self.subtitle_y, 0.9), 0.02, 0.98), 4)
         self.subtitle_scale = round(
@@ -166,6 +179,7 @@ class FrameLayout:
             images = []
         return cls(
             enabled=bool(raw.get("enabled", False)),
+            aspect_ratio=str(raw.get("aspect_ratio") or "16:9"),
             subtitle_x=_as_float(raw.get("subtitle_x"), 0.5),
             subtitle_y=_as_float(raw.get("subtitle_y"), 0.9),
             subtitle_scale=_as_float(raw.get("subtitle_scale"), 1.0),
@@ -189,6 +203,7 @@ class FrameLayout:
         self.clamp()
         return {
             "enabled": self.enabled,
+            "aspect_ratio": self.aspect_ratio,
             "subtitle_x": self.subtitle_x,
             "subtitle_y": self.subtitle_y,
             "subtitle_scale": self.subtitle_scale,

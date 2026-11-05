@@ -12,7 +12,7 @@ from PySide6.QtCore import QCoreApplication  # noqa: E402
 import core.pipeline_worker as pipeline_worker  # noqa: E402
 from core.dubbing import STATUS_DONE, CueJob, load_cues, save_cues  # noqa: E402
 from core.pipeline_worker import PipelineWorker  # noqa: E402
-from core.project_manager import ITEM_TTS_DONE, ProjectManager  # noqa: E402
+from core.project_manager import ITEM_PENDING, ITEM_TTS_DONE, ProjectManager  # noqa: E402
 from core.settings import load_settings  # noqa: E402
 
 
@@ -86,7 +86,7 @@ def test_srt_item_without_cues_auto_splits_and_dubs(app, tmp_path: Path, monkeyp
     settings = load_settings()
     settings.setdefault("dubbing", {})["timing_mode"] = "timeline"
     completed: list[tuple[bool, str]] = []
-    worker = PipelineWorker(settings, manager, mode="tts", force=True)
+    worker = PipelineWorker(settings, manager, mode="tts")
     worker.completed.connect(lambda ok, message: completed.append((ok, message)))
     worker.run()
 
@@ -132,7 +132,7 @@ def test_srt_item_with_cues_uses_dubbing_engine(app, tmp_path: Path, monkeypatch
     settings = load_settings()
     settings.setdefault("dubbing", {})["timing_mode"] = "natural"
     completed: list[tuple[bool, str]] = []
-    worker = PipelineWorker(settings, manager, mode="tts")
+    worker = PipelineWorker(settings, manager, mode="tts", force=True)
     worker.completed.connect(lambda ok, message: completed.append((ok, message)))
     worker.run()
 
@@ -162,7 +162,7 @@ def test_missing_srt_auto_recovered_when_audio_exists(app, tmp_path: Path) -> No
 
     settings = load_settings()
     completed = []
-    worker = PipelineWorker(settings, manager, mode="tts")
+    worker = PipelineWorker(settings, manager, mode="tts", force=True)
     worker.completed.connect(lambda ok, msg: completed.append((ok, msg)))
     worker.run()
 

@@ -91,3 +91,16 @@ def test_colour_helpers() -> None:
     assert normalize_color("blue") == DEFAULT_WAVE_COLOR
     assert normalize_color("") == DEFAULT_WAVE_COLOR
     assert color_ffmpeg("#12Ab34") == "0x12AB34"
+
+
+def test_image_visible_locked_and_aspect_ratio() -> None:
+    layout = FrameLayout(aspect_ratio="9:16",
+                         images=[FrameImage(path="a.png", visible=False, locked=True)])
+    data = layout.to_dict()
+    assert data["aspect_ratio"] == "9:16"
+    assert data["images"][0]["visible"] is False
+    assert data["images"][0]["locked"] is True
+    again = FrameLayout.from_dict(data)
+    assert again.aspect_ratio == "9:16"
+    assert again.images[0].visible is False
+    assert again.images[0].locked is True

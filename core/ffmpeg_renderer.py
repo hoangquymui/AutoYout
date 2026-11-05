@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ctypes
 import json
+import math
 import os
 import queue
 import random
@@ -1714,24 +1715,33 @@ class FFmpegRenderer:
             parts.append(audio_head)
 
         for index, (input_index, image) in enumerate(frame_images or []):
+            if not getattr(image, "visible", True):
+                continue
             image_w = _even(max(2, int(round(image.width * width))))
             chain = f"[{input_index}:v]scale={image_w}:-1,format=rgba"
             if getattr(image, "flip_h", False):
                 chain += ",hflip"
             if getattr(image, "flip_v", False):
                 chain += ",vflip"
-            if getattr(image, "rotation", 0.0):
-                angle_rad = -image.rotation * math.pi / 180.0
+            rot = float(getattr(image, "rotation", 0.0) or 0.0)
+            if rot:
+                angle_rad = -rot * math.pi / 180.0
                 chain += f",rotate={angle_rad:.5f}:ow=rotw({angle_rad:.5f}):oh=roth({angle_rad:.5f}):c=none"
             if image.opacity < 0.999:
                 chain += f",colorchannelmixer=aa={image.opacity:.3f}"
             parts.append(chain + f"[frameimg{index}]")
             image_x = max(0, min(width - 1, int(round(image.x * width))))
             image_y = max(0, min(height - 1, int(round(image.y * height))))
-            parts.append(
-                f"[{vlabel}][frameimg{index}]overlay={image_x}:{image_y}:"
-                f"format=auto[vframe{index}]"
-            )
+            if rot:
+                parts.append(
+                    f"[{vlabel}][frameimg{index}]overlay='{image_x}+({image_w}-w)/2':'{image_y}+({image_w}-h)/2':"
+                    f"format=auto[vframe{index}]"
+                )
+            else:
+                parts.append(
+                    f"[{vlabel}][frameimg{index}]overlay={image_x}:{image_y}:"
+                    f"format=auto[vframe{index}]"
+                )
             vlabel = f"vframe{index}"
 
         parts.append(f"[{vlabel}]null[vout]")
