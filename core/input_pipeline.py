@@ -239,8 +239,34 @@ def fetch_youtube_transcript(
         normalized = normalize_language(code, "")
         if normalized and normalized not in wanted:
             wanted.append(normalized)
+    session = None
+    cookies_file = Path("cookies.txt")
+    if cookies_file.is_file():
+        try:
+            import requests
+            from http.cookiejar import MozillaCookieJar
+            jar = MozillaCookieJar(cookies_file)
+            jar.load(ignore_discard=True, ignore_expires=True)
+            session = requests.Session()
+            session.cookies = jar
+            logger.info("Đã nạp cookies từ cookies.txt cho YouTube transcript.")
+        except Exception as e:
+            logger.warning("Không đọc được cookies.txt: %s", e)
+
+    proxy_config = None
+    proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("ALL_PROXY")
+    if proxy_url:
+        try:
+            from youtube_transcript_api.proxies import GenericProxyConfig
+            proxy_config = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
+        except Exception:
+            pass
+
     try:
-        api = api_cls()
+        try:
+            api = api_cls(proxy_config=proxy_config, http_client=session)
+        except TypeError:
+            api = api_cls()
         # youtube-transcript-api >= 1.0 exposes instance methods; older
         # releases only provide the classmethod ``list_transcripts``.
         list_method = getattr(api, "list", None) or api_cls.list_transcripts
@@ -256,6 +282,15 @@ def fetch_youtube_transcript(
         rows = (fetched.to_raw_data() if hasattr(fetched, "to_raw_data")
                 else list(fetched))
     except Exception as exc:
+        msg = str(exc)
+        if "blocking requests from your IP" in msg or "RequestBlocked" in type(exc).__name__ or "IpBlocked" in type(exc).__name__:
+            raise InputError(
+                "YouTube đang chặn IP của bạn (Sign in to confirm you're not a bot).\n"
+                "Cách khắc phục nhanh:\n"
+                "1. Bật VPN (như 1.1.1.1 WARP) hoặc phát mạng di động 4G/5G từ điện thoại sang máy tính.\n"
+                "2. Hoặc mở video trên trình duyệt, sao chép bản chép lời (transcript) và dán thẳng vào tab Kịch bản.\n"
+                "3. Hoặc xuất file cookies.txt từ trình duyệt đặt vào thư mục ứng dụng."
+            ) from exc
         logger.warning("Không lấy được transcript YouTube: %s", exc)
         return None
     _check_cancel(cancel_cb)
