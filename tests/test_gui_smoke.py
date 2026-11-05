@@ -63,10 +63,13 @@ def test_window_builds_all_tabs(window) -> None:
     assert inner_video_labels == ["Cấu hình video", "Khung mẫu (Video Frame)"]
     assert window.frame_tab is window.video_tab.frame_tab
     tab = window.automation_tab
-    assert tab.btn_tts.text().startswith("1. Lồng tiếng")
-    assert tab.btn_video.text().startswith("2. Tạo Video")
-    assert tab.btn_upload.text().startswith("3. Upload YouTube")
-    assert "AUTO ALL" in tab.btn_all.text()
+    assert "Kịch bản" in tab.btn_script.text()
+    assert "Lồng tiếng" in tab.btn_tts.text()
+    assert "Video" in tab.btn_video.text()
+    assert "Thumbnail" in tab.btn_thumbnail.text()
+    assert "Upload" in tab.btn_upload.text()
+    assert "THỰC HIỆN TOÀN BỘ" in tab.btn_run_full.text()
+    assert "Project hiện tại" in tab.btn_run_project.text()
     assert tab.btn_pause.isEnabled() is False
     assert tab.btn_stop.isEnabled() is False
 
@@ -137,7 +140,7 @@ def test_youtube_tab_has_upload_and_thumbnail_pages(window) -> None:
     assert tab.thumbnail_panel.template_list.count() >= 2
     assert tab.thumbnail_panel.provider_combo.currentData() == "pollinations"
     assert hasattr(tab, "acc_table")
-    assert tab.acc_table.columnCount() == 6
+    assert tab.acc_table.columnCount() == 7
     assert hasattr(tab, "acc_add_btn")
     assert hasattr(tab, "acc_check_all_btn")
     assert hasattr(tab, "videos_box")
@@ -563,27 +566,82 @@ def test_dubbing_tab_resplit_or_reload(window, tmp_path: Path) -> None:
 
 def test_automation_workflow_nodes_and_glow(window) -> None:
     tab = window.automation_tab
+    assert hasattr(tab, "card_script")
     assert hasattr(tab, "card_tts")
     assert hasattr(tab, "card_video")
+    assert hasattr(tab, "card_thumbnail")
     assert hasattr(tab, "card_upload")
+    assert len(tab.connectors) == 4
+    assert tab.card_script.state == "idle"
+    assert tab.card_tts.state == "idle"
+
+    tab.set_stage("Kịch bản")
+    assert tab.card_script.state == "running"
+    assert tab.card_script._shadow_effect.isEnabled() is True
     assert tab.card_tts.state == "idle"
 
     tab.set_stage("Lồng tiếng")
+    assert tab.card_script.state == "done"
     assert tab.card_tts.state == "running"
     assert tab.card_tts._shadow_effect.isEnabled() is True
+    assert tab.conn_1._active is True
 
     tab.set_stage("Tạo video")
     assert tab.card_tts.state == "done"
     assert tab.card_video.state == "running"
     assert tab.card_video._shadow_effect.isEnabled() is True
+    assert tab.conn_2._active is True
+
+    tab.set_stage("Thumbnail")
+    assert tab.card_video.state == "done"
+    assert tab.card_thumbnail.state == "running"
+    assert tab.card_thumbnail._shadow_effect.isEnabled() is True
+    assert tab.conn_3._active is True
 
     tab.set_stage("Đăng tải YouTube")
-    assert tab.card_video.state == "done"
+    assert tab.card_thumbnail.state == "done"
     assert tab.card_upload.state == "running"
     assert tab.card_upload._shadow_effect.isEnabled() is True
+    assert tab.conn_4._active is True
 
     tab.set_stage("Hoàn tất")
     assert tab.card_upload.state == "done"
+    for node in tab.nodes.values():
+        assert node.state == "done"
+    for conn in tab.connectors:
+        assert conn._active is True
+
+
+def test_automation_quick_input_and_settings_roundtrip(window) -> None:
+    tab = window.automation_tab
+    assert hasattr(tab, "url_input")
+    assert hasattr(tab, "btn_paste")
+    assert hasattr(tab, "btn_clear")
+    assert hasattr(tab, "btn_run_full")
+    assert hasattr(tab, "btn_run_project")
+
+    tab.url_input.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    assert tab.get_youtube_url() == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    langs = tab.get_target_languages()
+    assert "vi" in langs
+    assert "en" in langs
+
+    settings = {}
+    tab.apply_to(settings)
+    assert settings["automation"]["youtube_url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert "vi" in settings["automation"]["target_languages"]
+
+    # Test load_from
+    tab.url_input.clear()
+    settings["automation"]["youtube_url"] = "https://www.youtube.com/watch?v=test1234"
+    settings["automation"]["target_languages"] = ["ja", "zh"]
+    tab.load_from(settings)
+    assert tab.get_youtube_url() == "https://www.youtube.com/watch?v=test1234"
+    assert tab.get_target_languages() == ["ja", "zh"]
+
+    # Test clear
+    tab.btn_clear.click()
+    assert tab.get_youtube_url() == ""
 
 
 def test_tabs_accessible_and_read_only_while_running(window) -> None:

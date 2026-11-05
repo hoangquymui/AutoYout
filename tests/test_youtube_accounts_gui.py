@@ -41,6 +41,7 @@ def test_youtube_accounts_tab_structure(app, tmp_path: Path, monkeypatch) -> Non
     tab.load_from(settings)
 
     # Verify Accounts table is populated
+    assert tab.acc_table.columnCount() == 7
     assert tab.acc_table.rowCount() == 2
     names = [tab.acc_table.item(r, 0).text() for r in range(tab.acc_table.rowCount())]
     assert "default" in names
@@ -50,12 +51,27 @@ def test_youtube_accounts_tab_structure(app, tmp_path: Path, monkeypatch) -> Non
     row_default = names.index("default")
     assert tab.acc_table.item(row_default, 1).text() == "Kênh Mặc Định"
     assert tab.acc_table.item(row_default, 2).text() == "UC111"
-    assert "🟢" in tab.acc_table.item(row_default, 3).text()
+    assert tab.acc_table.item(row_default, 3).text() == "Tất cả"
+    assert "🟢" in tab.acc_table.item(row_default, 4).text()
 
     # Test update_account_row
     tab._update_account_row("default", {"title": "Kênh Mới", "channel_id": "UC111", "subscribers": "10K", "videos": "50"})
     assert tab.acc_table.item(row_default, 1).text() == "Kênh Mới"
-    assert "10K" in tab.acc_table.item(row_default, 4).text()
+    assert "10K" in tab.acc_table.item(row_default, 5).text()
+
+    # Test assign languages to 'default'
+    tab._save_channel_languages("default", ["vi", "ja"])
+    assert tab._channel_languages["default"] == ["vi", "ja"]
+    saved_settings = {}
+    tab.apply_to(saved_settings)
+    assert saved_settings["youtube"]["channel_languages"]["default"] == ["vi", "ja"]
+    assert (creds_dir / "token_default.meta.json").is_file()
+    meta_data = json.loads((creds_dir / "token_default.meta.json").read_text(encoding="utf-8"))
+    assert meta_data["languages"] == ["vi", "ja"]
+
+    # Verify table displays languages
+    tab.refresh_accounts_table()
+    assert "vi, ja" in tab.acc_table.item(0, 3).text()
 
     # Test delete account with mock QMessageBox.question returning Yes
     monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)

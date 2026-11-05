@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QDateTime, QSize, Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateTimeEdit,
+    QDialog,
     QFileDialog,
     QFormLayout,
     QGridLayout,
@@ -31,6 +32,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from core.languages import LANGUAGES, language_name, normalize_language
 
 from core.project_manager import (
     VIDEO_DONE,
@@ -76,6 +79,180 @@ _DESCRIPTION_VARS = [
     "{project_name}", "{file_name}", "{index}", "{part_number}",
     "{title}", "{description}", "{timestamps}", "{youtube_url}",
 ]
+
+LANGUAGE_FLAGS: Dict[str, str] = {
+    "vi": "🇻🇳",
+    "en": "🇺🇸",
+    "zh": "🇨🇳",
+    "ja": "🇯🇵",
+    "ko": "🇰🇷",
+    "fr": "🇫🇷",
+    "es": "🇪🇸",
+    "th": "🇹🇭",
+    "id": "🇮🇩",
+    "hi": "🇮🇳",
+    "de": "🇩🇪",
+    "ru": "🇷🇺",
+    "pt": "🇧🇷",
+    "it": "🇮🇹",
+}
+
+COMMON_LANGUAGES: List[Tuple[str, str]] = [
+    ("vi", "🇻🇳 Tiếng Việt"),
+    ("en", "🇺🇸 English"),
+    ("ja", "🇯🇵 日本語"),
+    ("zh", "🇨🇳 中文"),
+    ("ko", "🇰🇷 한국어"),
+    ("fr", "🇫🇷 Français"),
+    ("es", "🇪🇸 Español"),
+    ("th", "🇹🇭 ไทย"),
+    ("id", "🇮🇩 Indonesia"),
+    ("hi", "🇮🇳 हिन्दी"),
+]
+
+
+def _make_language_chips_widget(langs: List[str]) -> QWidget:
+    """Render attractive chips/badges for assigned target languages."""
+    container = QWidget()
+    h = QHBoxLayout(container)
+    h.setContentsMargins(4, 2, 4, 2)
+    h.setSpacing(4)
+    h.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    cleaned = [str(l).strip().lower() for l in langs if str(l).strip()]
+    if not cleaned or "all" in cleaned or "*" in cleaned:
+        lbl = QLabel("🌐 Tất cả")
+        lbl.setStyleSheet(
+            "background: rgba(99, 102, 241, 0.15); color: #818cf8; "
+            "border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 9px; "
+            "padding: 2px 7px; font-weight: bold; font-size: 11px;"
+        )
+        lbl.setToolTip("Phụ trách tất cả ngôn ngữ (kênh mặc định/dự phòng)")
+        h.addWidget(lbl)
+    else:
+        for code in cleaned:
+            flag = LANGUAGE_FLAGS.get(code, "🌐")
+            lbl = QLabel(f"{flag} {code.upper()}")
+            lbl.setStyleSheet(
+                "background: rgba(16, 185, 129, 0.15); color: #34d399; "
+                "border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 9px; "
+                "padding: 2px 6px; font-weight: bold; font-size: 11px;"
+            )
+            lbl.setToolTip(f"{code.upper()} — {language_name(code)}")
+            h.addWidget(lbl)
+    return container
+
+
+class AssignLanguagesDialog(QDialog):
+    """Dialog for assigning target languages to a YouTube channel."""
+
+    def __init__(self, channel_name: str, current_langs: List[str], parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"Gán ngôn ngữ chỉ định — {channel_name}")
+        self.setMinimumWidth(460)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        desc = QLabel(f"Chọn các ngôn ngữ mà kênh <b>{channel_name}</b> sẽ phụ trách tải lên:")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        self.all_cb = QCheckBox("🌐 Tất cả ngôn ngữ (kênh mặc định/chung)")
+        self.all_cb.setStyleSheet("font-weight: bold; margin-bottom: 4px;")
+        layout.addWidget(self.all_cb)
+
+        grid_box = QGroupBox("Ngôn ngữ phổ biến")
+        grid = QGridLayout(grid_box)
+        grid.setSpacing(8)
+        self.checkboxes: Dict[str, QCheckBox] = {}
+        for idx, (code, label) in enumerate(COMMON_LANGUAGES):
+            cb = QCheckBox(label)
+            self.checkboxes[code] = cb
+            grid.addWidget(cb, idx // 2, idx % 2)
+        layout.addWidget(grid_box)
+
+        other_row = QHBoxLayout()
+        other_row.setSpacing(8)
+        other_row.addWidget(QLabel("Mã khác:"))
+        self.other_edit = QLineEdit()
+        self.other_edit.setPlaceholderText("de, ru, it, pt... (phân cách bằng dấu phẩy)")
+        other_row.addWidget(self.other_edit, 1)
+        layout.addLayout(other_row)
+
+        def _on_all_toggled(checked: bool) -> None:
+            if checked:
+                for c in self.checkboxes.values():
+                    c.blockSignals(True)
+                    c.setChecked(False)
+                    c.blockSignals(False)
+                self.other_edit.setEnabled(False)
+            else:
+                self.other_edit.setEnabled(True)
+
+        def _on_single_toggled(_checked: bool) -> None:
+            any_chk = any(c.isChecked() for c in self.checkboxes.values()) or bool(self.other_edit.text().strip())
+            if any_chk:
+                self.all_cb.blockSignals(True)
+                self.all_cb.setChecked(False)
+                self.all_cb.blockSignals(False)
+                self.other_edit.setEnabled(True)
+            else:
+                self.all_cb.blockSignals(True)
+                self.all_cb.setChecked(True)
+                self.all_cb.blockSignals(False)
+                self.other_edit.setEnabled(False)
+
+        self.all_cb.toggled.connect(_on_all_toggled)
+        for c in self.checkboxes.values():
+            c.toggled.connect(_on_single_toggled)
+        self.other_edit.textChanged.connect(lambda: _on_single_toggled(True))
+
+        cleaned = [str(l).strip().lower() for l in current_langs if str(l).strip()]
+        if not cleaned or "all" in cleaned or "*" in cleaned:
+            self.all_cb.setChecked(True)
+            for c in self.checkboxes.values():
+                c.setChecked(False)
+            self.other_edit.setEnabled(False)
+        else:
+            self.all_cb.setChecked(False)
+            others: List[str] = []
+            for code in cleaned:
+                if code in self.checkboxes:
+                    self.checkboxes[code].setChecked(True)
+                else:
+                    others.append(code)
+            if others:
+                self.other_edit.setText(", ".join(others))
+
+        btn_box = QHBoxLayout()
+        btn_box.addStretch(1)
+        btn_cancel = QPushButton("Huỷ")
+        btn_cancel.clicked.connect(self.reject)
+        btn_save = QPushButton("Lưu ngôn ngữ")
+        btn_save.setObjectName("primaryButton")
+        set_icon(btn_save, "check", "white", 14)
+        btn_save.clicked.connect(self.accept)
+        btn_box.addWidget(btn_cancel)
+        btn_box.addWidget(btn_save)
+        layout.addLayout(btn_box)
+
+    def get_languages(self) -> List[str]:
+        if self.all_cb.isChecked():
+            return []
+        res: List[str] = []
+        for code, cb in self.checkboxes.items():
+            if cb.isChecked():
+                res.append(code)
+        other = self.other_edit.text().strip()
+        if other:
+            for p in other.split(","):
+                p = p.strip().lower()
+                if p and p not in res:
+                    res.append(p)
+        return res
 
 
 class _AuthWorker(QThread):
@@ -177,6 +354,8 @@ class YouTubeConfigTab(QWidget):
         self._saved_selected_ids: Optional[List[str]] = None
         self._custom_videos: Dict[str, VideoJob] = {}
         self._updating_table: bool = False
+        self._channel_languages: Dict[str, List[str]] = {}
+        self._pending_new_account_languages: List[str] = []
 
         page = QVBoxLayout(self)
         page.setContentsMargins(0, 0, 0, 0)
@@ -532,6 +711,14 @@ class YouTubeConfigTab(QWidget):
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
         yt = settings.get("youtube") or {}
+        self._channel_languages = {}
+        raw_ch_langs = yt.get("channel_languages") or {}
+        if isinstance(raw_ch_langs, dict):
+            for ch_name, l_list in raw_ch_langs.items():
+                if isinstance(l_list, (list, tuple, set)):
+                    self._channel_languages[str(ch_name)] = [str(x).strip().lower() for x in l_list if str(x).strip()]
+                elif isinstance(l_list, str):
+                    self._channel_languages[str(ch_name)] = [x.strip().lower() for x in l_list.split(",") if x.strip()]
         selected = yt.get("selected_videos")
         if isinstance(selected, list):
             self._saved_selected_ids = list(selected)
@@ -599,6 +786,7 @@ class YouTubeConfigTab(QWidget):
         yt["made_for_kids"] = self.kids_check.isChecked()
         yt["browser_profile"] = self.browser_profile_edit.text().strip()
         yt["browser_headless"] = self.headless_check.isChecked()
+        yt["channel_languages"] = copy.deepcopy(self._channel_languages)
         yt["selected_videos"] = self.get_selected_video_ids()
         self.thumbnail_panel.apply_to(settings)
         self._settings = settings
@@ -1256,6 +1444,67 @@ class YouTubeConfigTab(QWidget):
         secret_row.addWidget(secret_browse)
         add_form.addRow("client_secret.json", self._wrap(secret_row))
 
+        langs_box = QWidget()
+        langs_vbox = QVBoxLayout(langs_box)
+        langs_vbox.setContentsMargins(0, 0, 0, 0)
+        langs_vbox.setSpacing(4)
+
+        langs_row1 = QHBoxLayout()
+        langs_row1.setSpacing(8)
+        self.acc_lang_all_cb = QCheckBox("🌐 Tất cả")
+        self.acc_lang_all_cb.setChecked(True)
+        langs_row1.addWidget(self.acc_lang_all_cb)
+
+        self.acc_lang_checkboxes: Dict[str, QCheckBox] = {}
+        for code, _ in COMMON_LANGUAGES[:6]:
+            cb = QCheckBox(f"{LANGUAGE_FLAGS.get(code, '')} {code.upper()}")
+            cb.setToolTip(language_name(code))
+            self.acc_lang_checkboxes[code] = cb
+            langs_row1.addWidget(cb)
+        langs_row1.addStretch(1)
+        langs_vbox.addLayout(langs_row1)
+
+        langs_row2 = QHBoxLayout()
+        langs_row2.setSpacing(6)
+        langs_row2.addWidget(QLabel("Mã khác:"))
+        self.acc_lang_other_edit = QLineEdit()
+        self.acc_lang_other_edit.setPlaceholderText("vi, en, ja, zh, es, th... (phân cách bằng dấu phẩy)")
+        self.acc_lang_other_edit.setMaximumWidth(320)
+        langs_row2.addWidget(self.acc_lang_other_edit)
+        langs_row2.addStretch(1)
+        langs_vbox.addLayout(langs_row2)
+
+        def _on_all_toggled(checked: bool) -> None:
+            if checked:
+                for c in self.acc_lang_checkboxes.values():
+                    c.blockSignals(True)
+                    c.setChecked(False)
+                    c.blockSignals(False)
+                self.acc_lang_other_edit.setEnabled(False)
+            else:
+                self.acc_lang_other_edit.setEnabled(True)
+
+        def _on_lang_toggled(_checked: bool) -> None:
+            any_checked = any(c.isChecked() for c in self.acc_lang_checkboxes.values()) or bool(self.acc_lang_other_edit.text().strip())
+            if any_checked:
+                self.acc_lang_all_cb.blockSignals(True)
+                self.acc_lang_all_cb.setChecked(False)
+                self.acc_lang_all_cb.blockSignals(False)
+                self.acc_lang_other_edit.setEnabled(True)
+            else:
+                self.acc_lang_all_cb.blockSignals(True)
+                self.acc_lang_all_cb.setChecked(True)
+                self.acc_lang_all_cb.blockSignals(False)
+                self.acc_lang_other_edit.setEnabled(False)
+
+        self.acc_lang_all_cb.toggled.connect(_on_all_toggled)
+        for cb in self.acc_lang_checkboxes.values():
+            cb.toggled.connect(_on_lang_toggled)
+        self.acc_lang_other_edit.textChanged.connect(lambda: _on_lang_toggled(True))
+        self.acc_lang_other_edit.setEnabled(False)
+
+        add_form.addRow("Ngôn ngữ chỉ định", self._wrap(langs_vbox))
+
         add_layout.addLayout(add_form)
 
         btn_row = QHBoxLayout()
@@ -1297,11 +1546,12 @@ class YouTubeConfigTab(QWidget):
         list_layout.addLayout(top_actions)
 
         self.acc_table = QTableWidget()
-        self.acc_table.setColumnCount(6)
+        self.acc_table.setColumnCount(7)
         self.acc_table.setHorizontalHeaderLabels([
             "Tên định danh",
             "Kênh YouTube",
             "Channel ID",
+            "Ngôn ngữ chỉ định",
             "Trạng thái",
             "Thông tin chi tiết",
             "Thao tác",
@@ -1311,13 +1561,15 @@ class YouTubeConfigTab(QWidget):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         self.acc_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.acc_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.acc_table.verticalHeader().setVisible(False)
         self.acc_table.setAlternatingRowColors(True)
         self.acc_table.setMinimumHeight(260)
+        self.acc_table.cellDoubleClicked.connect(self._on_table_double_clicked)
         list_layout.addWidget(self.acc_table, 1)
 
         root.addWidget(list_box, 1)
@@ -1332,6 +1584,21 @@ class YouTubeConfigTab(QWidget):
             self.acc_secret_edit.setText(chosen)
             self.client_secret_edit.setText(chosen)
 
+    def get_selected_new_account_languages(self) -> List[str]:
+        if self.acc_lang_all_cb.isChecked():
+            return []
+        langs: List[str] = []
+        for code, cb in self.acc_lang_checkboxes.items():
+            if cb.isChecked():
+                langs.append(code)
+        other = self.acc_lang_other_edit.text().strip()
+        if other:
+            for part in other.split(","):
+                part = part.strip().lower()
+                if part and part not in langs:
+                    langs.append(part)
+        return langs
+
     def _add_account(self) -> None:
         if self._worker is not None:
             return
@@ -1340,6 +1607,7 @@ class YouTubeConfigTab(QWidget):
             paint_status(self.acc_add_status, "error")
             self.acc_add_status.setText("Vui lòng nhập tên nhận diện kênh (ví dụ: KenhChinh).")
             return
+        self._pending_new_account_languages = self.get_selected_new_account_languages()
         snapshot = self._snapshot()
         secret = self.acc_secret_edit.text().strip() or self.client_secret_edit.text().strip()
         if secret:
@@ -1367,6 +1635,10 @@ class YouTubeConfigTab(QWidget):
         paint_status(self.acc_add_status, "success")
         self.acc_add_status.setText(f"Đã thêm và kết nối tài khoản thành công: {title}")
         self.acc_name_edit.clear()
+        langs = getattr(self, "_pending_new_account_languages", [])
+        self._save_channel_languages(requested_name, langs)
+        self.acc_lang_all_cb.setChecked(True)
+        self.acc_lang_other_edit.clear()
         self.refresh_accounts_table()
         self.refresh_channels(select=requested_name)
         self.channels_changed.emit()
@@ -1378,6 +1650,21 @@ class YouTubeConfigTab(QWidget):
 
     def _reauth_account(self, name: str) -> None:
         self.acc_name_edit.setText(name)
+        langs = self._channel_languages.get(name, [])
+        if not langs or "all" in langs or "*" in langs:
+            self.acc_lang_all_cb.setChecked(True)
+            for c in self.acc_lang_checkboxes.values():
+                c.setChecked(False)
+            self.acc_lang_other_edit.clear()
+        else:
+            self.acc_lang_all_cb.setChecked(False)
+            others: List[str] = []
+            for code in langs:
+                if code in self.acc_lang_checkboxes:
+                    self.acc_lang_checkboxes[code].setChecked(True)
+                else:
+                    others.append(code)
+            self.acc_lang_other_edit.setText(", ".join(others) if others else "")
         self._add_account()
 
     def _delete_account(self, name: str) -> None:
@@ -1392,6 +1679,8 @@ class YouTubeConfigTab(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         deleted = YouTubeUploader(self._settings).delete_channel(name)
+        self._channel_languages.pop(name, None)
+        self._settings.get("youtube", {}).get("channel_languages", {}).pop(name, None)
         self.refresh_accounts_table()
         self.refresh_channels()
         self.channels_changed.emit()
@@ -1439,10 +1728,10 @@ class YouTubeConfigTab(QWidget):
             item = self.acc_table.item(row, 0)
             if item and item.text() == name:
                 if error:
-                    st_item = self.acc_table.item(row, 3)
+                    st_item = self.acc_table.item(row, 4)
                     if st_item:
                         st_item.setText("🔴 Không hoạt động / Hết hạn")
-                    inf_item = self.acc_table.item(row, 4)
+                    inf_item = self.acc_table.item(row, 5)
                     if inf_item:
                         inf_item.setText(error)
                         inf_item.setToolTip(error)
@@ -1457,10 +1746,10 @@ class YouTubeConfigTab(QWidget):
                         item_cid = QTableWidgetItem(cid)
                         item_cid.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.acc_table.setItem(row, 2, item_cid)
-                    st_item = self.acc_table.item(row, 3)
+                    st_item = self.acc_table.item(row, 4)
                     if st_item:
                         st_item.setText("🟢 Đang hoạt động")
-                    inf_item = self.acc_table.item(row, 4)
+                    inf_item = self.acc_table.item(row, 5)
                     if inf_item:
                         inf_item.setText(f"{subs} người đăng ký · {vids} video")
                         inf_item.setToolTip(f"Kênh: {title}\nID: {cid}\nSubscribers: {subs}\nVideos: {vids}")
@@ -1506,6 +1795,42 @@ class YouTubeConfigTab(QWidget):
         self.acc_table_status.setText(f"Kiểm tra xong: {ok} hoạt động, {fail} lỗi.")
         self.refresh_channels()
 
+    def _on_table_double_clicked(self, row: int, _column: int) -> None:
+        it = self.acc_table.item(row, 0)
+        if it and it.text():
+            self._open_assign_languages(it.text())
+
+    def _open_assign_languages(self, channel_name: str) -> None:
+        current = self._channel_languages.get(channel_name)
+        if current is None:
+            try:
+                for ch in YouTubeUploader(self._settings).channels():
+                    if ch.name == channel_name:
+                        current = ch.languages
+                        break
+            except Exception:
+                pass
+        current = current or []
+        dlg = AssignLanguagesDialog(channel_name, current, self)
+        if dlg.exec():
+            new_langs = dlg.get_languages()
+            self._save_channel_languages(channel_name, new_langs)
+            self.refresh_accounts_table()
+            self.channels_changed.emit()
+            paint_status(self.acc_table_status, "success")
+            disp = ", ".join(new_langs) if new_langs else "Tất cả"
+            self.acc_table_status.setText(f"Đã gán ngôn ngữ cho kênh '{channel_name}': {disp}")
+
+    def _save_channel_languages(self, channel_name: str, langs: List[str]) -> None:
+        self._channel_languages[channel_name] = langs
+        yt = self._settings.setdefault("youtube", {})
+        yt.setdefault("channel_languages", {})[channel_name] = langs
+        try:
+            uploader = YouTubeUploader(self._settings)
+            uploader.save_channel_languages(channel_name, langs)
+        except Exception as exc:
+            logger.warning("Không lưu được languages vào metadata sidecar: %s", exc)
+
     def refresh_accounts_table(self) -> None:
         if not self._settings:
             return
@@ -1529,17 +1854,27 @@ class YouTubeConfigTab(QWidget):
             item_id.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.acc_table.setItem(row, 2, item_id)
 
+            ch_langs = self._channel_languages.get(ch.name)
+            if ch_langs is None:
+                ch_langs = ch.languages or []
+                self._channel_languages[ch.name] = list(ch_langs)
+            summary_langs = ", ".join(ch_langs) if ch_langs else "Tất cả"
+            item_lang = QTableWidgetItem(summary_langs)
+            item_lang.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.acc_table.setItem(row, 3, item_lang)
+            self.acc_table.setCellWidget(row, 3, _make_language_chips_widget(ch_langs))
+
             if ch.authorized:
                 status_text = "🟢 Đang hoạt động" if ch.title else "🟢 Đã uỷ quyền"
             else:
                 status_text = "🔴 Chưa đăng nhập / Hết hạn"
             item_status = QTableWidgetItem(status_text)
             item_status.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.acc_table.setItem(row, 3, item_status)
+            self.acc_table.setItem(row, 4, item_status)
 
             info_text = f"Cập nhật: {ch.updated_at}" if ch.updated_at else "Bấm 'Kiểm tra' để xem thông tin"
             item_info = QTableWidgetItem(info_text)
-            self.acc_table.setItem(row, 4, item_info)
+            self.acc_table.setItem(row, 5, item_info)
 
             actions_widget = QWidget()
             act_layout = QHBoxLayout(actions_widget)
@@ -1553,6 +1888,12 @@ class YouTubeConfigTab(QWidget):
             btn_chk.clicked.connect(lambda _, n=ch_name, r=row: self._check_single_account(n, r))
             act_layout.addWidget(btn_chk)
 
+            btn_lang = QPushButton("Gán ngôn ngữ")
+            set_icon(btn_lang, "globe", "accent", 12)
+            btn_lang.setToolTip("Đổi ngôn ngữ chỉ định cho kênh này")
+            btn_lang.clicked.connect(lambda _, n=ch_name: self._open_assign_languages(n))
+            act_layout.addWidget(btn_lang)
+
             btn_auth = QPushButton("Cấp lại")
             set_icon(btn_auth, "key", "muted", 12)
             btn_auth.setToolTip("Đăng nhập và cấp quyền lại cho kênh này")
@@ -1565,5 +1906,5 @@ class YouTubeConfigTab(QWidget):
             btn_del.clicked.connect(lambda _, n=ch_name: self._delete_account(n))
             act_layout.addWidget(btn_del)
 
-            self.acc_table.setCellWidget(row, 5, actions_widget)
+            self.acc_table.setCellWidget(row, 6, actions_widget)
             self.acc_table.setRowHeight(row, 36)

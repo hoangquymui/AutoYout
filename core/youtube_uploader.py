@@ -6,6 +6,7 @@ rest of AutoYout still runs on a machine without those optional packages.
 """
 from __future__ import annotations
 
+import copy
 import json
 import mimetypes
 import os
@@ -18,7 +19,7 @@ from datetime import datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from core.languages import normalize_language, youtube_language
+from core.languages import DEFAULT_LANGUAGE, is_known, normalize_language, youtube_language
 from core.project_manager import (
     ITEM_ERROR,
     ITEM_UPLOAD_DONE,
@@ -91,6 +92,7 @@ class YouTubeConfig:
     made_for_kids: bool = False
     browser_profile: str = ""
     browser_headless: bool = False
+    channel_languages: Dict[str, List[str]] = field(default_factory=dict)
 
     @classmethod
     def from_settings(cls, settings: Dict[str, Any]) -> "YouTubeConfig":
@@ -98,6 +100,14 @@ class YouTubeConfig:
         times = raw.get("schedule_times") or ""
         if isinstance(times, (list, tuple)):
             times = ",".join(str(part) for part in times)
+        raw_ch_langs = raw.get("channel_languages") or {}
+        ch_langs: Dict[str, List[str]] = {}
+        if isinstance(raw_ch_langs, dict):
+            for ch, langs in raw_ch_langs.items():
+                if isinstance(langs, (list, tuple, set)):
+                    ch_langs[str(ch)] = [str(l).strip().lower() for l in langs if str(l).strip()]
+                elif isinstance(langs, str):
+                    ch_langs[str(ch)] = [l.strip().lower() for l in langs.split(",") if l.strip()]
         return cls(
             method=str(raw.get("method") or "api").lower(),
             channel=str(raw.get("channel") or "default").strip() or "default",
@@ -117,7 +127,32 @@ class YouTubeConfig:
             made_for_kids=bool(raw.get("made_for_kids", False)),
             browser_profile=str(raw.get("browser_profile") or ""),
             browser_headless=bool(raw.get("browser_headless", False)),
+            channel_languages=ch_langs,
         )
+
+    def get_channel_for_language(self, language: str) -> Optional[str]:
+        """Find channel configured for ``language`` (case-insensitive).
+
+        Returns channel name or default channel (self.channel) if not found.
+        """
+        if not language:
+            return self.channel
+        target = str(language).strip().lower()
+        norm = normalize_language(target, target).lower()
+
+        # 1. Exact or normalized language match in channel_languages
+        for ch, langs in self.channel_languages.items():
+            ch_langs_lower = [str(l).strip().lower() for l in langs if str(l).strip()]
+            if target in ch_langs_lower or norm in ch_langs_lower:
+                return str(ch)
+
+        # 2. Wildcard or "all"
+        for ch, langs in self.channel_languages.items():
+            ch_langs_lower = [str(l).strip().lower() for l in langs if str(l).strip()]
+            if "all" in ch_langs_lower or "*" in ch_langs_lower:
+                return str(ch)
+
+        return self.channel
 
     def errors(self) -> List[str]:
         problems: List[str] = []
@@ -142,6 +177,7 @@ class Channel:
     title: str = ""
     channel_id: str = ""
     updated_at: str = ""
+    languages: List[str] = field(default_factory=list)
 
     def public(self) -> Dict[str, Any]:
         return {
@@ -151,6 +187,7 @@ class Channel:
             "channel_id": self.channel_id,
             "updated_at": self.updated_at,
             "token_path": str(self.token_path),
+            "languages": list(self.languages),
         }
 
 
@@ -403,6 +440,11 @@ class YouTubeUploader:
     # ── credential/channel management ────────────────────────────────────────
     @property
     def credentials_dir(self) -> Path:
+        raw = (self.settings.get("paths") or {}).get("youtube_credentials")
+        if raw:
+            p = Path(raw)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
         return credentials_dir()
 
     def client_secret_path(self) -> Path:
@@ -453,11 +495,26 @@ class YouTubeUploader:
                 data = {}
             meta: Dict[str, Any] = {}
             sidecar = path.with_name(path.stem + ".meta.json")
-            if sidecar.is_file():
-                try:
-                    meta = json.loads(sidecar.read_text(encoding="utf-8"))
-                except (OSError, ValueError):
-                    meta = {}
+            alt_sidecar = self.credentials_dir / f"{name}.meta.json"
+            for sc in (sidecar, alt_sidecar):
+                if sc.is_file():
+                    try:
+                        loaded = json.loads(sc.read_text(encoding="utf-8"))
+                        if isinstance(loaded, dict):
+                            meta.update(loaded)
+                    except (OSError, ValueError):
+                        pass
+
+            raw_langs = meta.get("languages")
+            if raw_langs is None:
+                raw_langs = self.config.channel_languages.get(name) or []
+            if isinstance(raw_langs, (list, tuple, set)):
+                langs = [str(l).strip().lower() for l in raw_langs if str(l).strip()]
+            elif isinstance(raw_langs, str):
+                langs = [l.strip().lower() for l in raw_langs.split(",") if l.strip()]
+            else:
+                langs = []
+
             authorized = bool(data.get("refresh_token") or data.get("token"))
             result.append(Channel(
                 name=name,
@@ -466,12 +523,73 @@ class YouTubeUploader:
                 title=str(meta.get("title") or ""),
                 channel_id=str(meta.get("channel_id") or ""),
                 updated_at=str(meta.get("updated_at") or ""),
+                languages=langs,
             ))
         known = self.channel_name()
         if known and not any(ch.name == known for ch in result):
-            result.append(Channel(name=known, token_path=self.token_path(known),
-                                  authorized=self.token_path(known).is_file()))
+            raw_langs = self.config.channel_languages.get(known) or []
+            if isinstance(raw_langs, (list, tuple, set)):
+                langs = [str(l).strip().lower() for l in raw_langs if str(l).strip()]
+            elif isinstance(raw_langs, str):
+                langs = [l.strip().lower() for l in raw_langs.split(",") if l.strip()]
+            else:
+                langs = []
+            result.append(Channel(
+                name=known,
+                token_path=self.token_path(known),
+                authorized=self.token_path(known).is_file(),
+                languages=langs,
+            ))
         return result
+
+    def get_channel_for_language(self, language: str) -> Optional[str]:
+        """Determine target channel configured for ``language`` (case-insensitive).
+
+        Checks config.channel_languages as well as channels metadata on disk.
+        Returns matching channel name, or default channel (self.config.channel).
+        """
+        if not language:
+            return self.config.channel
+
+        ch = self.config.get_channel_for_language(language)
+        if ch and ch != self.config.channel:
+            return ch
+
+        target = str(language).strip().lower()
+        norm = normalize_language(target, target).lower()
+        try:
+            for channel in self.channels():
+                c_langs = [str(l).strip().lower() for l in channel.languages if str(l).strip()]
+                if target in c_langs or norm in c_langs:
+                    return channel.name
+        except Exception:
+            pass
+
+        return ch or self.config.channel
+
+    def save_channel_languages(self, channel: str, languages: List[str]) -> None:
+        """Save target languages for a channel to memory, settings, and metadata sidecars."""
+        name = safe_filename(channel, "default")
+        cleaned = [str(l).strip().lower() for l in languages if str(l).strip()]
+        self.config.channel_languages[name] = cleaned
+        self.settings.setdefault("youtube", {}).setdefault("channel_languages", {})[name] = cleaned
+
+        for meta_file in (self.meta_path(name), self.credentials_dir / f"{name}.meta.json"):
+            meta: Dict[str, Any] = {}
+            if meta_file.is_file():
+                try:
+                    loaded = json.loads(meta_file.read_text(encoding="utf-8"))
+                    if isinstance(loaded, dict):
+                        meta = loaded
+                except Exception:
+                    meta = {}
+            meta["languages"] = cleaned
+            meta["updated_at"] = meta.get("updated_at") or _now()
+            try:
+                meta_file.parent.mkdir(parents=True, exist_ok=True)
+                meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception as exc:
+                logger.warning("Không thể lưu metadata kênh %s: %s", meta_file, exc)
 
     def delete_channel(self, channel: str) -> bool:
         """Remove saved token and metadata files for a channel."""
@@ -491,6 +609,15 @@ class YouTubeUploader:
                 deleted = True
             except OSError:
                 pass
+        alt_meta = self.credentials_dir / f"{name}.meta.json"
+        if alt_meta.is_file():
+            try:
+                alt_meta.unlink()
+                deleted = True
+            except OSError:
+                pass
+        self.config.channel_languages.pop(name, None)
+        self.settings.get("youtube", {}).get("channel_languages", {}).pop(name, None)
         if name in self._services:
             del self._services[name]
         return deleted
@@ -540,6 +667,19 @@ class YouTubeUploader:
         except OSError:
             pass
 
+        existing_langs: List[str] = []
+        for sc in (self.meta_path(name), self.credentials_dir / f"{name}.meta.json"):
+            if sc.is_file():
+                try:
+                    data = json.loads(sc.read_text(encoding="utf-8"))
+                    if isinstance(data, dict) and data.get("languages"):
+                        existing_langs = [str(l).strip().lower() for l in data["languages"] if str(l).strip()]
+                        break
+                except Exception:
+                    pass
+        if not existing_langs and name in self.config.channel_languages:
+            existing_langs = list(self.config.channel_languages[name])
+
         info: Dict[str, Any] = {}
         try:
             service = self._service(name, force_reload=True)
@@ -553,9 +693,15 @@ class YouTubeUploader:
                 }
         except Exception as exc:
             logger.warning("Đã lưu token nhưng chưa kiểm tra được kênh: %s", exc)
+        if existing_langs:
+            info["languages"] = existing_langs
         if info:
-            self.meta_path(name).write_text(
-                json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+            for meta_f in (self.meta_path(name), self.credentials_dir / f"{name}.meta.json"):
+                try:
+                    meta_f.parent.mkdir(parents=True, exist_ok=True)
+                    meta_f.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
         if progress_cb:
             progress_cb(100, f"Đã kết nối kênh {info.get('title') or name}.")
         logger.info("Đã uỷ quyền kênh YouTube '%s'", name)
@@ -566,6 +712,7 @@ class YouTubeUploader:
             title=str(info.get("title") or ""),
             channel_id=str(info.get("channel_id") or ""),
             updated_at=str(info.get("updated_at") or ""),
+            languages=existing_langs,
         )
 
     # ── Google client ────────────────────────────────────────────────────────
@@ -640,12 +787,28 @@ class YouTubeUploader:
             "videos": stats.get("videoCount", ""),
             "updated_at": _local_now().strftime("%Y-%m-%d %H:%M:%S"),
         }
-        try:
-            meta = self.meta_path(name)
-            meta.parent.mkdir(parents=True, exist_ok=True)
-            meta.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
-        except OSError:
-            pass
+        # Preserve languages
+        existing_langs: List[str] = []
+        for sc in (self.meta_path(name), self.credentials_dir / f"{name}.meta.json"):
+            if sc.is_file():
+                try:
+                    data = json.loads(sc.read_text(encoding="utf-8"))
+                    if isinstance(data, dict) and data.get("languages"):
+                        existing_langs = [str(l).strip().lower() for l in data["languages"] if str(l).strip()]
+                        break
+                except Exception:
+                    pass
+        if not existing_langs and name in self.config.channel_languages:
+            existing_langs = list(self.config.channel_languages[name])
+        if existing_langs:
+            info["languages"] = existing_langs
+
+        for meta_f in (self.meta_path(name), self.credentials_dir / f"{name}.meta.json"):
+            try:
+                meta_f.parent.mkdir(parents=True, exist_ok=True)
+                meta_f.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+            except OSError:
+                pass
         return info
 
     # ── scheduling / metadata for a job ──────────────────────────────────────
@@ -703,6 +866,51 @@ class YouTubeUploader:
         if not job.path.is_file() or job.path.stat().st_size == 0:
             raise YouTubeError(f"Chưa có file video để upload: {job.path}")
 
+        # Xác định ngôn ngữ của video job
+        lang = ""
+        if hasattr(job, "language") and getattr(job, "language", None):
+            lang = str(job.language).strip()
+
+        # Kiểm tra hậu tố file name: video_ja.mp4, episode-en.mp4, etc.
+        if not lang:
+            match_stem = re.search(r"[_\-\(\[\s]([a-zA-Z]{2}(?:-[a-zA-Z]{2})?)$", job.path.stem)
+            if match_stem:
+                cand = match_stem.group(1).lower()
+                if is_known(cand) or normalize_language(cand, ""):
+                    lang = cand
+
+        # Kiểm tra thẻ ngôn ngữ trong title: "Video [ja]", "Title (en)", etc.
+        if not lang and job.title:
+            match_title = re.search(r"[\b_\-\(\[]([a-zA-Z]{2}(?:-[a-zA-Z]{2})?)[\b_\-\)\]]", job.title)
+            if match_title:
+                cand = match_title.group(1).lower()
+                if is_known(cand) or normalize_language(cand, ""):
+                    lang = cand
+
+        # Kiểm tra ngôn ngữ từ project items
+        if not lang and job.items:
+            for base in job.items:
+                item = manager.get_item(base)
+                if item is not None:
+                    item_lang = (item.metadata or {}).get("language") or getattr(item, "language", "")
+                    if item_lang:
+                        lang = str(item_lang).strip()
+                        break
+
+        if not lang:
+            lang = cfg.language or DEFAULT_LANGUAGE
+
+        # Định tuyến kênh theo ngôn ngữ
+        target_channel = self.get_channel_for_language(lang) or cfg.channel
+        logger.info("Định tuyến video %s (ngôn ngữ %s) vào kênh YouTube '%s'", job.title or job.path.stem, lang, target_channel)
+
+        if target_channel != cfg.channel or lang != cfg.language:
+            job_cfg = copy.copy(cfg)
+            job_cfg.channel = target_channel
+            job_cfg.language = lang
+        else:
+            job_cfg = cfg
+
         def report(percent: int, message: str) -> None:
             if progress_cb:
                 try:
@@ -710,18 +918,18 @@ class YouTubeUploader:
                 except Exception:
                     pass
 
-        publish_at = self.publish_at_for(manager, job, cfg)
-        metadata = build_metadata(manager, job, cfg, index, publish_at)
+        publish_at = self.publish_at_for(manager, job, job_cfg)
+        metadata = build_metadata(manager, job, job_cfg, index, publish_at)
         manager.update_video(job.id, state=VIDEO_UPLOADING, error="")
         manager.set_items_state(job.items, ITEM_UPLOADING)
         report(1, f"Chuẩn bị upload: {metadata['title'][:60]}")
         try:
-            if cfg.method == "browser":
+            if job_cfg.method == "browser":
                 result = self._upload_browser(
-                    manager, job, cfg, metadata, report, pause_cb, cancel_cb)
+                    manager, job, job_cfg, metadata, report, pause_cb, cancel_cb)
             else:
                 result = self._upload_api(
-                    manager, job, cfg, metadata, report, pause_cb, cancel_cb)
+                    manager, job, job_cfg, metadata, report, pause_cb, cancel_cb)
             manager.update_video(
                 job.id,
                 state=VIDEO_UPLOAD_DONE,

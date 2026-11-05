@@ -205,3 +205,125 @@ def test_handle_auth_dialog_headless_raises_auth_required() -> None:
     with pytest.raises(AuthRequired) as exc_info:
         uploader._handle_auth_dialog(page, cfg, report, lambda: False)
     assert "xác minh danh tính" in str(exc_info.value).lower()
+
+
+def test_channel_languages_config_parsing() -> None:
+    settings = {
+        "youtube": {
+            "channel": "KenhChinh",
+            "channel_languages": {
+                "KenhChinh": ["vi", "VI-vn"],
+                "KenhAnh": "en, en-us",
+                "KenhNhat": ["ja"],
+            },
+        }
+    }
+    cfg = YouTubeConfig.from_settings(settings)
+    assert cfg.channel == "KenhChinh"
+    assert "vi" in cfg.channel_languages["KenhChinh"]
+    assert "en" in cfg.channel_languages["KenhAnh"]
+    assert "ja" in cfg.channel_languages["KenhNhat"]
+
+
+def test_get_channel_for_language_matching() -> None:
+    cfg = YouTubeConfig(
+        channel="DefaultChannel",
+        channel_languages={
+            "ChannelVN": ["vi"],
+            "ChannelEN": ["en"],
+            "ChannelGlobal": ["all"],
+        },
+    )
+    # Exact case-insensitive match
+    assert cfg.get_channel_for_language("vi") == "ChannelVN"
+    assert cfg.get_channel_for_language("VI") == "ChannelVN"
+    assert cfg.get_channel_for_language("en") == "ChannelEN"
+    assert cfg.get_channel_for_language("EN-US") == "ChannelEN"
+    # Unmatched fallback to wildcard or default
+    assert cfg.get_channel_for_language("es") == "ChannelGlobal"
+
+    # When no global channel configured, falls back to self.channel
+    cfg2 = YouTubeConfig(
+        channel="FallbackChannel",
+        channel_languages={
+            "ChannelVN": ["vi"],
+        },
+    )
+    assert cfg2.get_channel_for_language("fr") == "FallbackChannel"
+    assert cfg2.get_channel_for_language("") == "FallbackChannel"
+
+
+def test_save_and_load_channel_languages_metadata(tmp_path: Path) -> None:
+    settings = {"paths": {"youtube_credentials": str(tmp_path)}}
+    uploader = YouTubeUploader(settings)
+
+    # Create dummy token
+    token = uploader.token_path("TestChannel")
+    token.write_text("{}", encoding="utf-8")
+
+    # Save languages
+    uploader.save_channel_languages("TestChannel", ["vi", "en"])
+    assert uploader.config.channel_languages["TestChannel"] == ["vi", "en"]
+
+    # Verify metadata files exist and have languages
+    meta_token = uploader.meta_path("TestChannel")
+    meta_direct = tmp_path / "TestChannel.meta.json"
+    assert meta_token.is_file()
+    assert meta_direct.is_file()
+
+    data = json.loads(meta_token.read_text(encoding="utf-8"))
+    assert data["languages"] == ["vi", "en"]
+
+    # Reload channels via fresh uploader
+    fresh_uploader = YouTubeUploader({"paths": {"youtube_credentials": str(tmp_path)}})
+    chans = fresh_uploader.channels()
+    target = next((c for c in chans if c.name == "TestChannel"), None)
+    assert target is not None
+    assert target.languages == ["vi", "en"]
+    assert target.public()["languages"] == ["vi", "en"]
+
+    # Test routing via uploader method
+    assert fresh_uploader.get_channel_for_language("vi") == "TestChannel"
+
+
+def test_upload_job_routes_channel_by_language(tmp_path: Path, monkeypatch) -> None:
+    from unittest.mock import MagicMock
+    from core.youtube_uploader import UploadResult
+
+    manager = _manager(tmp_path)
+    video_file = manager.video_dir / "episode_ja.mp4"
+    video_file.parent.mkdir(parents=True, exist_ok=True)
+    video_file.write_bytes(b"dummy_mp4_bytes")
+
+    job = VideoJob(
+        id="job_ja",
+        path=video_file,
+        items=["tap_01"],
+        title="Anime Episode [ja]",
+    )
+    manager.videos[job.id] = job
+
+    settings = {
+        "youtube": {
+            "channel": "DefaultChannel",
+            "channel_languages": {
+                "ChannelVN": ["vi"],
+                "ChannelJP": ["ja"],
+            },
+        }
+    }
+    uploader = YouTubeUploader(settings)
+
+    called_channels: list[str] = []
+
+    def mock_upload_api(mgr, j, cfg, meta, rep, pause, cancel):
+        called_channels.append(cfg.channel)
+        return UploadResult(job_id=j.id, video_id="vid_123", url="https://youtu.be/vid_123")
+
+    monkeypatch.setattr(uploader, "_upload_api", mock_upload_api)
+
+    res = uploader.upload_job(manager, job.id)
+    assert res.video_id == "vid_123"
+    assert len(called_channels) == 1
+    assert called_channels[0] == "ChannelJP"
+

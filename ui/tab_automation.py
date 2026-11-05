@@ -2,16 +2,19 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import QPointF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
     QFrame,
     QGraphicsDropShadowEffect,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QProgressBar,
     QPushButton,
     QSizePolicy,
@@ -30,7 +33,7 @@ class WorkflowConnector(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setFixedWidth(36)
+        self.setFixedWidth(32)
         self.setMinimumHeight(80)
         self._active = False
 
@@ -79,10 +82,12 @@ class WorkflowNodeCard(QFrame):
         icon_name: str,
         run_button: QPushButton,
         parent: Optional[QWidget] = None,
+        total_steps: int = 5,
     ) -> None:
         super().__init__(parent)
         self.step_id = step_id
         self.step_num = step_num
+        self.total_steps = total_steps
         self.title_text = title
         self.subtitle_text = subtitle
         self.icon_name = icon_name
@@ -105,14 +110,14 @@ class WorkflowNodeCard(QFrame):
 
         # Internal card layout
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(6)
 
         top_row = QHBoxLayout()
         top_row.setSpacing(8)
 
         self.icon_box = QLabel()
-        self.icon_box.setFixedSize(30, 30)
+        self.icon_box.setFixedSize(28, 28)
         self.icon_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._update_icon()
         top_row.addWidget(self.icon_box)
@@ -237,14 +242,22 @@ class WorkflowNodeCard(QFrame):
 
         # Draw left connector pin (input)
         if self.step_num > 1:
-            pin_color = QColor("#00D2FF" if self._state == "running" else "#64748b")
+            pin_color = (
+                QColor("#00D2FF" if theme.is_dark() else "#0284C7")
+                if self._state == "running"
+                else QColor("#64748b")
+            )
             painter.setPen(QPen(pin_color, 1.5))
             painter.setBrush(QBrush(QColor("#0f172a" if theme.is_dark() else "#ffffff")))
             painter.drawEllipse(QPointF(1, cy), pin_radius, pin_radius)
 
         # Draw right connector pin (output)
-        if self.step_num < 3:
-            pin_color = QColor("#00D2FF" if self._state == "running" else "#64748b")
+        if self.step_num < self.total_steps:
+            pin_color = (
+                QColor("#00D2FF" if theme.is_dark() else "#0284C7")
+                if self._state == "running"
+                else QColor("#64748b")
+            )
             painter.setPen(QPen(pin_color, 1.5))
             painter.setBrush(QBrush(QColor("#0f172a" if theme.is_dark() else "#ffffff")))
             painter.drawEllipse(QPointF(w - 1, cy), pin_radius, pin_radius)
@@ -259,6 +272,7 @@ class AutomationTab(QWidget):
         super().__init__(parent)
         self._status_error = False
         self._status_running = False
+        self._settings: Optional[Dict[str, Any]] = None
 
         page = QVBoxLayout(self)
         page.setContentsMargins(0, 0, 0, 0)
@@ -272,75 +286,226 @@ class AutomationTab(QWidget):
 
         header = PageHeader(
             "Automation",
-            "Chạy từng bước hoặc toàn bộ pipeline — có thể tạm dừng và tiếp tục.",
+            "Chạy từng bước hoặc toàn bộ quy trình tự động hóa — có thể tạm dừng và tiếp tục.",
         )
         self.stage_label = QLabel("Sẵn sàng")
         self.stage_label.setObjectName("StageChip")
         header.add_action(self.stage_label)
         root.addWidget(header)
 
-        # ── n8n-style workflow pipeline ──────────────────────────────────────
+        # ── 1. Quick Input Bar (Khung nhập liệu nhanh) ────────────────────────
+        quick_box = QGroupBox("Khởi chạy nhanh quy trình (Quick Input Bar)")
+        quick_layout = QVBoxLayout(quick_box)
+        quick_layout.setSpacing(10)
+
+        # YouTube URL row
+        url_row = QHBoxLayout()
+        url_row.setSpacing(8)
+        lbl_url = QLabel("Link YouTube:")
+        lbl_url.setStyleSheet("font-weight: 600;")
+        self.url_input = QLineEdit()
+        self.url_input.setPlaceholderText(
+            "Nhập link YouTube để bắt đầu quy trình tự động (ví dụ: https://www.youtube.com/watch?v=...)"
+        )
+        self.url_input.setClearButtonEnabled(False)
+        self.btn_paste = QPushButton("Dán link")
+        set_icon(self.btn_paste, "clipboard", "accent", 14)
+        self.btn_paste.setToolTip("Dán link YouTube từ clipboard")
+        self.btn_paste.clicked.connect(self._paste_url)
+
+        self.btn_clear = QPushButton("Xoá")
+        set_icon(self.btn_clear, "trash", "muted", 14)
+        self.btn_clear.setToolTip("Xoá link YouTube đã nhập")
+        self.btn_clear.clicked.connect(self._clear_url)
+
+        url_row.addWidget(lbl_url)
+        url_row.addWidget(self.url_input, 1)
+        url_row.addWidget(self.btn_paste)
+        url_row.addWidget(self.btn_clear)
+        quick_layout.addLayout(url_row)
+
+        # Target Languages row
+        lang_row = QHBoxLayout()
+        lang_row.setSpacing(12)
+        lbl_lang = QLabel("Ngôn ngữ mục tiêu:")
+        lbl_lang.setStyleSheet("font-weight: 600;")
+        lang_row.addWidget(lbl_lang)
+
+        self.lang_checkboxes_layout = QHBoxLayout()
+        self.lang_checkboxes_layout.setSpacing(12)
+        self._lang_checkboxes: Dict[str, QCheckBox] = {}
+
+        popular_languages = [
+            ("vi", "Tiếng Việt (vi)"),
+            ("en", "Tiếng Anh (en)"),
+            ("ja", "Tiếng Nhật (ja)"),
+            ("zh", "Tiếng Trung (zh)"),
+        ]
+        for code, label in popular_languages:
+            cb = QCheckBox(label)
+            cb.setChecked(True)
+            self._lang_checkboxes[code] = cb
+            self.lang_checkboxes_layout.addWidget(cb)
+
+        lang_row.addLayout(self.lang_checkboxes_layout)
+        lang_row.addStretch(1)
+        quick_layout.addLayout(lang_row)
+
+        # Action Buttons row
+        btn_action_row = QHBoxLayout()
+        btn_action_row.setSpacing(10)
+
+        self.btn_run_full = QPushButton("⚡ THỰC HIỆN TOÀN BỘ (END-TO-END)")
+        self.btn_run_full.setObjectName("primaryButton")
+        self.btn_run_full.setToolTip(
+            "Tự động chạy toàn bộ quy trình: Kịch bản → Lồng tiếng → Tạo Video → Thumbnail → Đăng YouTube."
+        )
+        set_icon(self.btn_run_full, "zap", "white", 16)
+        self.btn_run_full.setMinimumHeight(40)
+        self.btn_run_full.clicked.connect(self._on_run_full_clicked)
+
+        self.btn_run_project = QPushButton("▶ Chạy theo Project hiện tại")
+        self.btn_run_project.setToolTip(
+            "Chạy với các file kịch bản có sẵn trong project hiện tại mà không cần nhập link YouTube."
+        )
+        set_icon(self.btn_run_project, "play", "accent", 14)
+        self.btn_run_project.setMinimumHeight(40)
+        self.btn_run_project.clicked.connect(self._on_run_project_clicked)
+
+        # Backward compatibility alias
+        self.btn_all = self.btn_run_full
+
+        btn_action_row.addWidget(self.btn_run_full, 3)
+        btn_action_row.addWidget(self.btn_run_project, 2)
+        quick_layout.addLayout(btn_action_row)
+
+        root.addWidget(quick_box)
+
+        # ── 2. n8n-style workflow pipeline (5 Nodes) ─────────────────────────
         controls = QGroupBox("Quy trình tự động hóa (Workflow Pipeline)")
         controls_layout = QVBoxLayout(controls)
         controls_layout.setSpacing(12)
 
         # Step buttons
-        self.btn_tts = QPushButton("1. Lồng tiếng")
+        self.btn_script = QPushButton("Chạy Kịch bản")
+        self.btn_script.setToolTip(
+            "Lấy transcript YouTube và tạo/dịch kịch bản sang các ngôn ngữ mục tiêu."
+        )
+        set_icon(self.btn_script, "file-text", "accent", 13)
+
+        self.btn_tts = QPushButton("Chạy Lồng tiếng")
         self.btn_tts.setToolTip(
-            "Lồng tiếng theo cue (nếu có SRT) hoặc đọc toàn bộ .txt/.json thành MP3."
+            "Chia đoạn, gọi TTS theo cue/văn bản & xuất MP3/SRT."
         )
-        self.btn_video = QPushButton("2. Tạo Video")
+        set_icon(self.btn_tts, "mic", "accent", 13)
+
+        self.btn_video = QPushButton("Chạy Video")
         self.btn_video.setToolTip(
-            "Ghép MP3 với hình nền, nhạc nền và xuất MP4 bằng FFmpeg."
+            "Ghép MP4, khung hình, nhạc nền & phụ đề bằng FFmpeg."
         )
-        self.btn_upload = QPushButton("3. Upload YouTube")
-        self.btn_upload.setToolTip("Đăng các video đã xuất lên kênh YouTube đã chọn.")
+        set_icon(self.btn_video, "film", "accent", 13)
 
-        set_icon(self.btn_tts, "mic", "accent", 14)
-        set_icon(self.btn_video, "film", "accent", 14)
-        set_icon(self.btn_upload, "upload", "accent", 14)
+        self.btn_thumbnail = QPushButton("Chạy Thumbnail")
+        self.btn_thumbnail.setToolTip(
+            "AI tạo ảnh bìa Thumbnail theo tiêu đề và nội dung kịch bản."
+        )
+        set_icon(self.btn_thumbnail, "image", "accent", 13)
 
+        self.btn_upload = QPushButton("Chạy Upload")
+        self.btn_upload.setToolTip(
+            "Tự động đăng tải các video đã xuất lên kênh YouTube."
+        )
+        set_icon(self.btn_upload, "upload", "accent", 13)
+
+        self.btn_script.clicked.connect(lambda: self.run_requested.emit("script"))
         self.btn_tts.clicked.connect(lambda: self.run_requested.emit("tts"))
         self.btn_video.clicked.connect(lambda: self.run_requested.emit("video"))
+        self.btn_thumbnail.clicked.connect(lambda: self.run_requested.emit("thumbnail"))
         self.btn_upload.clicked.connect(lambda: self.run_requested.emit("upload"))
 
-        # Node cards with glowing ring
-        self.card_tts = WorkflowNodeCard(
-            "tts", 1, "1. Lồng tiếng", "Chuyển kịch bản thành giọng đọc (TTS / SRT)", "mic", self.btn_tts
+        # Node cards with glowing ring (5 nodes)
+        self.card_script = WorkflowNodeCard(
+            "script",
+            1,
+            "1. Kịch bản",
+            "Lấy transcript YouTube & Dịch AI",
+            "file-text",
+            self.btn_script,
+            total_steps=5,
         )
         self.conn_1 = WorkflowConnector()
-        self.card_video = WorkflowNodeCard(
-            "video", 2, "2. Tạo Video", "Ghép MP4, ảnh nền, nhạc & phụ đề", "film", self.btn_video
+
+        self.card_tts = WorkflowNodeCard(
+            "tts",
+            2,
+            "2. Lồng tiếng",
+            "Chia đoạn, gọi TTS & xuất MP3/SRT",
+            "mic",
+            self.btn_tts,
+            total_steps=5,
         )
         self.conn_2 = WorkflowConnector()
+
+        self.card_video = WorkflowNodeCard(
+            "video",
+            3,
+            "3. Tạo Video",
+            "Ghép MP4, khung hình & phụ đề",
+            "film",
+            self.btn_video,
+            total_steps=5,
+        )
+        self.conn_3 = WorkflowConnector()
+
+        self.card_thumbnail = WorkflowNodeCard(
+            "thumbnail",
+            4,
+            "4. Thumbnail",
+            "AI tạo ảnh bìa theo kịch bản",
+            "image",
+            self.btn_thumbnail,
+            total_steps=5,
+        )
+        self.conn_4 = WorkflowConnector()
+
         self.card_upload = WorkflowNodeCard(
-            "upload", 3, "3. Upload YouTube", "Tự động đăng tải video lên kênh", "upload", self.btn_upload
+            "upload",
+            5,
+            "5. Đăng YouTube",
+            "Đăng tải theo kênh & ngôn ngữ",
+            "upload",
+            self.btn_upload,
+            total_steps=5,
         )
 
         self.nodes: Dict[str, WorkflowNodeCard] = {
+            "script": self.card_script,
             "tts": self.card_tts,
             "video": self.card_video,
+            "thumbnail": self.card_thumbnail,
             "upload": self.card_upload,
         }
-        self.connectors: List[WorkflowConnector] = [self.conn_1, self.conn_2]
+        self.connectors: List[WorkflowConnector] = [
+            self.conn_1,
+            self.conn_2,
+            self.conn_3,
+            self.conn_4,
+        ]
 
         flow_row = QHBoxLayout()
         flow_row.setSpacing(4)
-        flow_row.addWidget(self.card_tts, 1)
+        flow_row.addWidget(self.card_script, 1)
         flow_row.addWidget(self.conn_1, 0)
-        flow_row.addWidget(self.card_video, 1)
+        flow_row.addWidget(self.card_tts, 1)
         flow_row.addWidget(self.conn_2, 0)
+        flow_row.addWidget(self.card_video, 1)
+        flow_row.addWidget(self.conn_3, 0)
+        flow_row.addWidget(self.card_thumbnail, 1)
+        flow_row.addWidget(self.conn_4, 0)
         flow_row.addWidget(self.card_upload, 1)
         controls_layout.addLayout(flow_row)
 
-        # Master Pipeline Controls
-        self.btn_all = QPushButton("CHẠY TOÀN BỘ (AUTO ALL)")
-        self.btn_all.setToolTip("Chạy tuần tự TTS → Video → Upload YouTube.")
-        self.btn_all.setObjectName("runAllButton")
-        set_icon(self.btn_all, "zap", "white", 16)
-        self.btn_all.clicked.connect(lambda: self.run_requested.emit("all"))
-        controls_layout.addWidget(self.btn_all)
-
+        # Pause and Stop buttons
         self.btn_pause = QPushButton("Tạm dừng")
         self.btn_pause.setObjectName("pauseButton")
         self.btn_stop = QPushButton("Dừng hẳn")
@@ -360,7 +525,7 @@ class AutomationTab(QWidget):
 
         root.addWidget(controls)
 
-        # ── progress ─────────────────────────────────────────────────────────
+        # ── 3. Progress ───────────────────────────────────────────────────────
         progress = QGroupBox("Tiến độ")
         progress_layout = QVBoxLayout(progress)
         progress_layout.setSpacing(10)
@@ -395,7 +560,7 @@ class AutomationTab(QWidget):
 
         root.addWidget(progress)
 
-        # ── status & notes ───────────────────────────────────────────────────
+        # ── 4. Status & Notes ─────────────────────────────────────────────────
         self.notes_label = QLabel("")
         self.notes_label.setObjectName("MutedLabel")
         self.notes_label.setWordWrap(True)
@@ -410,7 +575,7 @@ class AutomationTab(QWidget):
             f"background:{theme.TEXT_FAINT}; border-radius:4px;"
         )
         status_row.addWidget(self.status_dot, 0, Qt.AlignmentFlag.AlignTop)
-        self.status_label = QLabel("Chọn project và bấm chạy để bắt đầu.")
+        self.status_label = QLabel("Nhập link YouTube hoặc chọn project để bắt đầu.")
         self.status_label.setObjectName("StatusText")
         self.status_label.setWordWrap(True)
         self.status_label.setSizePolicy(
@@ -419,7 +584,7 @@ class AutomationTab(QWidget):
         status_row.addWidget(self.status_label, 1)
         root.addLayout(status_row)
 
-        # ── log ──────────────────────────────────────────────────────────────
+        # ── 5. Log Console ────────────────────────────────────────────────────
         self.log_console = LogConsole()
         self.log_console.setMinimumHeight(160)
         root.addWidget(self.log_console, 1)
@@ -442,7 +607,98 @@ class AutomationTab(QWidget):
         block.addWidget(bar)
         return block
 
-    # ── state updates (called by MainWindow) ─────────────────────────────────
+    # ── Quick Input Bar Helpers ──────────────────────────────────────────────
+    def _paste_url(self) -> None:
+        clip = QApplication.clipboard()
+        text = clip.text().strip() if clip else ""
+        if text:
+            self.url_input.setText(text)
+
+    def _clear_url(self) -> None:
+        self.url_input.clear()
+
+    def get_youtube_url(self) -> str:
+        return self.url_input.text().strip()
+
+    def set_youtube_url(self, url: str) -> None:
+        self.url_input.setText(str(url or "").strip())
+
+    def get_target_languages(self) -> List[str]:
+        return [code for code, cb in self._lang_checkboxes.items() if cb.isChecked()]
+
+    def set_target_languages(self, languages: List[str]) -> None:
+        target_set = set(languages or [])
+        for code, cb in self._lang_checkboxes.items():
+            cb.setChecked(code in target_set)
+
+    def _add_language_checkbox(self, code: str, name: str = "", checked: bool = True) -> QCheckBox:
+        if code in self._lang_checkboxes:
+            cb = self._lang_checkboxes[code]
+            cb.setChecked(checked)
+            return cb
+        try:
+            from core.languages import language_name
+            display = name or language_name(code)
+        except Exception:
+            display = name or code
+        label = f"{display} ({code})" if code not in display else display
+        cb = QCheckBox(label)
+        cb.setChecked(checked)
+        self._lang_checkboxes[code] = cb
+        self.lang_checkboxes_layout.addWidget(cb)
+        return cb
+
+    def _on_run_full_clicked(self) -> None:
+        url = self.get_youtube_url()
+        if url:
+            if self._settings is None:
+                self._settings = {}
+            self.apply_to(self._settings)
+        self.run_requested.emit("all")
+
+    def _on_run_project_clicked(self) -> None:
+        self.run_requested.emit("all")
+
+    # ── Settings Load / Apply ────────────────────────────────────────────────
+    def load_from(self, settings: Dict[str, Any]) -> None:
+        self._settings = settings
+        auto = settings.get("automation") or {}
+        url = auto.get("youtube_url", "")
+        self.set_youtube_url(url)
+
+        target_langs = auto.get("target_languages")
+        script_langs = (settings.get("script") or {}).get("languages")
+
+        codes_from_script: List[str] = []
+        if isinstance(script_langs, list):
+            for item in script_langs:
+                if isinstance(item, str) and item:
+                    codes_from_script.append(item)
+                elif isinstance(item, dict) and "language" in item:
+                    codes_from_script.append(item["language"])
+
+        # Dynamically add checkboxes for any additional languages
+        for code in (target_langs or []) + codes_from_script:
+            if code and code not in self._lang_checkboxes:
+                self._add_language_checkbox(code, checked=False)
+
+        if target_langs is not None and isinstance(target_langs, list):
+            self.set_target_languages(target_langs)
+        elif codes_from_script:
+            self.set_target_languages(codes_from_script)
+        else:
+            for code in ("vi", "en", "ja", "zh"):
+                if code in self._lang_checkboxes:
+                    self._lang_checkboxes[code].setChecked(True)
+
+    def apply_to(self, settings: Dict[str, Any]) -> None:
+        self._settings = settings
+        if "automation" not in settings or not isinstance(settings["automation"], dict):
+            settings["automation"] = {}
+        settings["automation"]["youtube_url"] = self.get_youtube_url()
+        settings["automation"]["target_languages"] = self.get_target_languages()
+
+    # ── State updates (called by MainWindow / PipelineWorker) ────────────────
     def set_overall(self, value: int, detail: str = "") -> None:
         value = max(0, min(100, int(value)))
         self.overall_bar.setValue(value)
@@ -456,10 +712,21 @@ class AutomationTab(QWidget):
         self.task_value.setText(f"{value}%")
         if detail:
             self.task_desc.setText(detail)
+            low = detail.lower()
+            if "kịch bản" in low or "transcript" in low:
+                self.set_active_step("script")
+            elif "lồng tiếng" in low or "tts" in low:
+                self.set_active_step("tts")
+            elif "video" in low or "mp4" in low:
+                self.set_active_step("video")
+            elif "thumbnail" in low or "ảnh bìa" in low:
+                self.set_active_step("thumbnail")
+            elif "upload" in low or "đăng" in low:
+                self.set_active_step("upload")
 
     def set_active_step(self, step_name: str) -> None:
         """Set the active step to 'running' with a glowing ring, preceding to 'done'."""
-        steps = ["tts", "video", "upload"]
+        steps = ["script", "tts", "video", "thumbnail", "upload"]
         if step_name not in steps:
             return
         idx = steps.index(step_name)
@@ -500,15 +767,21 @@ class AutomationTab(QWidget):
     def set_stage(self, text: str) -> None:
         self.stage_label.setText(text)
         low = text.lower()
-        if "lồng tiếng" in low or "tts" in low:
+        if "kịch bản" in low or "script" in low or "transcript" in low:
+            self.set_active_step("script")
+            self.overall_desc.setText("(Bước 1/5: Kịch bản)")
+        elif "lồng tiếng" in low or "tts" in low:
             self.set_active_step("tts")
-            self.overall_desc.setText("(Bước 1/3: Lồng tiếng)")
+            self.overall_desc.setText("(Bước 2/5: Lồng tiếng)")
         elif "video" in low:
             self.set_active_step("video")
-            self.overall_desc.setText("(Bước 2/3: Tạo Video)")
+            self.overall_desc.setText("(Bước 3/5: Tạo Video)")
+        elif "thumbnail" in low or "ảnh bìa" in low or "thumb" in low:
+            self.set_active_step("thumbnail")
+            self.overall_desc.setText("(Bước 4/5: Thumbnail)")
         elif "đăng" in low or "upload" in low or "youtube" in low:
             self.set_active_step("upload")
-            self.overall_desc.setText("(Bước 3/3: Upload YouTube)")
+            self.overall_desc.setText("(Bước 5/5: Upload YouTube)")
         elif "hoàn tất" in low or "xong" in low:
             self.set_all_steps_done()
             self.overall_desc.setText("(Đã hoàn tất)")
@@ -539,8 +812,26 @@ class AutomationTab(QWidget):
         self._paint_status_colors()
 
     def set_actions(self, idle: bool, running: bool) -> None:
-        for button in (self.btn_tts, self.btn_video, self.btn_upload, self.btn_all):
+        buttons = [
+            self.btn_script,
+            self.btn_tts,
+            self.btn_video,
+            self.btn_thumbnail,
+            self.btn_upload,
+            self.btn_run_full,
+            self.btn_run_project,
+        ]
+        if hasattr(self, "btn_all") and self.btn_all not in buttons:
+            buttons.append(self.btn_all)
+        for button in buttons:
             button.setEnabled(idle)
+
+        self.url_input.setEnabled(idle)
+        self.btn_paste.setEnabled(idle)
+        self.btn_clear.setEnabled(idle)
+        for cb in self._lang_checkboxes.values():
+            cb.setEnabled(idle)
+
         self.btn_pause.setEnabled(running)
         self.btn_stop.setEnabled(running)
         if not running:

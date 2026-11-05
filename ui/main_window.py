@@ -328,6 +328,7 @@ class MainWindow(QMainWindow):
         self.video_tab.load_from(self.settings)
         self.frame_tab.load_from(self.settings)
         self.youtube_tab.load_from(self.settings)
+        self.automation_tab.load_from(self.settings)
 
     def _collect_all(self) -> None:
         self.project_tab.apply_to(self.settings)
@@ -337,6 +338,7 @@ class MainWindow(QMainWindow):
         self.video_tab.apply_to(self.settings)
         self.frame_tab.apply_to(self.settings)
         self.youtube_tab.apply_to(self.settings)
+        self.automation_tab.apply_to(self.settings)
         save_settings(self.settings)
 
     def _on_settings_tab_changed(self) -> None:
@@ -561,13 +563,21 @@ class MainWindow(QMainWindow):
         if self.manager is None:
             self._set_status("Chưa chọn project.", error=True)
             return
-        if not self.manager.get_items():
-            self._set_status("Project không có file .txt/.json nào.", error=True)
+        has_yt = bool(
+            self.settings.get("automation", {}).get("youtube_url")
+            or self.settings.get("script", {}).get("youtube_url")
+        )
+        if not self.manager.get_items() and not (mode in ("all", "script") and has_yt):
+            self._set_status("Project không có file .txt/.json nào và chưa nhập link YouTube.", error=True)
             return
         self._collect_all()
+        has_yt = bool(
+            self.settings.get("automation", {}).get("youtube_url")
+            or self.settings.get("script", {}).get("youtube_url")
+        )
         if not self._manager_matches_settings():
             self._reload_project()
-            if self.manager is None or not self.manager.get_items():
+            if self.manager is None or (not self.manager.get_items() and not (mode in ("all", "script") and has_yt)):
                 return
 
         if mode == "upload" and only is None:

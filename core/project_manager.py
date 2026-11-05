@@ -244,6 +244,7 @@ class VideoJob:
     rendered_at: str = ""
     uploaded_at: str = ""
     audio_mtime: float = 0.0
+    language: str = ""
 
     @property
     def state_label(self) -> str:
@@ -266,6 +267,7 @@ class VideoJob:
             "rendered_at": self.rendered_at,
             "uploaded_at": self.uploaded_at,
             "audio_mtime": self.audio_mtime,
+            "language": self.language,
         }
 
     @classmethod
@@ -286,6 +288,7 @@ class VideoJob:
             rendered_at=str(data.get("rendered_at") or ""),
             uploaded_at=str(data.get("uploaded_at") or ""),
             audio_mtime=float(data.get("audio_mtime") or 0),
+            language=str(data.get("language") or ""),
         )
 
 

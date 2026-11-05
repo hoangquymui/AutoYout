@@ -50,13 +50,21 @@ logger = get_logger("pipeline")
 SUCCESS_LEVEL = 25
 logging.addLevelName(SUCCESS_LEVEL, "SUCCESS")
 
-_MODES = ("tts", "video", "upload", "all")
+_MODES = ("script", "tts", "video", "thumbnail", "upload", "all")
 _STAGE_LABELS = {
-    "tts": "TẠO ÂM THANH (TTS)",
+    "script": "KỊCH BẢN (TRANSCRIPT & DỊCH)",
+    "tts": "TẠO ÂM THANH (TTS / LỒNG TIẾNG)",
     "video": "TẠO VIDEO (FFMPEG)",
+    "thumbnail": "TẠO THUMBNAIL (AI BÌA)",
     "upload": "UPLOAD YOUTUBE",
 }
-_STAGE_WEIGHTS = {"tts": 40, "video": 35, "upload": 25}
+_STAGE_WEIGHTS = {
+    "script": 20,
+    "tts": 25,
+    "video": 25,
+    "thumbnail": 10,
+    "upload": 20,
+}
 
 
 class PipelineCancelled(RuntimeError):
@@ -251,7 +259,17 @@ class PipelineWorker(QThread):
 
     # ── stage planning ───────────────────────────────────────────────────────
     def _stage_plan(self) -> List[Tuple[str, float, float]]:
-        names = ["tts", "video", "upload"] if self.mode == "all" else [self.mode]
+        if self.mode == "all":
+            has_yt = bool(
+                self.settings.get("automation", {}).get("youtube_url")
+                or self.settings.get("script", {}).get("youtube_url")
+            )
+            if has_yt:
+                names = ["script", "tts", "video", "thumbnail", "upload"]
+            else:
+                names = ["tts", "video", "thumbnail", "upload"]
+        else:
+            names = [self.mode]
         total = sum(_STAGE_WEIGHTS[name] for name in names) or 1
         plan: List[Tuple[str, float, float]] = []
         offset = 0.0
@@ -262,11 +280,131 @@ class PipelineWorker(QThread):
         return plan
 
     def _run_stage(self, name: str, start: float, end: float, is_retry: bool = False) -> List[str]:
+        if name == "script":
+            return self._stage_script(start, end, is_retry=is_retry)
         if name == "tts":
             return self._stage_tts(start, end, is_retry=is_retry)
         if name == "video":
             return self._stage_video(start, end, is_retry=is_retry)
+        if name == "thumbnail":
+            return self._stage_thumbnail(start, end, is_retry=is_retry)
         return self._stage_upload(start, end)
+
+    # ── script ───────────────────────────────────────────────────────────────
+    def _stage_script(self, start: float, end: float, is_retry: bool = False) -> List[str]:
+        def report(stage_pct: int, message: str, task_pct: Optional[int] = None) -> None:
+            pct = max(0, min(100, int(stage_pct)))
+            t_pct = max(0, min(100, int(task_pct))) if task_pct is not None else pct
+            self.task_changed.emit(t_pct)
+            self.overall_changed.emit(int(round(start + (end - start) * pct / 100.0)))
+            self.status_changed.emit(message, self.isRunning())
+
+        yt_url = (
+            self.settings.get("automation", {}).get("youtube_url")
+            or self.settings.get("script", {}).get("youtube_url")
+            or ""
+        ).strip()
+
+        if not yt_url:
+            existing = self.manager.get_items()
+            if existing:
+                logger.info("Kịch bản: Không có link YouTube mới, sử dụng %d file hiện có trong dự án.", len(existing))
+                report(100, f"Dùng {len(existing)} file kịch bản hiện có.")
+                return []
+            raise PipelineError("Chưa có link YouTube và dự án chưa có file kịch bản nào. Hãy nhập link YouTube.")
+
+        report(10, f"Đang lấy transcript từ YouTube: {yt_url}")
+        try:
+            from core.input_pipeline import get_youtube_transcript
+            from core.ai_client import (
+                DEFAULT_CLEAN_PROMPT,
+                DEFAULT_MODEL,
+                build_clean_prompt,
+                gemini_generate,
+                translate_text,
+            )
+            from core.project_manager import safe_filename
+
+            cues, meta = get_youtube_transcript(
+                yt_url,
+                progress_cb=lambda pct, msg: report(10 + int(pct * 0.2), msg),
+                cancel_cb=self.is_cancelled,
+            )
+        except Exception as exc:
+            logger.error("Lỗi lấy transcript: %s", exc)
+            return [f"Kịch bản: Không lấy được transcript từ YouTube ({exc})"]
+
+        raw_text = " ".join(str(getattr(c, "text", "") or "") for c in cues).strip()
+        if not raw_text:
+            return ["Kịch bản: Transcript rỗng."]
+
+        api_key = (
+            (self.settings.get("script") or {}).get("api_key")
+            or (self.settings.get("ai") or {}).get("api_key")
+            or ""
+        ).strip()
+        model = str((self.settings.get("script") or {}).get("model") or DEFAULT_MODEL)
+        clean_prompt = str((self.settings.get("script") or {}).get("transcript_clean_prompt") or DEFAULT_CLEAN_PROMPT)
+
+        cleaned_text = raw_text
+        if api_key:
+            report(35, "Đang làm sạch transcript bằng AI…")
+            try:
+                cleaned_text = gemini_generate(
+                    build_clean_prompt(raw_text, clean_prompt),
+                    api_key=api_key,
+                    model=model,
+                    timeout=180.0,
+                    temperature=0.2,
+                )
+            except Exception as exc:
+                logger.warning("Không thể làm sạch bằng AI (%s), dùng văn bản gốc.", exc)
+                cleaned_text = raw_text
+
+        target_langs = (
+            self.settings.get("automation", {}).get("target_languages")
+            or self.settings.get("script", {}).get("languages")
+            or ["vi"]
+        )
+        if isinstance(target_langs, str):
+            target_langs = [target_langs]
+
+        base_title = meta.get("title") or meta.get("video_id") or "youtube_video"
+        base_name = safe_filename(base_title, "video")
+
+        errors: List[str] = []
+        total_langs = max(1, len(target_langs))
+        for idx, lang in enumerate(target_langs):
+            self._checkpoint()
+            report(
+                50 + int((idx / total_langs) * 45),
+                f"Đang chuẩn bị kịch bản tiếng {lang} ({idx + 1}/{total_langs})…",
+            )
+            lang_code = lang.strip().lower()
+            text_for_lang = cleaned_text
+            if api_key and lang_code != "vi" and lang_code != meta.get("source_language"):
+                try:
+                    text_for_lang = translate_text(
+                        cleaned_text,
+                        api_key=api_key,
+                        model=model,
+                        language=lang_code,
+                    )
+                except Exception as exc:
+                    logger.warning("Dịch sang %s lỗi: %s, dùng bản tiếng gốc.", lang_code, exc)
+                    errors.append(f"Dịch kịch bản {lang_code}: {exc}")
+
+            out_file = self.manager.input_dir / f"{base_name}_{lang_code}.txt"
+            try:
+                out_file.write_text(text_for_lang, encoding="utf-8")
+                logger.info("Đã tạo file kịch bản: %s", out_file.name)
+            except Exception as exc:
+                errors.append(f"Lưu file {out_file.name}: {exc}")
+
+        self.manager.reload()
+        self.items_updated.emit()
+        report(100, f"Đã chuẩn bị xong {len(target_langs)} bản kịch bản.")
+        return errors
 
     # ── TTS ──────────────────────────────────────────────────────────────────
     def _tts_targets(self, is_retry: bool = False):
@@ -407,8 +545,19 @@ class PipelineWorker(QThread):
         """Synthesize cue-by-cue and join; returns True when the item was handled."""
         cues = load_cues(self.manager, item.base)
         if not cues:
-            logger.debug("Bỏ qua lồng tiếng %s: không có cue.", item.base)
-            return False
+            if not getattr(item, "text", "").strip():
+                return False
+            dub_cfg = self.settings.get("dubbing") or {}
+            min_w = int(dub_cfg.get("min_words", 15) or 15)
+            max_w = int(dub_cfg.get("max_words", 30) or 30)
+            from core.dubbing import _cues_from_pieces, split_by_words, save_cues
+            pieces = split_by_words(item.text, min_w, max_w)
+            if pieces:
+                cues = _cues_from_pieces(pieces)
+                save_cues(self.manager, item.base, cues)
+                logger.info("Tự động chia đoạn %s: %d đoạn (%d-%d từ).", item.base, len(cues), min_w, max_w)
+            else:
+                return False
         engine = DubbingEngine(self.settings)
         try:
             engine.synthesize_item(
@@ -514,6 +663,84 @@ class PipelineWorker(QThread):
             logger.log(SUCCESS_LEVEL, "Video xong: %s", job.path.name)
         self.task_changed.emit(100)
         return [f"Video {err}" for err in errors]
+
+    # ── thumbnail ─────────────────────────────────────────────────────────────
+    def _stage_thumbnail(self, start: float, end: float, is_retry: bool = False) -> List[str]:
+        def report(stage_pct: int, message: str, task_pct: Optional[int] = None) -> None:
+            pct = max(0, min(100, int(stage_pct)))
+            t_pct = max(0, min(100, int(task_pct))) if task_pct is not None else pct
+            self.task_changed.emit(t_pct)
+            self.overall_changed.emit(int(round(start + (end - start) * pct / 100.0)))
+            self.status_changed.emit(message, self.isRunning())
+
+        items = self.manager.get_items()
+        if not items:
+            report(100, "Thumbnail: không có mục nào.")
+            return []
+
+        report(10, "Bắt đầu tạo thumbnail cho các mục…")
+        errors: List[str] = []
+        total = len(items)
+
+        from core.thumbnail import (
+            build_image_prompt,
+            generate_image,
+            render_thumbnail,
+            attach_thumbnail,
+            default_font_path,
+        )
+
+        thumb_cfg = self.settings.get("thumbnail") or {}
+        provider = str(thumb_cfg.get("provider") or "pollinations")
+        api_key = (
+            thumb_cfg.get("api_key")
+            or (self.settings.get("ai") or {}).get("api_key")
+            or ""
+        ).strip()
+        model = str(thumb_cfg.get("model") or "imagen-3.0-generate-002")
+
+        for idx, item in enumerate(items):
+            self._checkpoint()
+            report(
+                int((idx / total) * 100),
+                f"Tạo thumbnail ({idx + 1}/{total}): {item.display_name}",
+            )
+            target_thumb = self.manager.thumbnail_dir / f"{item.base}.png"
+            if target_thumb.is_file() and not self.force and not is_retry:
+                continue
+
+            try:
+                title = item.title or item.base
+                prompt = build_image_prompt(
+                    title=title,
+                    transcript_excerpt=item.text[:600],
+                    style=str(thumb_cfg.get("style") or "cinematic"),
+                    language=getattr(item, "language", "vi"),
+                )
+                bg_target = self.manager.thumbnail_dir / f"{item.base}_bg.png"
+                generate_image(
+                    provider=provider,
+                    prompt=prompt,
+                    target=bg_target,
+                    api_key=api_key,
+                    model=model,
+                    width=1280,
+                    height=720,
+                )
+                render_thumbnail(
+                    background=bg_target,
+                    title=title,
+                    target=target_thumb,
+                    font_path=default_font_path(),
+                )
+                attach_thumbnail(self.manager, item.base, target_thumb)
+                logger.info("Tạo thumbnail thành công: %s", target_thumb.name)
+            except Exception as exc:
+                logger.warning("Không tạo được thumbnail cho %s: %s", item.base, exc)
+                errors.append(f"Thumbnail {item.display_name}: {exc}")
+
+        report(100, f"Hoàn tất tạo thumbnail ({total - len(errors)}/{total}).")
+        return errors
 
     # ── upload ───────────────────────────────────────────────────────────────
     def _stage_upload(self, start: float, end: float) -> List[str]:

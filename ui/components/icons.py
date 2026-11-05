@@ -148,6 +148,15 @@ _PATHS = {
         '<path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'
     ),
     "chevron-down": '<path d="m6 9 6 6 6-6"/>',
+    "chevron-up": '<path d="m18 15-6-6-6 6"/>',
+    "grid": (
+        '<rect x="3" y="3" width="18" height="18" rx="2"/>'
+        '<path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>'
+    ),
+    "maximize": (
+        '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/>'
+        '<path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'
+    ),
     "sun": (
         '<circle cx="12" cy="12" r="4"/>'
         '<path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/>'

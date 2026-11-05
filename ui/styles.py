@@ -51,6 +51,67 @@ QFrame#StatusBadge {
     border: 1px solid $BORDER;
     border-radius: 10px;
 }
+QFrame#EditorToolbar {
+    background: $SURFACE_ALT;
+    border: 1px solid $BORDER;
+    border-radius: 12px;
+}
+QFrame#ToolbarSep { background: $BORDER; border: none; }
+QFrame#EditorPanel {
+    background: $SURFACE;
+    border: 1px solid $BORDER;
+    border-radius: 14px;
+}
+QFrame#PlaybackBar {
+    background: $SURFACE_ALT;
+    border: 1px solid $BORDER;
+    border-radius: 12px;
+}
+QLabel#Timecode {
+    color: $TEXT_MUTED;
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-weight: 600;
+    font-size: 9pt;
+}
+QPushButton#presetCard {
+    text-align: left;
+    padding: 8px 10px;
+    font-weight: 600;
+    background: $GROUP_BG;
+    border: 1px solid $GROUP_BORDER;
+    border-radius: 10px;
+}
+QScrollArea#InspectorScroll,
+QScrollArea#InspectorScroll > QWidget > QWidget {
+    background: transparent;
+    border: none;
+}
+QPushButton#presetCard:hover {
+    background: $BUTTON_HOVER;
+    border-color: $ACCENT;
+}
+QPushButton#presetCard:pressed { background: $BUTTON_PRESSED; }
+QListWidget#LayerList {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+QListWidget#LayerList::item {
+    padding: 7px 8px;
+    margin: 1px 0;
+    border-radius: 8px;
+}
+QListWidget#LayerList::item:hover { background: $TABLE_HOVER; }
+QListWidget#LayerList::item:selected {
+    background: $TABLE_SELECTED;
+    color: $TABLE_SELECTED_TEXT;
+}
+QSlider#TimelineSlider::groove:horizontal { height: 5px; }
+QSlider#TimelineSlider::handle:horizontal {
+    width: 14px;
+    height: 14px;
+    margin: -6px 0;
+}
 QWidget#AudioPreview {
     background: $AUDIO_PREVIEW_BG;
     border: 1px solid $BORDER;
