@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
-from PySide6.QtCore import QDateTime, QSize, Qt, QThread, Signal
+from PySide6.QtCore import QDateTime, QSize, Qt, QThread, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -31,6 +32,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.project_manager import (
+    VIDEO_DONE,
+    VIDEO_ERROR,
+    VIDEO_PENDING,
+    VIDEO_PROCESSING,
+    VIDEO_UPLOADING,
+    VIDEO_UPLOAD_DONE,
+    VideoJob,
+    format_duration,
+    natural_key,
+)
 from core.youtube_uploader import YouTubeUploader
 from ui import theme
 from ui.components.icons import icon, set_icon
@@ -152,6 +164,7 @@ class YouTubeConfigTab(QWidget):
     busy_changed = Signal(bool)
     channels_changed = Signal()
     thumbnail_saved = Signal(str)
+    upload_requested = Signal(list)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -159,11 +172,22 @@ class YouTubeConfigTab(QWidget):
         self._worker: QThread | None = None
         self._pipeline_busy = False
 
+        self._manager = None
+        self._selected_video_ids: set[str] = set()
+        self._saved_selected_ids: Optional[List[str]] = None
+        self._custom_videos: Dict[str, VideoJob] = {}
+        self._updating_table: bool = False
+
         page = QVBoxLayout(self)
         page.setContentsMargins(0, 0, 0, 0)
         self.sub_tabs = QTabWidget()
         self.sub_tabs.setDocumentMode(True)
         page.addWidget(self.sub_tabs)
+
+        self.thumbnail_panel = ThumbnailPanel()
+        self.thumbnail_panel.thumbnail_saved.connect(self.thumbnail_saved.emit)
+        self.sub_tabs.addTab(self.thumbnail_panel, "Thumbnail")
+
         content = QWidget()
         content.setObjectName("PageContent")
         self.sub_tabs.addTab(wrap_scroll(content), "Đăng tải")
@@ -177,6 +201,9 @@ class YouTubeConfigTab(QWidget):
                 "Quản lý kênh, metadata, thumbnail và lịch đăng tự động.",
             )
         )
+
+        self.videos_box = self._build_videos_box()
+        root.addWidget(self.videos_box)
 
         columns = QHBoxLayout()
         columns.setSpacing(12)
@@ -450,9 +477,7 @@ class YouTubeConfigTab(QWidget):
         self.method_combo.currentIndexChanged.connect(self._on_method_changed)
         self.schedule_combo.currentIndexChanged.connect(self._on_schedule_changed)
 
-        self.thumbnail_panel = ThumbnailPanel()
-        self.thumbnail_panel.thumbnail_saved.connect(self.thumbnail_saved.emit)
-        self.sub_tabs.addTab(self.thumbnail_panel, "Hình thu nhỏ")
+
 
         self.accounts_page = self._build_accounts_page()
         self.sub_tabs.addTab(wrap_scroll(self.accounts_page), "Tài khoản")
@@ -507,6 +532,10 @@ class YouTubeConfigTab(QWidget):
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
         yt = settings.get("youtube") or {}
+        selected = yt.get("selected_videos")
+        if isinstance(selected, list):
+            self._saved_selected_ids = list(selected)
+            self._selected_video_ids = set(selected)
         self._set_combo(self.method_combo, yt.get("method", "api"))
         self.client_secret_edit.setText(str(yt.get("client_secret") or ""))
         self.title_edit.setText(str(yt.get("title_template") or "{title}"))
@@ -540,6 +569,8 @@ class YouTubeConfigTab(QWidget):
         secret_val = str(yt.get("client_secret") or "")
         self.acc_secret_edit.setText(secret_val)
         self.refresh_accounts_table()
+        if hasattr(self, "refresh_videos"):
+            self.refresh_videos()
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         yt = settings.setdefault("youtube", {})
@@ -568,11 +599,368 @@ class YouTubeConfigTab(QWidget):
         yt["made_for_kids"] = self.kids_check.isChecked()
         yt["browser_profile"] = self.browser_profile_edit.text().strip()
         yt["browser_headless"] = self.headless_check.isChecked()
+        yt["selected_videos"] = self.get_selected_video_ids()
         self.thumbnail_panel.apply_to(settings)
         self._settings = settings
 
+    # ── Videos Selection Box ──────────────────────────────────────────────────
+    def _build_videos_box(self) -> QGroupBox:
+        box = QGroupBox("Chọn video để đăng tải")
+        layout = QVBoxLayout(box)
+        layout.setSpacing(8)
+        layout.setContentsMargins(12, 10, 12, 10)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
+        self.videos_summary = QLabel("Chưa mở project.")
+        self.videos_summary.setObjectName("FieldLabel")
+        top_row.addWidget(self.videos_summary, 1)
+
+        self.btn_select_all_videos = QPushButton("Chọn tất cả")
+        set_icon(self.btn_select_all_videos, "check-square", "accent", 13)
+        self.btn_select_all_videos.clicked.connect(self._select_all_videos)
+        top_row.addWidget(self.btn_select_all_videos)
+
+        self.btn_deselect_all_videos = QPushButton("Bỏ chọn")
+        set_icon(self.btn_deselect_all_videos, "square", "muted", 13)
+        self.btn_deselect_all_videos.clicked.connect(self._deselect_all_videos)
+        top_row.addWidget(self.btn_deselect_all_videos)
+
+        self.btn_add_custom_video = QPushButton("Thêm video ngoài…")
+        set_icon(self.btn_add_custom_video, "plus", "accent", 13)
+        self.btn_add_custom_video.clicked.connect(self._browse_custom_videos)
+        top_row.addWidget(self.btn_add_custom_video)
+
+        self.btn_refresh_videos = QPushButton("Làm mới")
+        set_icon(self.btn_refresh_videos, "rotate-cw", "accent", 13)
+        self.btn_refresh_videos.clicked.connect(lambda: self.refresh_videos())
+        top_row.addWidget(self.btn_refresh_videos)
+
+        self.btn_upload_selected = QPushButton("Đăng video đã chọn")
+        self.btn_upload_selected.setObjectName("primaryButton")
+        set_icon(self.btn_upload_selected, "upload", "white", 14)
+        self.btn_upload_selected.clicked.connect(self._on_upload_selected_clicked)
+        self.btn_upload_selected.setEnabled(False)
+        top_row.addWidget(self.btn_upload_selected)
+
+        layout.addLayout(top_row)
+
+        self.videos_table = QTableWidget(0, 6)
+        self.videos_table.setHorizontalHeaderLabels([
+            "Chọn", "STT", "Tên video", "Thời lượng", "File MP4", "Trạng thái YouTube"
+        ])
+        self.videos_table.verticalHeader().setVisible(False)
+        self.videos_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.videos_table.setAlternatingRowColors(True)
+        self.videos_table.setMinimumHeight(150)
+        self.videos_table.setMaximumHeight(260)
+
+        header = self.videos_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+
+        self.videos_table.itemChanged.connect(self._on_video_item_changed)
+        self.videos_table.cellDoubleClicked.connect(self._on_video_cell_double_clicked)
+        layout.addWidget(self.videos_table)
+        return box
+
+    def _on_video_cell_double_clicked(self, row: int, col: int) -> None:
+        chk_item = self.videos_table.item(row, 0)
+        if not chk_item:
+            return
+        job_id = chk_item.data(Qt.ItemDataRole.UserRole)
+        job = None
+        if self._manager and hasattr(self._manager, "videos") and job_id in self._manager.videos:
+            job = self._manager.videos[job_id]
+        elif job_id in self._custom_videos:
+            job = self._custom_videos[job_id]
+        if not job:
+            return
+
+        if col == 0:
+            new_state = (
+                Qt.CheckState.Unchecked
+                if chk_item.checkState() == Qt.CheckState.Checked
+                else Qt.CheckState.Checked
+            )
+            chk_item.setCheckState(new_state)
+            return
+
+        if col == 5 and job.youtube_url:
+            QDesktopServices.openUrl(QUrl(job.youtube_url))
+            return
+
+        if job.path and Path(job.path).is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(job.path)))
+
+    def refresh_videos(self) -> None:
+        if not hasattr(self, "videos_table"):
+            return
+
+        self._updating_table = True
+        self.videos_table.setRowCount(0)
+
+        if not self._manager:
+            self.videos_summary.setText("Chưa mở project.")
+            self.btn_upload_selected.setEnabled(False)
+            self._updating_table = False
+            return
+
+        if hasattr(self._manager, "videos"):
+            if not self._manager.videos and hasattr(self._manager, "items") and self._manager.items:
+                try:
+                    from core.ffmpeg_renderer import FFmpegRenderer, VideoConfig
+                    v_cfg = VideoConfig.from_settings(self._settings)
+                    FFmpegRenderer(self._settings).build_jobs(self._manager, v_cfg, force=False)
+                except Exception as exc:
+                    logger.debug("Tự động lập video jobs: %s", exc)
+
+        jobs_dict = dict(self._manager.videos) if hasattr(self._manager, "videos") else {}
+        if self._custom_videos:
+            for cid, cjob in self._custom_videos.items():
+                if cid not in jobs_dict:
+                    jobs_dict[cid] = cjob
+
+        jobs = list(jobs_dict.values())
+        jobs.sort(key=lambda j: natural_key(j.path.name if j.path else j.id))
+
+        self.videos_table.setRowCount(len(jobs))
+        ready_count = 0
+
+        for row, job in enumerate(jobs):
+            has_file = False
+            size_str = ""
+            if job.path:
+                try:
+                    p = Path(job.path)
+                    if p.is_file():
+                        has_file = True
+                        size_mb = p.stat().st_size / (1024 * 1024)
+                        size_str = f" ({size_mb:.1f} MB)" if size_mb >= 0.1 else " (<0.1 MB)"
+                except Exception:
+                    pass
+
+            if has_file:
+                ready_count += 1
+
+            if self._saved_selected_ids is not None:
+                checked = job.id in self._saved_selected_ids
+            elif job.id in self._selected_video_ids:
+                checked = True
+            elif not self._selected_video_ids:
+                already_uploaded = bool(job.youtube_url or job.state == VIDEO_UPLOAD_DONE)
+                checked = has_file and not already_uploaded
+            else:
+                checked = False
+
+            if checked:
+                self._selected_video_ids.add(job.id)
+            else:
+                self._selected_video_ids.discard(job.id)
+
+            chk_item = QTableWidgetItem()
+            chk_item.setFlags(
+                Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+            chk_item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+            chk_item.setData(Qt.ItemDataRole.UserRole, job.id)
+            self.videos_table.setItem(row, 0, chk_item)
+
+            stt_item = QTableWidgetItem(str(row + 1))
+            stt_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            stt_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.videos_table.setItem(row, 1, stt_item)
+
+            title = job.title or (job.path.stem if job.path else job.id)
+            title_item = QTableWidgetItem(title)
+            title_item.setToolTip(str(job.path) if job.path else title)
+            title_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.videos_table.setItem(row, 2, title_item)
+
+            dur_text = format_duration(job.duration) if getattr(job, "duration", 0) > 0 else "—"
+            dur_item = QTableWidgetItem(dur_text)
+            dur_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            dur_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.videos_table.setItem(row, 3, dur_item)
+
+            if has_file:
+                file_item = QTableWidgetItem(f"✓ Sẵn sàng{size_str}")
+                file_item.setForeground(QColor("#22C55E"))
+                file_item.setToolTip(str(job.path))
+            else:
+                file_item = QTableWidgetItem("Chưa tạo video")
+                file_item.setForeground(QColor("#94A3B8"))
+                file_item.setToolTip("File MP4 chưa được render hoặc không tồn tại.")
+            file_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            file_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.videos_table.setItem(row, 4, file_item)
+
+            if job.youtube_url or job.state == VIDEO_UPLOAD_DONE:
+                yt_item = QTableWidgetItem("✓ Đã đăng")
+                yt_item.setForeground(QColor("#3B82F6"))
+                if job.youtube_url:
+                    yt_item.setToolTip(f"Double click để mở: {job.youtube_url}")
+            elif job.state == VIDEO_UPLOADING:
+                yt_item = QTableWidgetItem("Đang đăng…")
+                yt_item.setForeground(QColor("#F59E0B"))
+            elif job.state == VIDEO_ERROR or job.error:
+                yt_item = QTableWidgetItem("Lỗi đăng")
+                yt_item.setForeground(QColor("#EF4444"))
+                if job.error:
+                    yt_item.setToolTip(job.error)
+            else:
+                yt_item = QTableWidgetItem("Chờ đăng")
+                yt_item.setForeground(QColor("#94A3B8"))
+            yt_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            yt_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.videos_table.setItem(row, 5, yt_item)
+
+        self._saved_selected_ids = None
+        self._updating_table = False
+        self._update_videos_summary()
+
+    def _on_video_item_changed(self, item: QTableWidgetItem) -> None:
+        if self._updating_table or item.column() != 0:
+            return
+        job_id = item.data(Qt.ItemDataRole.UserRole)
+        if not job_id:
+            return
+        if item.checkState() == Qt.CheckState.Checked:
+            self._selected_video_ids.add(job_id)
+        else:
+            self._selected_video_ids.discard(job_id)
+        self._update_videos_summary()
+
+    def _select_all_videos(self) -> None:
+        if not hasattr(self, "videos_table"):
+            return
+        self._updating_table = True
+        for row in range(self.videos_table.rowCount()):
+            item = self.videos_table.item(row, 0)
+            if item:
+                item.setCheckState(Qt.CheckState.Checked)
+                job_id = item.data(Qt.ItemDataRole.UserRole)
+                if job_id:
+                    self._selected_video_ids.add(job_id)
+        self._updating_table = False
+        self._update_videos_summary()
+
+    def _deselect_all_videos(self) -> None:
+        if not hasattr(self, "videos_table"):
+            return
+        self._updating_table = True
+        for row in range(self.videos_table.rowCount()):
+            item = self.videos_table.item(row, 0)
+            if item:
+                item.setCheckState(Qt.CheckState.Unchecked)
+                job_id = item.data(Qt.ItemDataRole.UserRole)
+                if job_id:
+                    self._selected_video_ids.discard(job_id)
+        self._updating_table = False
+        self._update_videos_summary()
+
+    def _browse_custom_videos(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Chọn video ngoài để đăng tải",
+            str(Path.home()),
+            "Video (*.mp4 *.mkv *.mov *.webm *.avi);;Tất cả (*)",
+        )
+        if not paths:
+            return
+        for p_str in paths:
+            p = Path(p_str)
+            if not p.is_file():
+                continue
+            custom_id = f"custom::{p.stem}"
+            job = VideoJob(
+                id=custom_id,
+                path=p,
+                items=[],
+                title=p.stem,
+                state=VIDEO_DONE,
+            )
+            self._custom_videos[custom_id] = job
+            if self._manager and hasattr(self._manager, "videos"):
+                self._manager.videos[custom_id] = job
+            self._selected_video_ids.add(custom_id)
+        self.refresh_videos()
+
+    def _update_videos_summary(self) -> None:
+        if not hasattr(self, "videos_table"):
+            return
+        total = self.videos_table.rowCount()
+        selected = len(self._selected_video_ids)
+        if total == 0:
+            self.videos_summary.setText("Chưa có video nào trong dự án.")
+        else:
+            self.videos_summary.setText(f"{selected}/{total} video được chọn để đăng tải")
+        enabled = (
+            selected > 0
+            and not self._pipeline_busy
+            and self._worker is None
+        )
+        self.btn_upload_selected.setEnabled(enabled)
+
+    def get_selected_video_ids(self) -> List[str]:
+        return sorted(self._selected_video_ids)
+
+    def _on_upload_selected_clicked(self) -> None:
+        selected_ids = self.get_selected_video_ids()
+        if not selected_ids:
+            QMessageBox.information(
+                self, "Chưa chọn video",
+                "Vui lòng chọn ít nhất một video trong danh sách để đăng tải."
+            )
+            return
+
+        jobs_dict = {}
+        if self._manager and hasattr(self._manager, "videos"):
+            jobs_dict.update(self._manager.videos)
+        jobs_dict.update(self._custom_videos)
+
+        valid_jobs = []
+        missing_files = []
+        for vid in selected_ids:
+            job = jobs_dict.get(vid)
+            if job and job.path and Path(job.path).is_file():
+                valid_jobs.append(job)
+            else:
+                title = job.title if job else vid
+                missing_files.append(title)
+
+        if not valid_jobs:
+            QMessageBox.warning(
+                self, "Chưa có file video",
+                "Không có video nào trong số mục đã chọn có file MP4 trên đĩa.\n"
+                "Vui lòng tạo video trước khi đăng tải."
+            )
+            return
+
+        if missing_files:
+            reply = QMessageBox.question(
+                self, "Một số video chưa có file",
+                f"{len(missing_files)} video chưa có file MP4 trên đĩa:\n"
+                f"• " + "\n• ".join(missing_files[:5]) +
+                (f"\n... và {len(missing_files) - 5} video khác." if len(missing_files) > 5 else "") +
+                f"\n\nBạn có muốn tiếp tục đăng tải {len(valid_jobs)} video đã có file?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        self.upload_requested.emit([j.id for j in valid_jobs])
+
     def set_project(self, manager) -> None:
+        self._manager = manager
         self.thumbnail_panel.set_project(manager)
+        self.refresh_videos()
 
     @staticmethod
     def _set_combo(combo: QComboBox, value: Any) -> None:
@@ -611,7 +999,7 @@ class YouTubeConfigTab(QWidget):
         if hasattr(self, "sub_tabs") and self.sub_tabs.count() > 2:
             self.sub_tabs.setTabVisible(2, not browser)
             if browser and self.sub_tabs.currentIndex() == 2:
-                self.sub_tabs.setCurrentIndex(0)
+                self.sub_tabs.setCurrentIndex(1)
 
         self.channels_changed.emit()
 
@@ -718,6 +1106,12 @@ class YouTubeConfigTab(QWidget):
         elif self._worker is None:
             self.login_button.setEnabled(True)
             self.check_button.setEnabled(True)
+        if hasattr(self, "btn_upload_selected"):
+            self.btn_upload_selected.setEnabled(
+                not busy and bool(self._selected_video_ids) and self._worker is None
+            )
+        if hasattr(self, "btn_refresh_videos"):
+            self.btn_refresh_videos.setEnabled(not busy)
 
     def _login(self) -> None:
         if self._worker is not None:

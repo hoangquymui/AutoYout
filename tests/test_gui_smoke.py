@@ -131,15 +131,19 @@ def test_browser_login_button_follows_upload_method(window) -> None:
 def test_youtube_tab_has_upload_and_thumbnail_pages(window) -> None:
     tab = window.youtube_tab
     labels = [tab.sub_tabs.tabText(i) for i in range(tab.sub_tabs.count())]
-    assert labels == ["Đăng tải", "Hình thu nhỏ", "Tài khoản"]
+    assert labels == ["Thumbnail", "Đăng tải", "Tài khoản"]
     assert tab.sub_tabs.currentIndex() == 0
-    assert tab.sub_tabs.widget(1) is tab.thumbnail_panel
+    assert tab.sub_tabs.widget(0) is tab.thumbnail_panel
     assert tab.thumbnail_panel.template_list.count() >= 2
     assert tab.thumbnail_panel.provider_combo.currentData() == "pollinations"
     assert hasattr(tab, "acc_table")
     assert tab.acc_table.columnCount() == 6
     assert hasattr(tab, "acc_add_btn")
     assert hasattr(tab, "acc_check_all_btn")
+    assert hasattr(tab, "videos_box")
+    assert hasattr(tab, "videos_table")
+    assert tab.videos_table.columnCount() == 6
+    assert hasattr(tab, "btn_upload_selected")
 
 
 def test_ai_visual_mode_toggles_imagen_fields(window) -> None:

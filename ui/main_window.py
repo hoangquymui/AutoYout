@@ -189,6 +189,7 @@ class MainWindow(QMainWindow):
         self.youtube_tab.busy_changed.connect(self._on_auth_busy)
         self.youtube_tab.channels_changed.connect(self._on_channels_changed)
         self.youtube_tab.thumbnail_saved.connect(self._on_thumbnail_saved)
+        self.youtube_tab.upload_requested.connect(self._on_youtube_upload_requested)
 
     def _build_header(self) -> QWidget:
         header = QFrame()
@@ -551,7 +552,7 @@ class MainWindow(QMainWindow):
         self._update_actions()
 
     # ── pipeline control ─────────────────────────────────────────────────────
-    def _start_pipeline(self, mode: str) -> None:
+    def _start_pipeline(self, mode: str, only: Optional[Iterable[str]] = None) -> None:
         if self.worker is not None:
             return
         if self._preview_busy or self._auth_busy:
@@ -569,12 +570,18 @@ class MainWindow(QMainWindow):
             if self.manager is None or not self.manager.get_items():
                 return
 
+        if mode == "upload" and only is None:
+            selected_ids = self.youtube_tab.get_selected_video_ids()
+            if selected_ids:
+                only = selected_ids
+
         snapshot = copy.deepcopy(self.settings)
         worker = PipelineWorker(
             snapshot,
             self.manager,
             mode=mode,
             force=self.project_tab.force_overwrite(),
+            only=only,
         )
         worker.overall_changed.connect(self._on_overall)
         worker.task_changed.connect(self._on_task)
@@ -582,6 +589,7 @@ class MainWindow(QMainWindow):
         worker.status_changed.connect(self._on_status)
         worker.items_updated.connect(lambda: self.project_tab.refresh())
         worker.videos_updated.connect(lambda: self.project_tab.refresh())
+        worker.videos_updated.connect(lambda: self.youtube_tab.refresh_videos())
         worker.job_uploaded.connect(self._on_job_uploaded)
         worker.notes_changed.connect(self._on_notes_changed)
         worker.completed.connect(self._on_completed)
@@ -667,7 +675,15 @@ class MainWindow(QMainWindow):
     def _on_status(self, message: str, running: bool) -> None:
         self._set_status(message, error=False, running=running)
 
+    def _on_youtube_upload_requested(self, video_ids: list[str]) -> None:
+        if not video_ids:
+            self._set_status("Chưa chọn video nào để đăng tải.", error=True)
+            return
+        self._start_pipeline("upload", only=video_ids)
+
     def _on_job_uploaded(self, job_id: str, title: str, url: str) -> None:
+        self.project_tab.refresh()
+        self.youtube_tab.refresh_videos()
         self._set_status(f"Đã đăng: {title} — {url}", error=False)
         logger.info("Upload xong %s: %s", job_id, url)
 
