@@ -1682,18 +1682,24 @@ class YouTubeConfigTab(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        deleted = YouTubeUploader(self._settings).delete_channel(name)
+        uploader = YouTubeUploader(self._settings)
+        deleted = uploader.delete_channel(name)
         self._channel_languages.pop(name, None)
-        self._settings.get("youtube", {}).get("channel_languages", {}).pop(name, None)
+        yt_cfg = self._settings.setdefault("youtube", {})
+        yt_cfg.setdefault("channel_languages", {}).pop(name, None)
+        if yt_cfg.get("channel") == name:
+            yt_cfg["channel"] = ""
+        try:
+            from core.settings import save_settings
+            save_settings(self._settings)
+        except Exception as exc:
+            logger.warning("Không thể lưu settings sau khi xoá kênh: %s", exc)
+
         self.refresh_accounts_table()
         self.refresh_channels()
         self.channels_changed.emit()
-        if deleted:
-            paint_status(self.acc_table_status, "success")
-            self.acc_table_status.setText(f"Đã xoá tài khoản '{name}'.")
-        else:
-            paint_status(self.acc_table_status, "warning")
-            self.acc_table_status.setText(f"Không tìm thấy file token của '{name}'.")
+        paint_status(self.acc_table_status, "success")
+        self.acc_table_status.setText(f"Đã xoá tài khoản '{name}'.")
 
     def _check_single_account(self, name: str, row: int) -> None:
         if self._worker is not None:

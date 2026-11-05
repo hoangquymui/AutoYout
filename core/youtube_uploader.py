@@ -527,19 +527,22 @@ class YouTubeUploader:
             ))
         known = self.channel_name()
         if known and not any(ch.name == known for ch in result):
-            raw_langs = self.config.channel_languages.get(known) or []
-            if isinstance(raw_langs, (list, tuple, set)):
-                langs = [str(l).strip().lower() for l in raw_langs if str(l).strip()]
-            elif isinstance(raw_langs, str):
-                langs = [l.strip().lower() for l in raw_langs.split(",") if l.strip()]
-            else:
-                langs = []
-            result.append(Channel(
-                name=known,
-                token_path=self.token_path(known),
-                authorized=self.token_path(known).is_file(),
-                languages=langs,
-            ))
+            token_exists = self.token_path(known).is_file()
+            meta_exists = self.meta_path(known).is_file() or (self.credentials_dir / f"{known}.meta.json").is_file()
+            if token_exists or meta_exists:
+                raw_langs = self.config.channel_languages.get(known) or []
+                if isinstance(raw_langs, (list, tuple, set)):
+                    langs = [str(l).strip().lower() for l in raw_langs if str(l).strip()]
+                elif isinstance(raw_langs, str):
+                    langs = [l.strip().lower() for l in raw_langs.split(",") if l.strip()]
+                else:
+                    langs = []
+                result.append(Channel(
+                    name=known,
+                    token_path=self.token_path(known),
+                    authorized=token_exists,
+                    languages=langs,
+                ))
         return result
 
     def get_channel_for_language(self, language: str) -> Optional[str]:
@@ -618,6 +621,12 @@ class YouTubeUploader:
                 pass
         self.config.channel_languages.pop(name, None)
         self.settings.get("youtube", {}).get("channel_languages", {}).pop(name, None)
+        if self.config.channel == name:
+            self.config.channel = ""
+            deleted = True
+        if self.settings.get("youtube", {}).get("channel") == name:
+            self.settings["youtube"]["channel"] = ""
+            deleted = True
         if name in self._services:
             del self._services[name]
         return deleted
