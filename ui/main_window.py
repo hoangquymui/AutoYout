@@ -597,9 +597,10 @@ class MainWindow(QMainWindow):
         worker.task_changed.connect(self._on_task)
         worker.stage_changed.connect(self._on_stage)
         worker.status_changed.connect(self._on_status)
-        worker.items_updated.connect(lambda: self.project_tab.refresh())
-        worker.videos_updated.connect(lambda: self.project_tab.refresh())
-        worker.videos_updated.connect(lambda: self.youtube_tab.refresh_videos())
+        worker.items_updated.connect(self._on_pipeline_items_updated)
+        worker.videos_updated.connect(self._on_pipeline_videos_updated)
+        worker.script_updated.connect(self._on_pipeline_script_updated)
+        worker.cues_updated.connect(self._on_pipeline_cues_updated)
         worker.job_uploaded.connect(self._on_job_uploaded)
         worker.notes_changed.connect(self._on_notes_changed)
         worker.completed.connect(self._on_completed)
@@ -611,7 +612,11 @@ class MainWindow(QMainWindow):
         self.automation_tab.set_stage("Đang chuẩn bị…")
         self.automation_tab.set_notes([])
         self._set_status("Pipeline đang khởi động…", error=False)
+        if hasattr(self.script_tab, "set_pipeline_busy"):
+            self.script_tab.set_pipeline_busy(True)
         self.tts_tab.set_busy(True)
+        if hasattr(self.video_tab, "set_pipeline_busy"):
+            self.video_tab.set_pipeline_busy(True)
         self.youtube_tab.set_pipeline_busy(True)
         self._update_actions()
         worker.start()
@@ -678,9 +683,56 @@ class MainWindow(QMainWindow):
 
     def _on_task(self, value: int) -> None:
         self.automation_tab.set_task(value)
+        stage_name = getattr(self.automation_tab, "stage_label", None)
+        text = stage_name.text() if stage_name else ""
+        if "Kịch bản" in text or "KỊCH BẢN" in text:
+            if hasattr(self.script_tab, "progress_bar"):
+                self.script_tab.progress_bar.setValue(value)
+        elif "Lồng tiếng" in text or "TTS" in text or "ÂM THANH" in text:
+            if hasattr(self.tts_tab, "progress"):
+                self.tts_tab.progress.setValue(value)
 
     def _on_stage(self, label: str) -> None:
         self.automation_tab.set_stage(label)
+        from ui.components.page import paint_status
+        if "KỊCH BẢN" in label:
+            if hasattr(self.script_tab, "status_label"):
+                paint_status(self.script_tab.status_label, "running")
+                self.script_tab.status_label.setText("Đang lấy & xử lý kịch bản…")
+        elif "ÂM THANH" in label or "TTS" in label or "LỒNG TIẾNG" in label:
+            self.tts_tab.set_project(self.manager)
+            if hasattr(self.tts_tab, "update_from_pipeline"):
+                self.tts_tab.update_from_pipeline()
+        elif "VIDEO" in label:
+            self.video_tab.refresh_files()
+        elif "THUMBNAIL" in label:
+            if hasattr(self.youtube_tab, "thumbnail_panel"):
+                self.youtube_tab.thumbnail_panel.set_project(self.manager)
+        elif "UPLOAD" in label:
+            self.youtube_tab.refresh_videos()
+
+    def _on_pipeline_items_updated(self) -> None:
+        self.project_tab.refresh()
+        self.tts_tab.set_project(self.manager)
+        if hasattr(self.tts_tab, "update_from_pipeline"):
+            self.tts_tab.update_from_pipeline()
+        self.video_tab.refresh_files()
+        self.youtube_tab.refresh_videos()
+        if hasattr(self.youtube_tab, "thumbnail_panel"):
+            self.youtube_tab.thumbnail_panel.set_project(self.manager)
+
+    def _on_pipeline_videos_updated(self) -> None:
+        self.project_tab.refresh()
+        self.video_tab.refresh_files()
+        self.youtube_tab.refresh_videos()
+
+    def _on_pipeline_script_updated(self, url: str, text: str, translations: dict, meta: dict) -> None:
+        if hasattr(self.script_tab, "update_from_pipeline"):
+            self.script_tab.update_from_pipeline(url, text, translations, meta)
+
+    def _on_pipeline_cues_updated(self, base: str) -> None:
+        if hasattr(self.tts_tab, "update_from_pipeline"):
+            self.tts_tab.update_from_pipeline(base)
 
     def _on_status(self, message: str, running: bool) -> None:
         self._set_status(message, error=False, running=running)
@@ -716,9 +768,16 @@ class MainWindow(QMainWindow):
         if worker is not None:
             worker.deleteLater()
         self.project_tab.refresh()
-        self.video_tab.refresh_files()
+        if hasattr(self.script_tab, "set_pipeline_busy"):
+            self.script_tab.set_pipeline_busy(False)
         self.tts_tab.set_busy(False)
+        if hasattr(self.video_tab, "set_pipeline_busy"):
+            self.video_tab.set_pipeline_busy(False)
         self.youtube_tab.set_pipeline_busy(False)
+        self.video_tab.refresh_files()
+        self.youtube_tab.refresh_videos()
+        if hasattr(self.youtube_tab, "thumbnail_panel"):
+            self.youtube_tab.thumbnail_panel.set_project(self.manager)
         self._set_pause_ui(False)
         self._update_actions()
         self._collect_all()

@@ -1274,5 +1274,31 @@ class ScriptTab(QWidget):
         if not saved:
             self._warn("Chưa có nội dung nào để lưu.")
 
+    def update_from_pipeline(
+        self,
+        url: str = "",
+        text: str = "",
+        translations: Optional[Dict[str, str]] = None,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if url and not self.url_edit.text().strip():
+            self.url_edit.setText(url)
+        if meta:
+            self._meta = dict(meta)
+            self._source_lang = str(meta.get("source_language") or DEFAULT_LANGUAGE)
+        if text:
+            self._script_text = text
+            self._source_text = text
+            with QSignalBlocker(self.script_edit):
+                self.script_edit.setPlainText(text)
+            words = count_words(text)
+            self.count_label.setText(f"{words} từ · {len(text)} ký tự")
+        if translations:
+            for lang, trans_text in translations.items():
+                self._on_translated(lang, trans_text, "")
+        paint_status(self.status_label, "running")
+        self.status_label.setText("Đang xử lý kịch bản tự động từ Automation…")
+
     def set_pipeline_busy(self, busy: bool) -> None:
         self._set_busy(busy)
+

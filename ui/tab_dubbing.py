@@ -444,11 +444,33 @@ class DubbingTab(QWidget):
             self._base = ""
         self._reload_from_disk()
 
+    def update_from_pipeline(self, base: str = "") -> None:
+        if not self._manager:
+            return
+        previous_base = base or self._base or str(self.file_combo.currentData() or "")
+        self._refresh_file_list()
+        if previous_base and self.file_combo.findData(previous_base) >= 0:
+            self._base = previous_base
+            self.file_combo.blockSignals(True)
+            self.file_combo.setCurrentIndex(self.file_combo.findData(previous_base))
+            self.file_combo.blockSignals(False)
+        elif self.file_combo.count():
+            self._base = str(self.file_combo.currentData() or "")
+        else:
+            self._base = ""
+        self._reload_from_disk()
+
     def _refresh_file_list(self) -> None:
         bases: List[tuple[str, str]] = []
         if self._manager is not None:
             for item in self._manager.get_items():
-                if getattr(item, "dub_mode", "text") == "srt":
+                cues_exist = False
+                try:
+                    from core.dubbing import load_cues
+                    cues_exist = bool(load_cues(self._manager, item.base))
+                except Exception:
+                    pass
+                if getattr(item, "dub_mode", "text") == "srt" or cues_exist:
                     bases.append((item.display_name or item.base, item.base))
         current = self._base or str(self.file_combo.currentData() or "")
         self.file_combo.blockSignals(True)

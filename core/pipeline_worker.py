@@ -84,7 +84,9 @@ class PipelineWorker(QThread):
     status_changed = Signal(str, bool)   # message, running
     items_updated = Signal()
     videos_updated = Signal()
-    job_uploaded = Signal(str, str, str)  # job id, title, url
+    script_updated = Signal(str, str, dict, dict)  # url, text, translations, meta
+    cues_updated = Signal(str)                     # item base
+    job_uploaded = Signal(str, str, str)           # job id, title, url
     notes_changed = Signal(list)          # snapshot of the notes accumulator
     completed = Signal(bool, str)         # success, message
 
@@ -352,6 +354,7 @@ class PipelineWorker(QThread):
         raw_text = "\n\n".join(paragraphs).strip()
         if not raw_text:
             return ["Kịch bản: Transcript rỗng."]
+        self.script_updated.emit(yt_url, raw_text, {}, meta)
 
         api_key = (
             (self.settings.get("script") or {}).get("api_key")
@@ -375,6 +378,7 @@ class PipelineWorker(QThread):
             except Exception as exc:
                 logger.warning("Không thể làm sạch bằng AI (%s), dùng văn bản gốc.", exc)
                 cleaned_text = raw_text
+            self.script_updated.emit(yt_url, cleaned_text, {}, meta)
 
         target_langs = (
             self.settings.get("automation", {}).get("target_languages")
@@ -388,6 +392,7 @@ class PipelineWorker(QThread):
         base_name = safe_filename(base_title, "video")
 
         errors: List[str] = []
+        translations: Dict[str, str] = {}
         total_langs = max(1, len(target_langs))
         for idx, lang in enumerate(target_langs):
             self._checkpoint()
@@ -414,6 +419,8 @@ class PipelineWorker(QThread):
             try:
                 out_file.write_text(text_for_lang, encoding="utf-8")
                 logger.info("Đã tạo file kịch bản: %s", out_file.name)
+                translations[lang_code] = text_for_lang
+                self.script_updated.emit(yt_url, cleaned_text, dict(translations), meta)
             except Exception as exc:
                 errors.append(f"Lưu file {out_file.name}: {exc}")
 
@@ -584,7 +591,7 @@ class PipelineWorker(QThread):
                 message_cb=lambda msg: self.status_changed.emit(msg, True),
                 pause_cb=self.is_paused,
                 cancel_cb=self.is_cancelled,
-                cue_cb=lambda _cue: self.items_updated.emit(),
+                cue_cb=lambda _cue: (self.cues_updated.emit(item.base), self.items_updated.emit()),
             )
             dubbing = self.settings.get("dubbing") or {}
             mode = str(dubbing.get("timing_mode") or "timeline")
