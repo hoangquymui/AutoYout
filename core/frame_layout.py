@@ -135,6 +135,7 @@ class FrameLayout:
     """Normalised frame template shared by the editor and the renderer."""
 
     enabled: bool = False
+    subtitle_visible: bool = True
     aspect_ratio: str = "16:9"
     subtitle_x: float = 0.5
     subtitle_y: float = 0.9
@@ -179,6 +180,7 @@ class FrameLayout:
             images = []
         return cls(
             enabled=bool(raw.get("enabled", False)),
+            subtitle_visible=bool(raw.get("subtitle_visible", True)),
             aspect_ratio=str(raw.get("aspect_ratio") or "16:9"),
             subtitle_x=_as_float(raw.get("subtitle_x"), 0.5),
             subtitle_y=_as_float(raw.get("subtitle_y"), 0.9),
@@ -201,7 +203,7 @@ class FrameLayout:
 
     def to_dict(self) -> Dict[str, Any]:
         self.clamp()
-        return {
+        d: Dict[str, Any] = {
             "enabled": self.enabled,
             "aspect_ratio": self.aspect_ratio,
             "subtitle_x": self.subtitle_x,
@@ -216,6 +218,9 @@ class FrameLayout:
             "preview": self.preview,
             "images": [image.to_dict() for image in self.images],
         }
+        if not self.subtitle_visible:
+            d["subtitle_visible"] = False
+        return d
 
     # ── derived geometry ─────────────────────────────────────────────────────
     @property

@@ -115,8 +115,8 @@ def _make_language_chips_widget(langs: List[str]) -> QWidget:
     """Render attractive chips/badges for assigned target languages."""
     container = QWidget()
     h = QHBoxLayout(container)
-    h.setContentsMargins(4, 2, 4, 2)
-    h.setSpacing(4)
+    h.setContentsMargins(6, 2, 6, 2)
+    h.setSpacing(6)
     h.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
     cleaned = [str(l).strip().lower() for l in langs if str(l).strip()]
@@ -124,8 +124,8 @@ def _make_language_chips_widget(langs: List[str]) -> QWidget:
         lbl = QLabel("🌐 Tất cả")
         lbl.setStyleSheet(
             "background: rgba(99, 102, 241, 0.15); color: #818cf8; "
-            "border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 9px; "
-            "padding: 2px 7px; font-weight: bold; font-size: 11px;"
+            "border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 10px; "
+            "padding: 3px 8px; font-weight: 600; font-size: 11px;"
         )
         lbl.setToolTip("Phụ trách tất cả ngôn ngữ (kênh mặc định/dự phòng)")
         h.addWidget(lbl)
@@ -135,8 +135,8 @@ def _make_language_chips_widget(langs: List[str]) -> QWidget:
             lbl = QLabel(f"{flag} {code.upper()}")
             lbl.setStyleSheet(
                 "background: rgba(16, 185, 129, 0.15); color: #34d399; "
-                "border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 9px; "
-                "padding: 2px 6px; font-weight: bold; font-size: 11px;"
+                "border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px; "
+                "padding: 3px 8px; font-weight: 600; font-size: 11px;"
             )
             lbl.setToolTip(f"{code.upper()} — {language_name(code)}")
             h.addWidget(lbl)
@@ -1509,8 +1509,9 @@ class YouTubeConfigTab(QWidget):
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
-        self.acc_add_btn = QPushButton("Đăng nhập & Thêm tài khoản")
+        self.acc_add_btn = QPushButton("Đăng nhập / Thêm tài khoản")
         self.acc_add_btn.setObjectName("primaryButton")
+        self.acc_add_btn.setMinimumHeight(38)
         set_icon(self.acc_add_btn, "key", "white", 14)
         self.acc_add_btn.clicked.connect(self._add_account)
         btn_row.addWidget(self.acc_add_btn)
@@ -1560,13 +1561,16 @@ class YouTubeConfigTab(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        self.acc_table.setColumnWidth(3, 160)
+        self.acc_table.setColumnWidth(6, 330)
         self.acc_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.acc_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.acc_table.verticalHeader().setVisible(False)
+        self.acc_table.verticalHeader().setDefaultSectionSize(48)
         self.acc_table.setAlternatingRowColors(True)
         self.acc_table.setMinimumHeight(260)
         self.acc_table.cellDoubleClicked.connect(self._on_table_double_clicked)
@@ -1860,7 +1864,9 @@ class YouTubeConfigTab(QWidget):
                 self._channel_languages[ch.name] = list(ch_langs)
             summary_langs = ", ".join(ch_langs) if ch_langs else "Tất cả"
             item_lang = QTableWidgetItem(summary_langs)
+            item_lang.setForeground(QColor(0, 0, 0, 0))  # Transparent text to avoid double-text overlap behind chips
             item_lang.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item_lang.setToolTip(f"Ngôn ngữ phụ trách: {summary_langs}")
             self.acc_table.setItem(row, 3, item_lang)
             self.acc_table.setCellWidget(row, 3, _make_language_chips_widget(ch_langs))
 
@@ -1878,33 +1884,46 @@ class YouTubeConfigTab(QWidget):
 
             actions_widget = QWidget()
             act_layout = QHBoxLayout(actions_widget)
-            act_layout.setContentsMargins(4, 2, 4, 2)
+            act_layout.setContentsMargins(6, 4, 6, 4)
             act_layout.setSpacing(6)
+            act_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            btn_style = "QPushButton { padding: 4px 8px; font-size: 8.5pt; max-height: 26px; border-radius: 6px; }"
 
             ch_name = ch.name
             btn_chk = QPushButton("Kiểm tra")
+            btn_chk.setObjectName("smallButton")
+            btn_chk.setStyleSheet(btn_style)
             set_icon(btn_chk, "check-circle", "accent", 12)
             btn_chk.setToolTip("Kiểm tra xem token còn hoạt động không")
             btn_chk.clicked.connect(lambda _, n=ch_name, r=row: self._check_single_account(n, r))
             act_layout.addWidget(btn_chk)
 
             btn_lang = QPushButton("Gán ngôn ngữ")
+            btn_lang.setObjectName("smallButton")
+            btn_lang.setStyleSheet(btn_style)
             set_icon(btn_lang, "globe", "accent", 12)
             btn_lang.setToolTip("Đổi ngôn ngữ chỉ định cho kênh này")
             btn_lang.clicked.connect(lambda _, n=ch_name: self._open_assign_languages(n))
             act_layout.addWidget(btn_lang)
 
             btn_auth = QPushButton("Cấp lại")
+            btn_auth.setObjectName("smallButton")
+            btn_auth.setStyleSheet(btn_style)
             set_icon(btn_auth, "key", "muted", 12)
             btn_auth.setToolTip("Đăng nhập và cấp quyền lại cho kênh này")
             btn_auth.clicked.connect(lambda _, n=ch_name: self._reauth_account(n))
             act_layout.addWidget(btn_auth)
 
             btn_del = QPushButton("Xoá")
-            set_icon(btn_del, "trash", "error", 12)
+            btn_del.setObjectName("smallButton")
+            btn_del.setStyleSheet(btn_style)
+            set_icon(btn_del, "trash", "danger", 12)
             btn_del.setToolTip("Xoá tài khoản này khỏi AutoYout")
             btn_del.clicked.connect(lambda _, n=ch_name: self._delete_account(n))
             act_layout.addWidget(btn_del)
 
+            item_act = QTableWidgetItem("")
+            self.acc_table.setItem(row, 6, item_act)
             self.acc_table.setCellWidget(row, 6, actions_widget)
-            self.acc_table.setRowHeight(row, 36)
+            self.acc_table.setRowHeight(row, 48)

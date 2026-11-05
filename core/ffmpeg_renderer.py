@@ -1684,7 +1684,7 @@ class FFmpegRenderer:
                 vlabel = "vsub2"
             else:
                 logger.warning("Bật phụ đề .srt nhưng không có dòng nào hiển thị.")
-        elif cfg.subtitle_enabled and segments:
+        elif (cfg.subtitle_enabled or (cfg.frame and cfg.frame.enabled and getattr(cfg.frame, "subtitle_visible", True))) and segments:
             if self._write_subtitles(segments, total, temp_dir, cfg, language):
                 parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
                 vlabel = "vsub2"

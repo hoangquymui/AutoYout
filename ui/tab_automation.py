@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 from ui import theme
 from ui.components.icons import icon, set_icon
 from ui.components.log_console import LogConsole
-from ui.components.page import PageHeader
+from ui.components.page import PageHeader, wrap_scroll
 
 
 class WorkflowConnector(QWidget):
@@ -33,7 +33,7 @@ class WorkflowConnector(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setFixedWidth(32)
+        self.setFixedWidth(24)
         self.setMinimumHeight(80)
         self._active = False
 
@@ -59,13 +59,13 @@ class WorkflowConnector(QWidget):
             brush = QBrush(line_color)
 
         painter.setPen(pen)
-        painter.drawLine(0, int(cy), int(w - 7), int(cy))
+        painter.drawLine(0, int(cy), int(w - 6), int(cy))
 
         painter.setBrush(brush)
         arrow = QPolygonF([
             QPointF(w - 1, cy),
-            QPointF(w - 8, cy - 4),
-            QPointF(w - 8, cy + 4),
+            QPointF(w - 7, cy - 4),
+            QPointF(w - 7, cy + 4),
         ])
         painter.drawPolygon(arrow)
 
@@ -96,7 +96,8 @@ class WorkflowNodeCard(QFrame):
         self._glow_phase = 0.0
 
         self.setObjectName(f"WorkflowNode_{step_id}")
-        self.setMinimumHeight(96)
+        self.setMinimumHeight(125)
+        self.setMinimumWidth(155)
 
         # Pulsing timer for the active glowing halo
         self._glow_timer = QTimer(self)
@@ -108,38 +109,41 @@ class WorkflowNodeCard(QFrame):
         self._shadow_effect.setEnabled(False)
         self.setGraphicsEffect(self._shadow_effect)
 
-        # Internal card layout
+        # Internal card layout: spacious, modern and responsive
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(6)
 
-        top_row = QHBoxLayout()
-        top_row.setSpacing(8)
+        # Top row: Icon + Title + Status chip
+        header_row = QHBoxLayout()
+        header_row.setSpacing(6)
 
         self.icon_box = QLabel()
-        self.icon_box.setFixedSize(28, 28)
+        self.icon_box.setFixedSize(22, 22)
         self.icon_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._update_icon()
-        top_row.addWidget(self.icon_box)
+        header_row.addWidget(self.icon_box)
 
-        title_col = QVBoxLayout()
-        title_col.setSpacing(1)
         self.title_label = QLabel(title)
         self.title_label.setObjectName("PanelTitle")
-        self.title_label.setStyleSheet("font-weight: 700; font-size: 13px;")
-        self.subtitle_label = QLabel(subtitle)
-        self.subtitle_label.setObjectName("MutedLabel")
-        self.subtitle_label.setStyleSheet("font-size: 11px;")
-        self.subtitle_label.setWordWrap(True)
-        title_col.addWidget(self.title_label)
-        title_col.addWidget(self.subtitle_label)
-        top_row.addLayout(title_col, 1)
+        self.title_label.setStyleSheet("font-weight: 700; font-size: 12.5px;")
+        header_row.addWidget(self.title_label, 1)
 
         self.status_chip = QLabel("Chờ chạy")
         self.status_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        top_row.addWidget(self.status_chip)
-        layout.addLayout(top_row)
+        header_row.addWidget(self.status_chip)
+        layout.addLayout(header_row)
 
+        # Subtitle label: full card width for comfortable word wrapping without squishing
+        self.subtitle_label = QLabel(subtitle)
+        self.subtitle_label.setObjectName("MutedLabel")
+        self.subtitle_label.setStyleSheet("font-size: 11px; line-height: 1.3;")
+        self.subtitle_label.setWordWrap(True)
+        layout.addWidget(self.subtitle_label)
+
+        layout.addStretch(1)
+
+        # Bottom row: run button cleanly right-aligned
         bottom_row = QHBoxLayout()
         bottom_row.addStretch(1)
         bottom_row.addWidget(run_button)
@@ -278,11 +282,11 @@ class AutomationTab(QWidget):
         page.setContentsMargins(0, 0, 0, 0)
         content = QWidget()
         content.setObjectName("PageContent")
-        page.addWidget(content)
+        page.addWidget(wrap_scroll(content))
 
         root = QVBoxLayout(content)
         root.setContentsMargins(14, 14, 14, 14)
-        root.setSpacing(12)
+        root.setSpacing(14)
 
         header = PageHeader(
             "Automation",
@@ -386,32 +390,37 @@ class AutomationTab(QWidget):
         controls_layout = QVBoxLayout(controls)
         controls_layout.setSpacing(12)
 
-        # Step buttons
+        # Step buttons with smallButton styling for compact fit inside cards
         self.btn_script = QPushButton("Chạy Kịch bản")
+        self.btn_script.setObjectName("smallButton")
         self.btn_script.setToolTip(
             "Lấy transcript YouTube và tạo/dịch kịch bản sang các ngôn ngữ mục tiêu."
         )
         set_icon(self.btn_script, "file-text", "accent", 13)
 
         self.btn_tts = QPushButton("Chạy Lồng tiếng")
+        self.btn_tts.setObjectName("smallButton")
         self.btn_tts.setToolTip(
             "Chia đoạn, gọi TTS theo cue/văn bản & xuất MP3/SRT."
         )
         set_icon(self.btn_tts, "mic", "accent", 13)
 
         self.btn_video = QPushButton("Chạy Video")
+        self.btn_video.setObjectName("smallButton")
         self.btn_video.setToolTip(
             "Ghép MP4, khung hình, nhạc nền & phụ đề bằng FFmpeg."
         )
         set_icon(self.btn_video, "film", "accent", 13)
 
         self.btn_thumbnail = QPushButton("Chạy Thumbnail")
+        self.btn_thumbnail.setObjectName("smallButton")
         self.btn_thumbnail.setToolTip(
             "AI tạo ảnh bìa Thumbnail theo tiêu đề và nội dung kịch bản."
         )
         set_icon(self.btn_thumbnail, "image", "accent", 13)
 
         self.btn_upload = QPushButton("Chạy Upload")
+        self.btn_upload.setObjectName("smallButton")
         self.btn_upload.setToolTip(
             "Tự động đăng tải các video đã xuất lên kênh YouTube."
         )
@@ -505,11 +514,32 @@ class AutomationTab(QWidget):
         flow_row.addWidget(self.card_upload, 1)
         controls_layout.addLayout(flow_row)
 
-        # Pause and Stop buttons
+        # Pause and Stop control bar with dedicated container and styling
+        ctrl_bar = QFrame()
+        ctrl_bar.setObjectName("PipelineControlBar")
+        ctrl_bar.setStyleSheet("""
+            QFrame#PipelineControlBar {
+                background: rgba(148, 163, 184, 0.08);
+                border: 1px dashed rgba(148, 163, 184, 0.25);
+                border-radius: 8px;
+            }
+        """)
+        ctrl_layout = QHBoxLayout(ctrl_bar)
+        ctrl_layout.setContentsMargins(10, 6, 10, 6)
+        ctrl_layout.setSpacing(10)
+
+        lbl_ctrl = QLabel("Điều khiển thực thi:")
+        lbl_ctrl.setStyleSheet("font-size: 11.5px; font-weight: 600; color: #64748B;")
+        ctrl_layout.addWidget(lbl_ctrl)
+
         self.btn_pause = QPushButton("Tạm dừng")
         self.btn_pause.setObjectName("pauseButton")
+        self.btn_pause.setMinimumHeight(32)
+        self.btn_pause.setMinimumWidth(110)
         self.btn_stop = QPushButton("Dừng hẳn")
         self.btn_stop.setObjectName("stopButton")
+        self.btn_stop.setMinimumHeight(32)
+        self.btn_stop.setMinimumWidth(110)
         set_icon(self.btn_pause, "pause", "warning", 14)
         set_icon(self.btn_stop, "stop", "danger", 14)
         self.btn_pause.clicked.connect(self.pause_requested.emit)
@@ -517,11 +547,12 @@ class AutomationTab(QWidget):
         self.btn_pause.setEnabled(False)
         self.btn_stop.setEnabled(False)
 
-        pause_row = QHBoxLayout()
-        pause_row.setSpacing(8)
-        pause_row.addWidget(self.btn_pause, 1)
-        pause_row.addWidget(self.btn_stop, 1)
-        controls_layout.addLayout(pause_row)
+        ctrl_layout.addWidget(self.btn_pause)
+        ctrl_layout.addWidget(self.btn_stop)
+        ctrl_layout.addStretch(1)
+
+        controls_layout.addSpacing(6)
+        controls_layout.addWidget(ctrl_bar)
 
         root.addWidget(controls)
 

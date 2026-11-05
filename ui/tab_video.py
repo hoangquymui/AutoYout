@@ -88,8 +88,8 @@ class VideoConfigTab(QWidget):
         config_page = QWidget()
         config_page.setObjectName("PageContent")
         config_layout = QVBoxLayout(config_page)
-        config_layout.setContentsMargins(14, 10, 14, 10)
-        config_layout.setSpacing(10)
+        config_layout.setContentsMargins(8, 6, 8, 6)
+        config_layout.setSpacing(6)
 
         self.inner_tabs.addTab(config_page, "Cấu hình video")
         self.inner_tabs.addTab(self.frame_tab, "Khung mẫu (Video Frame)")
@@ -113,7 +113,7 @@ class VideoConfigTab(QWidget):
         root.setSpacing(10)
 
         columns = QHBoxLayout()
-        columns.setSpacing(12)
+        columns.setSpacing(8)
         self._columns = columns
         root.addLayout(columns)
 
@@ -434,56 +434,40 @@ class VideoConfigTab(QWidget):
         output_form.addRow("Chất lượng (CRF/CQ)", self.crf_spin)
         render_layout.addLayout(output_form)
 
-        render_layout.addWidget(self._panel_sep())
+        opt_row = QHBoxLayout()
+        opt_row.setSpacing(10)
+        self.write_srt_check = QCheckBox("Xuất file .srt phụ đề")
+        self.keep_temp_check = QCheckBox("Giữ thư mục tạm")
+        opt_row.addWidget(self.write_srt_check)
+        opt_row.addWidget(self.keep_temp_check)
+        opt_row.addStretch(1)
+        output_form.addRow("Tùy chọn", self._wrap(opt_row))
 
-        overlay_caption = QLabel("Lớp phủ và phụ đề")
-        overlay_caption.setObjectName("FieldLabel")
-        render_layout.addWidget(overlay_caption)
-
-        self.ken_burns_check = QCheckBox("Ken Burns (zoom nhẹ)")
-        self.showwaves_check = QCheckBox("Hiển thị sóng nhạc")
-        self.chapters_check = QCheckBox("Hiện tiêu đề chương trên hình")
-        self.subtitle_check = QCheckBox("Hiện phụ đề (theo lời đọc, đúng ngôn ngữ file)")
-        self.srt_check = QCheckBox("Gắn phụ đề từ file .srt có sẵn")
-        self.srt_check.setToolTip(
-            "Ưu tiên file .srt ở ô bên dưới; nếu để trống sẽ tự tìm <tên>.srt "
-            "cạnh file audio hoặc file kịch bản.")
-        self.write_srt_check = QCheckBox("Xuất thêm phụ đề .srt cạnh video (từ lời đọc)")
-        self.keep_temp_check = QCheckBox("Giữ thư mục tạm để kiểm tra")
-
-        render_layout.addWidget(self.subtitle_check)
-        render_layout.addWidget(self.srt_check)
-
-        srt_row = QHBoxLayout()
-        srt_row.setSpacing(6)
+        # Headless compat instances for tests / settings stability
+        self.ken_burns_check = QCheckBox()
+        self.showwaves_check = QCheckBox()
+        self.chapters_check = QCheckBox()
+        self.subtitle_check = QCheckBox()
+        self.subtitle_check.setChecked(True)
+        self.srt_check = QCheckBox()
         self.srt_edit = QLineEdit()
-        self.srt_edit.setPlaceholderText("Để trống: tự tìm <tên>.srt cạnh audio")
-        srt_row.addWidget(self.srt_edit, 1)
-        self.srt_browse = icon_button(
-            "file", "Chọn file phụ đề .srt…", role="muted", size=15, side=30
-        )
-        self.srt_browse.clicked.connect(
-            lambda: self._browse_into(self.srt_edit, "Chọn file phụ đề", _SRT_FILTER)
-        )
-        srt_row.addWidget(self.srt_browse)
-        self.srt_clear = icon_button(
-            "x", "Bỏ file phụ đề đã chọn", role="muted", size=14, side=30
-        )
-        self.srt_clear.clicked.connect(lambda: self.srt_edit.setText(""))
-        srt_row.addWidget(self.srt_clear)
-        render_layout.addLayout(srt_row)
+        self.srt_browse = QPushButton()
+        self.srt_clear = QPushButton()
         self.srt_check.toggled.connect(self._set_srt_enabled)
-        self._set_srt_enabled(self.srt_check.isChecked())
+        self._set_srt_enabled(False)
 
-        toggles = QGridLayout()
-        toggles.setHorizontalSpacing(12)
-        toggles.setVerticalSpacing(4)
-        toggles.addWidget(self.showwaves_check, 0, 0)
-        toggles.addWidget(self.chapters_check, 0, 1)
-        toggles.addWidget(self.ken_burns_check, 1, 0)
-        toggles.addWidget(self.write_srt_check, 1, 1)
-        toggles.addWidget(self.keep_temp_check, 2, 0)
-        render_layout.addLayout(toggles)
+        hint_box = QFrame()
+        hint_box.setObjectName("EditorToolbar")
+        hint_box.setStyleSheet(f"background:{theme.SURFACE_ALT}; border:1px solid {theme.BORDER}; border-radius:6px;")
+        h_row = QHBoxLayout(hint_box)
+        h_row.setContentsMargins(8, 6, 8, 6)
+        h_row.setSpacing(6)
+        h_lbl = QLabel("Phụ đề, sóng âm và lớp phủ được chỉnh trực quan tại tab Khung mẫu (Video Frame).")
+        h_lbl.setObjectName("MutedLabel")
+        h_lbl.setWordWrap(True)
+        h_row.addWidget(h_lbl, 1)
+        render_layout.addWidget(hint_box)
+
         right.addWidget(render_box)
         right.addStretch(1)
 
