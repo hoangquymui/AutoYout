@@ -526,6 +526,12 @@ class ProjectManager:
             cues_file = Path(cues_raw) if cues_raw else self.audio_dir / f"{base}.cues.json"
             if not cues_file.is_absolute():
                 cues_file = self.project_dir / cues_file
+            if (
+                cues_file.is_file()
+                or (self.audio_dir / f"{base}.srt").is_file()
+                or (txt_path and txt_path.with_suffix(".srt").is_file())
+            ):
+                dub_mode = "srt" 
 
             items[base] = ProjectItem(
                 base=base,

@@ -44,6 +44,7 @@ from core.youtube_uploader import (
     YouTubeUploader,
 )
 from utils.logger import get_logger
+from utils.media_probe import probe_duration
 
 logger = get_logger("pipeline")
 
@@ -435,17 +436,22 @@ class PipelineWorker(QThread):
         for item in self.manager.get_items():
             if not item.text.strip():
                 continue
+            srt_path = item.audio_path.with_suffix(".srt")
+            srt_exists = (
+                srt_path.is_file()
+                or (item.text_file and item.text_file.with_suffix(".srt").is_file())
+            )
+            has_audio = self.manager.audio_exists(item)
+            cues = load_cues(self.manager, item.base)
+            cues_pending = any(cue.status != "DONE" for cue in cues) if cues else False
+
             if (
                 (self.force and not is_retry)
-                or not self.manager.audio_exists(item)
+                or not has_audio
                 or item.state in (ITEM_PENDING, ITEM_TTS_PROCESSING)
+                or (cues and cues_pending)
             ):
                 targets.append(item)
-                continue
-            if getattr(item, "dub_mode", "text") == "srt":
-                cues = load_cues(self.manager, item.base)
-                if any(cue.status != "DONE" for cue in cues):
-                    targets.append(item)
         return targets
 
     def _stage_tts(self, start: float, end: float, is_retry: bool = False) -> List[str]:
@@ -498,10 +504,40 @@ class PipelineWorker(QThread):
                         f"TTS {_index + 1}/{total}: {_label} — {percent}%", True)
 
                 try:
-                    if getattr(item, "dub_mode", "text") == "srt" and self._try_dubbing(
-                        item, report, errors, label
-                    ):
+                    srt_path = item.audio_path.with_suffix(".srt")
+                    cues = load_cues(self.manager, item.base)
+                    has_audio = self.manager.audio_exists(item)
+                    cues_pending = any(cue.status != "DONE" for cue in cues) if cues else False
+
+                    # Quick recovery: nếu đã có audio và cues đã xong (hoặc không có cues), chỉ thiếu srt:
+                    if has_audio and not cues_pending and not srt_path.is_file() and not (self.force and not is_retry):
+                        if cues:
+                            try:
+                                engine = DubbingEngine(self.settings)
+                                dub_cfg = self.settings.get("dubbing") or {}
+                                mode = str(dub_cfg.get("timing_mode") or "natural")
+                                gap = float(dub_cfg.get("gap", 0.15) or 0.0)
+                                engine.join_item(self.manager, item, cues, mode=mode, gap=gap)
+                                logger.info("Đã ghép xuất SRT từ cues có sẵn cho %s.", item.base)
+                                report(100)
+                                continue
+                            except Exception as exc:
+                                logger.warning("Không thể ghép SRT từ cues: %s. Sẽ tạo từ kịch bản.", exc)
+
+                        from core.subtitles import text_to_cues, write_srt
+                        dur = float(item.duration or probe_duration(item.audio_path) or 1.0)
+                        sub_cues = text_to_cues(item.text, total_seconds=dur)
+                        if sub_cues:
+                            write_srt(sub_cues, srt_path)
+                            logger.info("Đã tự động tạo SRT cho %s (%.1fs, %d đoạn).", srt_path.name, dur, len(sub_cues))
+                            report(100)
+                            continue
+
+                    # Ưu tiên chế độ lồng tiếng nếu file có cues hoặc dub_mode == "srt"
+                    should_dub = getattr(item, "dub_mode", "text") == "srt" or bool(cues)
+                    if should_dub and self._try_dubbing(item, report, errors, label):
                         continue
+
                     language = language_of(item)
                     if language == "vi":
                         result = local_engine.synthesize(
@@ -533,6 +569,13 @@ class PipelineWorker(QThread):
                         duration=float(result.duration),
                         audio_mtime=mtime,
                     )
+                    # Luôn đảm bảo có file SRT khi dùng TTS toàn bài
+                    if not srt_path.is_file():
+                        from core.subtitles import text_to_cues, write_srt
+                        sub_cues = text_to_cues(item.text, total_seconds=float(result.duration))
+                        if sub_cues:
+                            write_srt(sub_cues, srt_path)
+                            logger.info("Đã tạo SRT %s sau khi TTS toàn bộ.", srt_path.name)
                     logger.log(
                         SUCCESS_LEVEL,
                         "TTS xong %s (%.1f phút, %d đoạn, %s).",
@@ -578,9 +621,12 @@ class PipelineWorker(QThread):
             if pieces:
                 cues = _cues_from_pieces(pieces)
                 save_cues(self.manager, item.base, cues)
+                self.manager.update_item(item.base, dub_mode="srt")
                 logger.info("Tự động chia đoạn %s: %d đoạn (%d-%d từ).", item.base, len(cues), min_w, max_w)
             else:
                 return False
+        else:
+            self.manager.update_item(item.base, dub_mode="srt")
         engine = DubbingEngine(self.settings)
         try:
             engine.synthesize_item(
@@ -622,7 +668,16 @@ class PipelineWorker(QThread):
             duration=float(duration),
             audio_mtime=mtime,
             audio_path=mp3,
+            dub_mode="srt",
         )
+        # Đảm bảo file SRT tồn tại cạnh file MP3
+        srt_path = mp3.with_suffix(".srt")
+        if not srt_path.is_file():
+            from core.subtitles import Cue, write_srt
+            srt_cues = [Cue(c.id, c.start, c.end, c.text) for c in cues if str(c.text or "").strip()]
+            if srt_cues:
+                write_srt(srt_cues, srt_path)
+                logger.info("Đã tạo srt kèm theo cho %s.", srt_path.name)
         logger.log(
             SUCCESS_LEVEL,
             "Lồng tiếng xong %s (%.1f phút, %d cue, %s).",

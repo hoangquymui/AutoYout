@@ -1542,10 +1542,36 @@ class FFmpegRenderer:
             return [(None, path)]
         sources: List[Tuple[Optional[ProjectItem], Path]] = []
         for item in items:
+            found = None
             for candidate in self._item_srt_candidates(manager, item):
                 if candidate.is_file():
-                    sources.append((item, candidate))
+                    found = candidate
                     break
+            if found is None:
+                # Tự động xuất SRT từ cues hoặc kịch bản nếu chưa có
+                srt_target = (
+                    item.audio_path.with_suffix(".srt")
+                    if item.audio_path
+                    else Path(manager.audio_dir) / f"{item.base}.srt"
+                )
+                from core.dubbing import load_cues
+                from core.subtitles import Cue, text_to_cues, write_srt
+                cues = load_cues(manager, item.base)
+                if cues:
+                    srt_cues = [Cue(c.id, c.start, c.end, c.text) for c in cues if str(c.text or "").strip()]
+                    if srt_cues:
+                        write_srt(srt_cues, srt_target)
+                        logger.info("FFmpeg: Tự động xuất SRT từ cues cho %s: %s", item.base, srt_target.name)
+                        found = srt_target
+                elif getattr(item, "text", "").strip():
+                    dur = item.duration or (probe_duration(item.audio_path) if manager.audio_exists(item) else 0.0)
+                    srt_cues = text_to_cues(item.text, total_seconds=float(dur))
+                    if srt_cues:
+                        write_srt(srt_cues, srt_target)
+                        logger.info("FFmpeg: Tự động tạo SRT từ kịch bản cho %s: %s", item.base, srt_target.name)
+                        found = srt_target
+            if found is not None and found.is_file():
+                sources.append((item, found))
         return sources
 
     def _srt_events(self, manager: ProjectManager, items: List[ProjectItem],

@@ -470,7 +470,7 @@ class DubbingTab(QWidget):
                     cues_exist = bool(load_cues(self._manager, item.base))
                 except Exception:
                     pass
-                if getattr(item, "dub_mode", "text") == "srt" or cues_exist:
+                if getattr(item, "dub_mode", "text") == "srt" or cues_exist or bool(getattr(item, "text", "").strip()):
                     bases.append((item.display_name or item.base, item.base))
         current = self._base or str(self.file_combo.currentData() or "")
         self.file_combo.blockSignals(True)
@@ -502,6 +502,17 @@ class DubbingTab(QWidget):
 
     def _reload_from_disk(self) -> None:
         self._cues = load_cues(self._manager, self._base) if self._manager and self._base else []
+        if not self._cues and self._manager and self._base:
+            item = self._manager.get_item(self._base)
+            if item and item.text.strip():
+                min_words = int(self.min_words_spin.value())
+                max_words = int(self.max_words_spin.value())
+                from core.dubbing import split_by_words, _cues_from_pieces, save_cues
+                pieces = split_by_words(item.text, min_words, max_words)
+                if pieces:
+                    self._cues = _cues_from_pieces(pieces)
+                    save_cues(self._manager, self._base, self._cues)
+                    self._manager.update_item(self._base, dub_mode="srt")
         self._fill_table()
         self._refresh_stats()
         self._refresh_buttons()
@@ -571,6 +582,7 @@ class DubbingTab(QWidget):
     def _save_cues(self) -> None:
         if self._manager is not None and self._base:
             save_cues(self._manager, self._base, self._cues)
+            self._manager.update_item(self._base, dub_mode="srt")
 
     # ── table ────────────────────────────────────────────────────────────────
     def _fill_table(self) -> None:
@@ -884,6 +896,7 @@ class DubbingTab(QWidget):
                     error="",
                     duration=float(duration),
                     audio_mtime=mtime,
+                    dub_mode="srt",
                 )
         self.reload_requested.emit()
 

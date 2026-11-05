@@ -86,7 +86,7 @@ def test_srt_item_without_cues_auto_splits_and_dubs(app, tmp_path: Path, monkeyp
     settings = load_settings()
     settings.setdefault("dubbing", {})["timing_mode"] = "timeline"
     completed: list[tuple[bool, str]] = []
-    worker = PipelineWorker(settings, manager, mode="tts")
+    worker = PipelineWorker(settings, manager, mode="tts", force=True)
     worker.completed.connect(lambda ok, message: completed.append((ok, message)))
     worker.run()
 
@@ -143,3 +143,52 @@ def test_srt_item_with_cues_uses_dubbing_engine(app, tmp_path: Path, monkeypatch
     assert item.audio_path.is_file()
     assert calls == ["synthesize", "join:natural"]
     assert not _FakeEngine.calls, "không được rơi về TTS toàn file"
+
+
+def test_missing_srt_auto_recovered_when_audio_exists(app, tmp_path: Path) -> None:
+    inputs = tmp_path / "script"
+    inputs.mkdir()
+    (inputs / "story.txt").write_text("Câu chuyện bắt đầu tại một ngôi làng nhỏ.", encoding="utf-8")
+    manager = ProjectManager(tmp_path)
+    manager.scan()
+    item = manager.get_item("story")
+    # Simulate audio file exists, but srt does NOT exist
+    item.audio_path.parent.mkdir(parents=True, exist_ok=True)
+    item.audio_path.write_bytes(b"ID3" + b"\0" * 64)
+    manager.update_item("story", state=ITEM_TTS_DONE, duration=3.0)
+
+    srt_path = item.audio_path.with_suffix(".srt")
+    assert not srt_path.is_file()
+
+    settings = load_settings()
+    completed = []
+    worker = PipelineWorker(settings, manager, mode="tts")
+    worker.completed.connect(lambda ok, msg: completed.append((ok, msg)))
+    worker.run()
+
+    assert completed and completed[0][0] is True
+    assert srt_path.is_file(), "File .srt phải được tự động tạo khi chỉ thiếu srt"
+    assert "Câu chuyện" in srt_path.read_text(encoding="utf-8")
+
+
+def test_ffmpeg_renderer_auto_recovers_missing_srt(tmp_path: Path) -> None:
+    from core.ffmpeg_renderer import FFmpegRenderer, VideoConfig
+    inputs = tmp_path / "script"
+    inputs.mkdir()
+    (inputs / "clip.txt").write_text("Đoạn video ngắn về công nghệ.", encoding="utf-8")
+    manager = ProjectManager(tmp_path)
+    manager.scan()
+    item = manager.get_item("clip")
+    item.audio_path.parent.mkdir(parents=True, exist_ok=True)
+    item.audio_path.write_bytes(b"ID3" + b"\0" * 64)
+    manager.update_item("clip", state=ITEM_TTS_DONE, duration=2.5)
+
+    srt_path = item.audio_path.with_suffix(".srt")
+    assert not srt_path.is_file()
+
+    renderer = FFmpegRenderer({})
+    cfg = VideoConfig(subtitle_srt=True)
+    sources = renderer._srt_sources(manager, [item], cfg)
+    assert len(sources) == 1
+    assert sources[0][1] == srt_path
+    assert srt_path.is_file(), "FFmpegRenderer phải tự tạo SRT từ kịch bản nếu thiếu"
