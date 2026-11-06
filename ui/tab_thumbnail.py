@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -27,6 +28,8 @@ from PySide6.QtWidgets import (
 )
 
 from core.ai_client import DEFAULT_MODEL
+from core.language_profiles import LanguageProfile, load_profiles
+from core.languages import language_name, normalize_language, normalize_language_code
 from core.thumbnail import (
     TEMPLATES,
     attach_thumbnail,
@@ -37,7 +40,7 @@ from core.thumbnail import (
 )
 from ui import theme
 from ui.components.icons import set_icon
-from ui.components.page import paint_status, wrap_scroll
+from ui.components.page import PageHeader, paint_status, wrap_scroll
 from utils.files import load_json, open_in_explorer
 from utils.logger import get_logger
 
@@ -128,6 +131,8 @@ class ThumbnailPanel(QWidget):
         self._title_worker: Optional[TitleWorker] = None
         self._image_worker: Optional[ImageWorker] = None
         self._status_level = "muted"
+        self.lang_checks: Dict[str, QCheckBox] = {}
+        self._gallery_entries: List[Tuple[str, Path]] = []
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -135,9 +140,17 @@ class ThumbnailPanel(QWidget):
         content.setObjectName("PageContent")
         outer.addWidget(wrap_scroll(content))
 
-        columns = QHBoxLayout(content)
-        columns.setContentsMargins(12, 12, 12, 8)
+        root = QVBoxLayout(content)
+        root.setContentsMargins(14, 14, 14, 10)
+        root.setSpacing(10)
+        root.addWidget(PageHeader(
+            "Thumbnail",
+            "Tạo và xuất ảnh bìa YouTube theo từng ngôn ngữ — lưu vào thư mục thumbs/<ngôn_ngữ>.",
+        ))
+
+        columns = QHBoxLayout()
         columns.setSpacing(12)
+        root.addLayout(columns, 1)
 
         left = QVBoxLayout()
         left.setSpacing(8)
@@ -146,6 +159,7 @@ class ThumbnailPanel(QWidget):
         right.setSpacing(8)
         columns.addLayout(right, 2)
 
+        left.addWidget(self._build_languages_group())
         left.addWidget(self._build_info_group())
         left.addWidget(self._build_highlight_group())
         left.addWidget(self._build_image_group())
@@ -160,10 +174,80 @@ class ThumbnailPanel(QWidget):
         self._preview_timer.timeout.connect(self._render_preview)
 
         self.title_edit.textChanged.connect(self._on_title_changed)
+        self.sync_languages()
         self._apply_theme_styles()
         self._refresh_buttons()
 
     # ── construction ─────────────────────────────────────────────────────────
+    def _build_languages_group(self) -> QGroupBox:
+        box = QGroupBox("Ngôn ngữ")
+        layout = QVBoxLayout(box)
+        layout.setSpacing(6)
+
+        self._lang_checks_host = QWidget()
+        self._lang_checks_layout = QGridLayout(self._lang_checks_host)
+        self._lang_checks_layout.setContentsMargins(0, 2, 0, 2)
+        self._lang_checks_layout.setHorizontalSpacing(14)
+        self._lang_checks_layout.setVerticalSpacing(6)
+        layout.addWidget(self._lang_checks_host)
+        return box
+
+    def sync_languages(self, profiles: Optional[List[Any]] = None) -> None:
+        checked_before = {
+            code: cb.isChecked() for code, cb in self.lang_checks.items()
+        }
+        saved_langs = (self._settings.get("thumbnail") or {}).get("languages")
+        if profiles is None:
+            try:
+                profiles = load_profiles()
+            except Exception:
+                profiles = []
+        items: List[Tuple[str, str]] = [("vi", "Tiếng Việt (vi)")]
+        seen = {"vi"}
+        if profiles:
+            for prof in profiles:
+                code = normalize_language_code(getattr(prof, "language", "") or "", "")
+                if not code:
+                    continue
+                custom = getattr(prof, "name", "") or language_name(code)
+                label = f"{custom} ({code})" if code not in custom else custom
+                if code in seen:
+                    items = [(c, label if c == code and getattr(prof, "name", "") else lbl) for c, lbl in items]
+                    continue
+                seen.add(code)
+                items.append((code, label))
+        else:
+            for code, label in [
+                ("en", "Tiếng Anh (en)"),
+                ("ja", "Tiếng Nhật (ja)"),
+                ("zh", "Tiếng Trung (zh)"),
+            ]:
+                if code not in seen:
+                    seen.add(code)
+                    items.append((code, label))
+
+        while self._lang_checks_layout.count():
+            child = self._lang_checks_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        self.lang_checks.clear()
+
+        cols_per_row = 4
+        for idx, (code, label) in enumerate(items):
+            cb = QCheckBox(label)
+            if code in checked_before:
+                cb.setChecked(checked_before[code])
+            elif isinstance(saved_langs, list) and saved_langs:
+                cb.setChecked(code in saved_langs)
+            else:
+                cb.setChecked(True)
+            self.lang_checks[code] = cb
+            self._lang_checks_layout.addWidget(cb, idx // cols_per_row, idx % cols_per_row)
+        self._lang_checks_layout.setColumnStretch(cols_per_row, 1)
+
+    def get_selected_languages(self) -> List[str]:
+        selected = [code for code, cb in self.lang_checks.items() if cb.isChecked()]
+        return selected or ["vi"]
     def _build_info_group(self) -> QGroupBox:
         box = QGroupBox("Nội dung && tiêu đề")
         layout = QVBoxLayout(box)
@@ -338,6 +422,26 @@ class ThumbnailPanel(QWidget):
         box = QGroupBox("Xem trước")
         layout = QVBoxLayout(box)
         layout.setSpacing(8)
+
+        gallery_row = QHBoxLayout()
+        gallery_row.setSpacing(6)
+        gallery_row.addWidget(QLabel("Ảnh đã xuất:"))
+        self.preview_gallery_combo = QComboBox()
+        self.preview_gallery_combo.setMinimumWidth(180)
+        self.preview_gallery_combo.currentIndexChanged.connect(self._on_gallery_selected)
+        gallery_row.addWidget(self.preview_gallery_combo, 1)
+        self.prev_thumb_btn = QPushButton("◀")
+        self.prev_thumb_btn.setFixedWidth(30)
+        self.prev_thumb_btn.setToolTip("Ảnh trước")
+        self.prev_thumb_btn.clicked.connect(lambda: self._step_gallery(-1))
+        self.next_thumb_btn = QPushButton("▶")
+        self.next_thumb_btn.setFixedWidth(30)
+        self.next_thumb_btn.setToolTip("Ảnh tiếp theo")
+        self.next_thumb_btn.clicked.connect(lambda: self._step_gallery(1))
+        gallery_row.addWidget(self.prev_thumb_btn)
+        gallery_row.addWidget(self.next_thumb_btn)
+        layout.addLayout(gallery_row)
+
         self.preview_label = QLabel("Chưa có ảnh nền")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setMinimumSize(480, 270)
@@ -386,6 +490,11 @@ class ThumbnailPanel(QWidget):
             if item is not None and item.data(Qt.ItemDataRole.UserRole) == template_id:
                 self.template_list.setCurrentRow(row)
                 break
+        self.sync_languages()
+        saved_langs = thumb.get("languages")
+        if isinstance(saved_langs, list) and saved_langs:
+            for code, cb in self.lang_checks.items():
+                cb.setChecked(code in saved_langs)
         self._on_provider_changed()
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
@@ -401,6 +510,7 @@ class ThumbnailPanel(QWidget):
         thumb["font_size"] = int(self.font_spin.value())
         thumb["frame_seconds"] = round(float(self.frame_spin.value()), 2)
         thumb["api_key"] = self.api_key_edit.text().strip()
+        thumb["languages"] = self.get_selected_languages()
         thumb.setdefault("title_max_chars", 60)
         thumb.setdefault("color_primary", "#3BFF35")
         thumb.setdefault("color_secondary", "#FF3B30")
@@ -469,6 +579,9 @@ class ThumbnailPanel(QWidget):
             f"Transcript: {len(self._transcript):,} ký tự.".replace(",", ".")
             if self._transcript.strip() else "Chưa có transcript — dùng nội dung input.")
         saved = Path(str(item.metadata.get("thumbnail_path") or ""))
+        item_lang = normalize_language(getattr(item, "language", "") or "vi")
+        if not saved.is_file() and hasattr(self._manager, "lang_dir"):
+            saved = self._manager.lang_dir("thumbs", item_lang, create=False) / f"{self._base}.jpg"
         if not saved.is_file():
             saved = Path(self._manager.thumbs_dir) / f"{self._base}.jpg"
         if saved.is_file():
@@ -477,16 +590,18 @@ class ThumbnailPanel(QWidget):
         self._auto_prompt = ""
         self._auto_fill_prompt()
         self._set_status("Sẵn sàng tạo thumbnail.", "muted")
+        self._refresh_gallery(select_path=saved if saved.is_file() else None)
         if self._bg_path is not None:
             self._schedule_preview()
-        else:
+        elif not self._gallery_entries:
             self._show_placeholder("Chưa có ảnh nền — bấm “Tạo ảnh nền”.")
         self._refresh_buttons()
 
     def _load_transcript(self, base: str, item) -> str:
         if self._manager is None:
             return item.text
-        data = load_json(Path(self._manager.script_dir) / f"{base}.json", None)
+        json_file = getattr(item, "json_file", None) or (Path(self._manager.script_dir) / f"{base}.json")
+        data = load_json(json_file, None)
         if isinstance(data, dict):
             segments = data.get("segments") or []
             text = " ".join(
@@ -495,6 +610,75 @@ class ThumbnailPanel(QWidget):
             if text.strip():
                 return text
         return item.text
+
+    def _refresh_gallery(self, select_path: Optional[Path] = None) -> None:
+        self._gallery_entries.clear()
+        self.preview_gallery_combo.blockSignals(True)
+        self.preview_gallery_combo.clear()
+        if self._manager is not None and Path(self._manager.thumbs_dir).exists():
+            thumbs_root = Path(self._manager.thumbs_dir)
+            # Scan language subfolders first
+            for subdir in sorted(thumbs_root.iterdir()):
+                if subdir.is_dir() and not subdir.name.startswith("."):
+                    lang_code = subdir.name
+                    for img in sorted(subdir.iterdir()):
+                        if (
+                            img.is_file()
+                            and img.suffix.lower() in (".jpg", ".jpeg", ".png")
+                            and not img.stem.endswith("_bg")
+                            and not img.stem.endswith("_draft")
+                        ):
+                            label = f"[{lang_code.upper()}] {img.name}"
+                            self._gallery_entries.append((label, img))
+                            self.preview_gallery_combo.addItem(label, str(img))
+            # Also scan flat files in thumbs/
+            for img in sorted(thumbs_root.iterdir()):
+                if (
+                    img.is_file()
+                    and img.suffix.lower() in (".jpg", ".jpeg", ".png")
+                    and not img.stem.endswith("_bg")
+                    and not img.stem.endswith("_draft")
+                ):
+                    label = img.name
+                    self._gallery_entries.append((label, img))
+                    self.preview_gallery_combo.addItem(label, str(img))
+
+        selected_idx = -1
+        if select_path is not None:
+            target_str = str(select_path.resolve()) if select_path.exists() else str(select_path)
+            for idx, (_lbl, p) in enumerate(self._gallery_entries):
+                p_str = str(p.resolve()) if p.exists() else str(p)
+                if p_str == target_str:
+                    selected_idx = idx
+                    break
+        if selected_idx < 0 and self._gallery_entries:
+            selected_idx = 0
+        if selected_idx >= 0:
+            self.preview_gallery_combo.setCurrentIndex(selected_idx)
+        self.preview_gallery_combo.blockSignals(False)
+        has_many = len(self._gallery_entries) > 1
+        self.prev_thumb_btn.setEnabled(has_many)
+        self.next_thumb_btn.setEnabled(has_many)
+        if selected_idx >= 0 and self._bg_path is None:
+            self._on_gallery_selected(selected_idx)
+
+    def _on_gallery_selected(self, index: int = -1) -> None:
+        if index < 0 or index >= len(self._gallery_entries):
+            return
+        _label, path = self._gallery_entries[index]
+        if path.is_file():
+            self._preview_file = path
+            self._pixmap = QPixmap(str(path))
+            self._show_pixmap()
+            self._set_status(f"Đang xem: {_label}", "muted")
+
+    def _step_gallery(self, delta: int) -> None:
+        count = len(self._gallery_entries)
+        if count <= 1:
+            return
+        cur = max(0, self.preview_gallery_combo.currentIndex())
+        nxt = (cur + delta) % count
+        self.preview_gallery_combo.setCurrentIndex(nxt)
 
     # ── titles ───────────────────────────────────────────────────────────────
     def _suggest_titles(self) -> None:
@@ -594,7 +778,15 @@ class ThumbnailPanel(QWidget):
         if provider != "frame" and not prompt:
             self._set_status("Prompt ảnh đang trống.", "warning")
             return
-        out = Path(self._manager.thumbs_dir) / f"{self._base}_bg.jpg"
+        item = self._manager.get_item(self._base)
+        item_lang = normalize_language_code(getattr(item, "language", "") or "vi")
+        thumbs_lang_dir = (
+            self._manager.lang_dir("thumbs", item_lang, create=True)
+            if hasattr(self._manager, "lang_dir")
+            else Path(self._manager.thumbs_dir) / item_lang
+        )
+        thumbs_lang_dir.mkdir(parents=True, exist_ok=True)
+        out = thumbs_lang_dir / f"{self._base}_bg.jpg"
         seconds = float(self.frame_spin.value())
         if provider == "frame":
             job = self._manager.video_for_item(self._base)
@@ -748,31 +940,67 @@ class ThumbnailPanel(QWidget):
         if not title:
             self._set_status("Hãy nhập tiêu đề thumbnail.", "warning")
             return
-        out = Path(self._manager.thumbs_dir) / f"{self._base}_draft.jpg"
+        selected_langs = self.get_selected_languages()
+        current_item = self._manager.get_item(self._base)
+        current_lang = normalize_language_code(getattr(current_item, "language", "") or "vi")
+        if not selected_langs:
+            selected_langs = [current_lang]
+
+        saved_targets: List[Path] = []
+        all_items = self._manager.get_items()
         try:
-            render_thumbnail(
-                self._bg_path, title, self._highlights, self._current_template_id(),
-                self._palette(), out, font_size=int(self.font_spin.value()))
-            target = attach_thumbnail(self._manager, self._base, out)
-            Path(out).unlink(missing_ok=True)
+            for lang_code in selected_langs:
+                lang_norm = normalize_language_code(lang_code)
+                thumbs_lang_dir = (
+                    self._manager.lang_dir("thumbs", lang_norm, create=True)
+                    if hasattr(self._manager, "lang_dir")
+                    else Path(self._manager.thumbs_dir) / lang_norm
+                )
+                thumbs_lang_dir.mkdir(parents=True, exist_ok=True)
+                # Find matching items for this language, or fall back to current_item
+                lang_items = [
+                    it for it in all_items
+                    if normalize_language_code(getattr(it, "language", "") or "") == lang_norm
+                ]
+                if not lang_items and current_item is not None:
+                    lang_items = [current_item]
+                for it in lang_items:
+                    item_title = (
+                        title
+                        if (it.base == self._base or len(selected_langs) == 1)
+                        else str(it.metadata.get("title") or title or it.base)
+                    )
+                    draft = thumbs_lang_dir / f"{it.base}_draft.jpg"
+                    render_thumbnail(
+                        self._bg_path, item_title, self._highlights, self._current_template_id(),
+                        self._palette(), draft, font_size=int(self.font_spin.value()))
+                    target = attach_thumbnail(self._manager, it.base, draft, language=lang_norm)
+                    Path(draft).unlink(missing_ok=True)
+                    saved_targets.append(target)
         except Exception as exc:
             logger.error("Lưu thumbnail lỗi: %s", exc)
             self._set_status(str(exc), "error")
             return
-        self._preview_file = target
-        self._pixmap = QPixmap(str(target))
+        if not saved_targets:
+            return
+        last_target = saved_targets[0]
+        self._preview_file = last_target
+        self._pixmap = QPixmap(str(last_target))
         self._show_pixmap()
-        self._set_status(f"Đã lưu {target.name}.", "success")
+        self._refresh_gallery(select_path=last_target)
+        self._set_status(
+            f"Đã lưu {len(saved_targets)} thumbnail theo ngôn ngữ ({', '.join(selected_langs)}).",
+            "success",
+        )
         self.thumbnail_saved.emit(self._base)
 
     def _open_thumbnail(self) -> None:
-        if self._manager is None or not self._base:
+        if self._manager is None:
             return
-        target = Path(self._manager.thumbs_dir) / f"{self._base}.jpg"
-        if target.is_file():
-            open_in_explorer(target)
-        else:
-            open_in_explorer(Path(self._manager.thumbs_dir))
+        if self._preview_file is not None and Path(self._preview_file).is_file():
+            open_in_explorer(Path(self._preview_file))
+            return
+        open_in_explorer(Path(self._manager.thumbs_dir))
 
     # ── helpers ──────────────────────────────────────────────────────────────
     def _api_key(self) -> str:

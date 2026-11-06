@@ -434,16 +434,9 @@ class VideoConfigTab(QWidget):
         output_form.addRow("Chất lượng (CRF/CQ)", self.crf_spin)
         render_layout.addLayout(output_form)
 
-        opt_row = QHBoxLayout()
-        opt_row.setSpacing(10)
+        # Headless compat instances for tests / settings stability
         self.write_srt_check = QCheckBox("Xuất file .srt phụ đề")
         self.keep_temp_check = QCheckBox("Giữ thư mục tạm")
-        opt_row.addWidget(self.write_srt_check)
-        opt_row.addWidget(self.keep_temp_check)
-        opt_row.addStretch(1)
-        output_form.addRow("Tùy chọn", self._wrap(opt_row))
-
-        # Headless compat instances for tests / settings stability
         self.ken_burns_check = QCheckBox()
         self.showwaves_check = QCheckBox()
         self.chapters_check = QCheckBox()
@@ -455,18 +448,6 @@ class VideoConfigTab(QWidget):
         self.srt_clear = QPushButton()
         self.srt_check.toggled.connect(self._set_srt_enabled)
         self._set_srt_enabled(False)
-
-        hint_box = QFrame()
-        hint_box.setObjectName("EditorToolbar")
-        hint_box.setStyleSheet(f"background:{theme.SURFACE_ALT}; border:1px solid {theme.BORDER}; border-radius:6px;")
-        h_row = QHBoxLayout(hint_box)
-        h_row.setContentsMargins(8, 6, 8, 6)
-        h_row.setSpacing(6)
-        h_lbl = QLabel("Phụ đề, sóng âm và lớp phủ được chỉnh trực quan tại tab Khung mẫu (Video Frame).")
-        h_lbl.setObjectName("MutedLabel")
-        h_lbl.setWordWrap(True)
-        h_row.addWidget(h_lbl, 1)
-        render_layout.addWidget(hint_box)
 
         right.addWidget(render_box)
         right.addStretch(1)

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
     QGraphicsDropShadowEffect,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -22,10 +23,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.language_profiles import load_profiles
+from core.languages import language_name, normalize_language, normalize_language_code
 from ui import theme
 from ui.components.icons import icon, set_icon
 from ui.components.log_console import LogConsole
 from ui.components.page import PageHeader, wrap_scroll
+from ui.tab_settings import ToggleSwitch
 
 
 class WorkflowConnector(QWidget):
@@ -73,6 +77,8 @@ class WorkflowConnector(QWidget):
 class WorkflowNodeCard(QFrame):
     """An n8n-style workflow node card with status chip and glowing ring when running."""
 
+    toggled_step = Signal(str, bool)
+
     def __init__(
         self,
         step_id: str,
@@ -83,6 +89,7 @@ class WorkflowNodeCard(QFrame):
         run_button: QPushButton,
         parent: Optional[QWidget] = None,
         total_steps: int = 5,
+        toggleable: bool = False,
     ) -> None:
         super().__init__(parent)
         self.step_id = step_id
@@ -92,6 +99,9 @@ class WorkflowNodeCard(QFrame):
         self.subtitle_text = subtitle
         self.icon_name = icon_name
         self.run_button = run_button
+        self.toggleable = toggleable
+        self._step_enabled = True
+        self._pipeline_idle = True
         self._state = "idle"  # idle | running | done | error
         self._glow_phase = 0.0
 
@@ -143,13 +153,46 @@ class WorkflowNodeCard(QFrame):
 
         layout.addStretch(1)
 
-        # Bottom row: run button cleanly right-aligned
+        # Bottom row: optional toggle on left + run button cleanly right-aligned
         bottom_row = QHBoxLayout()
+        self.enable_toggle: Optional[ToggleSwitch] = None
+        if self.toggleable:
+            self.enable_toggle = ToggleSwitch(checked=True, parent=self)
+            self.enable_toggle.setToolTip(f"Bật / tắt bước {title}")
+            self.enable_toggle.toggled.connect(self._on_toggle_changed)
+            bottom_row.addWidget(self.enable_toggle)
         bottom_row.addStretch(1)
         bottom_row.addWidget(run_button)
         layout.addLayout(bottom_row)
 
         self._apply_style()
+
+    def _on_toggle_changed(self, checked: bool) -> None:
+        self.set_step_enabled(checked)
+        self.toggled_step.emit(self.step_id, bool(checked))
+
+    def is_step_enabled(self) -> bool:
+        return bool(self._step_enabled)
+
+    def set_step_enabled(self, enabled: bool) -> None:
+        enabled = bool(enabled)
+        self._step_enabled = enabled
+        if self.enable_toggle is not None and self.enable_toggle.isChecked() != enabled:
+            self.enable_toggle.blockSignals(True)
+            self.enable_toggle.setChecked(enabled)
+            self.enable_toggle.blockSignals(False)
+        if not enabled:
+            self._glow_timer.stop()
+            self._shadow_effect.setEnabled(False)
+        self.run_button.setEnabled(self._pipeline_idle and enabled)
+        self._apply_style()
+        self.update()
+
+    def set_pipeline_idle(self, idle: bool) -> None:
+        self._pipeline_idle = bool(idle)
+        self.run_button.setEnabled(self._pipeline_idle and self._step_enabled)
+        if self.enable_toggle is not None:
+            self.enable_toggle.setEnabled(self._pipeline_idle)
 
     @property
     def state(self) -> str:
@@ -190,27 +233,38 @@ class WorkflowNodeCard(QFrame):
 
     def _apply_style(self) -> None:
         dark = theme.is_dark()
-        bg = "#111827" if dark else "#FFFFFF"
-        if self._state == "running":
-            border = "2px solid #00D2FF" if dark else "2px solid #0284C7"
-            chip_bg = "rgba(0, 210, 255, 0.18)" if dark else "rgba(2, 132, 199, 0.15)"
-            chip_color = "#38BDF8" if dark else "#0284C7"
-            chip_text = "⚡ ĐANG CHẠY..."
-        elif self._state == "done":
-            border = "2px solid #10B981"
-            chip_bg = "rgba(16, 185, 129, 0.18)"
-            chip_color = "#10B981"
-            chip_text = "✓ Hoàn thành"
-        elif self._state == "error":
-            border = "2px solid #EF4444"
-            chip_bg = "rgba(239, 68, 68, 0.18)"
-            chip_color = "#EF4444"
-            chip_text = "✕ Có lỗi"
+        if not self._step_enabled:
+            bg = "rgba(17, 24, 39, 0.42)" if dark else "rgba(241, 245, 249, 0.55)"
+            border = "1px dashed rgba(100, 116, 139, 0.35)"
+            chip_bg = "rgba(100, 116, 139, 0.08)"
+            chip_color = "rgba(148, 163, 184, 0.55)" if dark else "rgba(100, 116, 139, 0.55)"
+            chip_text = "Đã tắt"
+            title_color = "rgba(148, 163, 184, 0.45)" if dark else "rgba(100, 116, 139, 0.5)"
+            sub_color = "rgba(148, 163, 184, 0.38)" if dark else "rgba(148, 163, 184, 0.6)"
         else:
-            border = "1px solid #334155" if dark else "1px solid #CBD5E1"
-            chip_bg = "rgba(100, 116, 139, 0.12)"
-            chip_color = "#94A3B8" if dark else "#64748B"
-            chip_text = "Chờ chạy"
+            bg = "#111827" if dark else "#FFFFFF"
+            title_color = theme.TEXT
+            sub_color = theme.TEXT_MUTED
+            if self._state == "running":
+                border = "2px solid #00D2FF" if dark else "2px solid #0284C7"
+                chip_bg = "rgba(0, 210, 255, 0.18)" if dark else "rgba(2, 132, 199, 0.15)"
+                chip_color = "#38BDF8" if dark else "#0284C7"
+                chip_text = "⚡ ĐANG CHẠY..."
+            elif self._state == "done":
+                border = "2px solid #10B981"
+                chip_bg = "rgba(16, 185, 129, 0.18)"
+                chip_color = "#10B981"
+                chip_text = "✓ Hoàn thành"
+            elif self._state == "error":
+                border = "2px solid #EF4444"
+                chip_bg = "rgba(239, 68, 68, 0.18)"
+                chip_color = "#EF4444"
+                chip_text = "✕ Có lỗi"
+            else:
+                border = "1px solid #334155" if dark else "1px solid #CBD5E1"
+                chip_bg = "rgba(100, 116, 139, 0.12)"
+                chip_color = "#94A3B8" if dark else "#64748B"
+                chip_text = "Chờ chạy"
 
         self.setStyleSheet(f"""
             QFrame#{self.objectName()} {{
@@ -219,6 +273,8 @@ class WorkflowNodeCard(QFrame):
                 border-radius: 12px;
             }}
         """)
+        self.title_label.setStyleSheet(f"font-weight: 700; font-size: 12.5px; color: {title_color};")
+        self.subtitle_label.setStyleSheet(f"font-size: 11px; line-height: 1.3; color: {sub_color};")
         self.status_chip.setText(chip_text)
         self.status_chip.setStyleSheet(f"""
             background-color: {chip_bg};
@@ -232,7 +288,8 @@ class WorkflowNodeCard(QFrame):
         self._update_icon()
 
     def _update_icon(self) -> None:
-        ic = icon(self.icon_name, theme.icon_color("accent"), 18)
+        role = "muted" if not getattr(self, "_step_enabled", True) else "accent"
+        ic = icon(self.icon_name, theme.icon_color(role), 18)
         self.icon_box.setPixmap(ic.pixmap(QSize(18, 18)))
 
     def paintEvent(self, event) -> None:  # noqa: N802
@@ -328,32 +385,36 @@ class AutomationTab(QWidget):
         url_row.addWidget(self.btn_clear)
         quick_layout.addLayout(url_row)
 
+        # Topic Name row
+        topic_row = QHBoxLayout()
+        topic_row.setSpacing(8)
+        lbl_topic = QLabel("Tên đề tài:")
+        lbl_topic.setStyleSheet("font-weight: 600;")
+        lbl_topic.setMinimumWidth(84)
+        self.topic_input = QLineEdit()
+        self.topic_input.setPlaceholderText(
+            "Nhập tên đề tài / tên file kịch bản (để trống nếu muốn giữ tên mặc định từ YouTube)"
+        )
+        topic_row.addWidget(lbl_topic)
+        topic_row.addWidget(self.topic_input, 1)
+        quick_layout.addLayout(topic_row)
+
         # Target Languages row
         lang_row = QHBoxLayout()
         lang_row.setSpacing(12)
         lbl_lang = QLabel("Ngôn ngữ mục tiêu:")
         lbl_lang.setStyleSheet("font-weight: 600;")
-        lang_row.addWidget(lbl_lang)
+        lang_row.addWidget(lbl_lang, 0, Qt.AlignmentFlag.AlignTop)
 
-        self.lang_checkboxes_layout = QHBoxLayout()
-        self.lang_checkboxes_layout.setSpacing(12)
+        self.lang_checkboxes_layout = QGridLayout()
+        self.lang_checkboxes_layout.setContentsMargins(0, 0, 0, 0)
+        self.lang_checkboxes_layout.setHorizontalSpacing(14)
+        self.lang_checkboxes_layout.setVerticalSpacing(6)
         self._lang_checkboxes: Dict[str, QCheckBox] = {}
 
-        popular_languages = [
-            ("vi", "Tiếng Việt (vi)"),
-            ("en", "Tiếng Anh (en)"),
-            ("ja", "Tiếng Nhật (ja)"),
-            ("zh", "Tiếng Trung (zh)"),
-        ]
-        for code, label in popular_languages:
-            cb = QCheckBox(label)
-            cb.setChecked(True)
-            self._lang_checkboxes[code] = cb
-            self.lang_checkboxes_layout.addWidget(cb)
-
-        lang_row.addLayout(self.lang_checkboxes_layout)
-        lang_row.addStretch(1)
+        lang_row.addLayout(self.lang_checkboxes_layout, 1)
         quick_layout.addLayout(lang_row)
+        self.sync_languages()
 
         # Action Buttons row
         btn_action_row = QHBoxLayout()
@@ -463,6 +524,7 @@ class AutomationTab(QWidget):
             "film",
             self.btn_video,
             total_steps=5,
+            toggleable=True,
         )
         self.conn_3 = WorkflowConnector()
 
@@ -474,6 +536,7 @@ class AutomationTab(QWidget):
             "image",
             self.btn_thumbnail,
             total_steps=5,
+            toggleable=True,
         )
         self.conn_4 = WorkflowConnector()
 
@@ -485,6 +548,7 @@ class AutomationTab(QWidget):
             "upload",
             self.btn_upload,
             total_steps=5,
+            toggleable=True,
         )
 
         self.nodes: Dict[str, WorkflowNodeCard] = {
@@ -654,6 +718,55 @@ class AutomationTab(QWidget):
     def set_youtube_url(self, url: str) -> None:
         self.url_input.setText(str(url or "").strip())
 
+    def get_topic_name(self) -> str:
+        return self.topic_input.text().strip()
+
+    def set_topic_name(self, topic: str) -> None:
+        self.topic_input.setText(str(topic or "").strip())
+
+    def sync_languages(self, profiles: Optional[List[Any]] = None) -> None:
+        checked_before = {
+            code: cb.isChecked() for code, cb in self._lang_checkboxes.items()
+        }
+        if profiles is None:
+            try:
+                profiles = load_profiles()
+            except Exception:
+                profiles = []
+        items: List[tuple[str, str]] = [
+            ("vi", "Tiếng Việt (vi)"),
+            ("en", "Tiếng Anh (en)"),
+            ("ja", "Tiếng Nhật (ja)"),
+            ("zh", "Tiếng Trung (zh)"),
+        ]
+        seen = {"vi", "en", "ja", "zh"}
+        if profiles:
+            for prof in profiles:
+                code = normalize_language_code(getattr(prof, "language", "") or "", "")
+                if not code:
+                    continue
+                custom = getattr(prof, "name", "") or language_name(code)
+                label = f"{custom} ({code})" if code not in custom else custom
+                if code in seen:
+                    items = [(c, label if c == code and getattr(prof, "name", "") else lbl) for c, lbl in items]
+                    continue
+                seen.add(code)
+                items.append((code, label))
+
+        while self.lang_checkboxes_layout.count():
+            child = self.lang_checkboxes_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        self._lang_checkboxes.clear()
+
+        cols_per_row = 4
+        for idx, (code, label) in enumerate(items):
+            cb = QCheckBox(label)
+            cb.setChecked(checked_before.get(code, True))
+            self._lang_checkboxes[code] = cb
+            self.lang_checkboxes_layout.addWidget(cb, idx // cols_per_row, idx % cols_per_row)
+        self.lang_checkboxes_layout.setColumnStretch(cols_per_row, 1)
+
     def get_target_languages(self) -> List[str]:
         return [code for code, cb in self._lang_checkboxes.items() if cb.isChecked()]
 
@@ -668,15 +781,16 @@ class AutomationTab(QWidget):
             cb.setChecked(checked)
             return cb
         try:
-            from core.languages import language_name
             display = name or language_name(code)
         except Exception:
             display = name or code
         label = f"{display} ({code})" if code not in display else display
         cb = QCheckBox(label)
         cb.setChecked(checked)
+        idx = len(self._lang_checkboxes)
+        cols_per_row = 4
         self._lang_checkboxes[code] = cb
-        self.lang_checkboxes_layout.addWidget(cb)
+        self.lang_checkboxes_layout.addWidget(cb, idx // cols_per_row, idx % cols_per_row)
         return cb
 
     def _on_run_full_clicked(self) -> None:
@@ -696,6 +810,13 @@ class AutomationTab(QWidget):
         auto = settings.get("automation") or {}
         url = auto.get("youtube_url", "")
         self.set_youtube_url(url)
+        self.set_topic_name(str(auto.get("topic_name") or ""))
+
+        self.card_video.set_step_enabled(bool(auto.get("video_enabled", True)))
+        self.card_thumbnail.set_step_enabled(bool(auto.get("thumbnail_enabled", True)))
+        self.card_upload.set_step_enabled(bool(auto.get("upload_enabled", True)))
+
+        self.sync_languages()
 
         target_langs = auto.get("target_languages")
         script_langs = (settings.get("script") or {}).get("languages")
@@ -718,16 +839,19 @@ class AutomationTab(QWidget):
         elif codes_from_script:
             self.set_target_languages(codes_from_script)
         else:
-            for code in ("vi", "en", "ja", "zh"):
-                if code in self._lang_checkboxes:
-                    self._lang_checkboxes[code].setChecked(True)
+            for cb in self._lang_checkboxes.values():
+                cb.setChecked(True)
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
         if "automation" not in settings or not isinstance(settings["automation"], dict):
             settings["automation"] = {}
         settings["automation"]["youtube_url"] = self.get_youtube_url()
+        settings["automation"]["topic_name"] = self.get_topic_name()
         settings["automation"]["target_languages"] = self.get_target_languages()
+        settings["automation"]["video_enabled"] = self.card_video.is_step_enabled()
+        settings["automation"]["thumbnail_enabled"] = self.card_thumbnail.is_step_enabled()
+        settings["automation"]["upload_enabled"] = self.card_upload.is_step_enabled()
 
     # ── State updates (called by MainWindow / PipelineWorker) ────────────────
     def set_overall(self, value: int, detail: str = "") -> None:
@@ -843,21 +967,15 @@ class AutomationTab(QWidget):
         self._paint_status_colors()
 
     def set_actions(self, idle: bool, running: bool) -> None:
-        buttons = [
-            self.btn_script,
-            self.btn_tts,
-            self.btn_video,
-            self.btn_thumbnail,
-            self.btn_upload,
-            self.btn_run_full,
-            self.btn_run_project,
-        ]
-        if hasattr(self, "btn_all") and self.btn_all not in buttons:
-            buttons.append(self.btn_all)
-        for button in buttons:
+        for button in (self.btn_run_full, self.btn_run_project):
             button.setEnabled(idle)
+        if hasattr(self, "btn_all") and self.btn_all not in (self.btn_run_full, self.btn_run_project):
+            self.btn_all.setEnabled(idle)
+        for node in self.nodes.values():
+            node.set_pipeline_idle(idle)
 
         self.url_input.setEnabled(idle)
+        self.topic_input.setEnabled(idle)
         self.btn_paste.setEnabled(idle)
         self.btn_clear.setEnabled(idle)
         for cb in self._lang_checkboxes.values():

@@ -57,6 +57,7 @@ from core.languages import (
     language_choices,
     language_name,
     normalize_language,
+    normalize_language_code,
 )
 from core.subtitles import cues_to_dicts
 from core.text_processor import count_words
@@ -501,6 +502,7 @@ class ScriptWorker(QThread):
 class ScriptTab(QWidget):
     busy_changed = Signal(bool)
     reload_requested = Signal()
+    languages_changed = Signal(list)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -513,6 +515,7 @@ class ScriptTab(QWidget):
         self._profiles: List[LanguageProfile] = []
         self._clean_prompt: str = DEFAULT_CLEAN_PROMPT
         self._script_dir: Optional[Path] = None
+        self._manager = None
         self._source_lang: Optional[str] = None
         self._source_text: str = ""
         self._source_row: int = -1
@@ -579,26 +582,12 @@ class ScriptTab(QWidget):
         self.topic_edit.setToolTip("Đặt tên đề tài / tên tệp kịch bản. Để trống nếu muốn giữ tên mặc định từ video YouTube.")
         layout.addWidget(self.topic_edit)
 
-        self.fetch_button = QPushButton("Lấy transcript")
-        self.fetch_button.setObjectName("primaryButton")
-        set_icon(self.fetch_button, "download", "white", 15)
-        self.fetch_button.clicked.connect(self._fetch_transcript)
-        self.cancel_button = QPushButton("Huỷ")
-        set_icon(self.cancel_button, "x", "muted", 13)
-        self.cancel_button.setEnabled(False)
-        self.cancel_button.clicked.connect(self.cancel)
-        action_row = QHBoxLayout()
-        action_row.setSpacing(8)
-        action_row.addWidget(self.fetch_button)
-        action_row.addWidget(self.cancel_button)
-        action_row.addStretch(1)
-        layout.addLayout(action_row)
-
         self.status_label = QLabel("Sẵn sàng.")
         self.status_label.setObjectName("MutedLabel")
         self.status_label.setWordWrap(True)
         paint_status(self.status_label, "muted")
         layout.addWidget(self.status_label)
+        layout.addStretch(1)
         return box
 
     def _build_transcript_box(self) -> QGroupBox:
@@ -633,14 +622,26 @@ class ScriptTab(QWidget):
         grid.setVerticalSpacing(8)
         grid.setColumnStretch(1, 1)
 
-        grid.addWidget(QLabel("Model AI"), 0, 0)
-        self.model_combo = QComboBox()
+        # Keep model_combo hidden for settings/test compatibility
+        self.model_combo = QComboBox(box)
         self.model_combo.setEditable(True)
         for label, model_id in GEMINI_TEXT_MODELS:
             self.model_combo.addItem(label, model_id)
-        self.model_combo.setToolTip(
-            "Model Gemini dùng để làm sạch và chuyển thể — có thể gõ tên model khác")
-        grid.addWidget(self.model_combo, 0, 1, 1, 3)
+        self.model_combo.hide()
+
+        fetch_row = QHBoxLayout()
+        fetch_row.setSpacing(6)
+        self.fetch_button = QPushButton("Lấy transcript")
+        self.fetch_button.setObjectName("primaryButton")
+        set_icon(self.fetch_button, "download", "white", 15)
+        self.fetch_button.clicked.connect(self._fetch_transcript)
+        self.cancel_button = QPushButton("Huỷ")
+        set_icon(self.cancel_button, "x", "muted", 13)
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.clicked.connect(self.cancel)
+        fetch_row.addWidget(self.fetch_button, 1)
+        fetch_row.addWidget(self.cancel_button)
+        grid.addLayout(fetch_row, 0, 0, 1, 2)
 
         clean_row = QHBoxLayout()
         clean_row.setSpacing(6)
@@ -753,7 +754,9 @@ class ScriptTab(QWidget):
         self._set_model(model)
         self._clean_prompt = str(cfg.get("transcript_clean_prompt") or DEFAULT_CLEAN_PROMPT)
         self._profiles = load_profiles()
+        self._ensure_profile_folders()
         self._reload_targets()
+        self.languages_changed.emit(list(self._profiles))
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         cfg = settings.setdefault("script", {})
@@ -781,8 +784,9 @@ class ScriptTab(QWidget):
         else:
             self._profiles.append(LanguageProfile(language, prompt, name=name))
         self._persist_profiles()
+        self._ensure_profile_folders()
         self._reload_targets()
-        self._reload_targets()
+        self.languages_changed.emit(list(self._profiles))
 
     def _manage_languages(self) -> None:
         if not self._profiles:
@@ -796,7 +800,17 @@ class ScriptTab(QWidget):
         finally:
             dialog.deleteLater()
         self._persist_profiles()
+        self._ensure_profile_folders()
         self._reload_targets()
+        self.languages_changed.emit(list(self._profiles))
+
+    def _ensure_profile_folders(self) -> None:
+        codes = [normalize_language_code(p.language, p.language) for p in self._profiles if p.language]
+        if self._manager is not None and hasattr(self._manager, "ensure_language_dirs"):
+            self._manager.ensure_language_dirs(codes)
+        elif self._script_dir is not None:
+            for code in codes:
+                (self._script_dir / code).mkdir(parents=True, exist_ok=True)
 
     def _persist_profiles(self) -> None:
         try:
@@ -860,6 +874,7 @@ class ScriptTab(QWidget):
 
     # ── project context ──────────────────────────────────────────────────────
     def set_project(self, manager) -> None:
+        self._manager = manager
         if manager is None:
             self._script_dir = None
             self.output_label.setText(
@@ -867,6 +882,7 @@ class ScriptTab(QWidget):
             self._set_actions_enabled(False)
             return
         self._script_dir = Path(manager.script_dir)
+        self._ensure_profile_folders()
         self.output_label.setText(f"Kịch bản: {self._script_dir}")
         self._set_actions_enabled(self._worker is None)
 
@@ -1206,13 +1222,20 @@ class ScriptTab(QWidget):
         base = self._base_name()
         topic = self.topic_edit.text().strip()
         display_title = topic or str(self._meta.get("title") or base)
-        target = self._script_dir / f"{base}_{language}.txt"
+        lang_code = normalize_language_code(language, language)
+        if self._manager is not None and hasattr(self._manager, "lang_dir"):
+            self._manager.ensure_language_dirs([lang_code])
+            lang_script_dir = self._manager.lang_dir("script", lang_code, create=True)
+        else:
+            lang_script_dir = self._script_dir / lang_code
+            lang_script_dir.mkdir(parents=True, exist_ok=True)
+        target = lang_script_dir / f"{base}_{lang_code}.txt"
         try:
             target.write_text(text.strip() + "\n", encoding="utf-8", newline="\n")
-            is_source = language == (self._source_lang or DEFAULT_LANGUAGE)
+            is_source = lang_code == normalize_language_code(self._source_lang or DEFAULT_LANGUAGE)
             write_json_atomic(target.with_suffix(".json"), {
-                "title": display_title if is_source else f"{display_title} [{language.upper()}]",
-                "language": language,
+                "title": display_title if is_source else f"{display_title} [{lang_code.upper()}]",
+                "language": lang_code,
                 "url": str(self._meta.get("url") or ""),
             })
         except OSError as exc:

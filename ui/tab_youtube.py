@@ -33,7 +33,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.languages import LANGUAGES, language_name, normalize_language
+from core.language_profiles import load_profiles
+from core.languages import LANGUAGES, language_name, normalize_language, normalize_language_code
 
 from core.project_manager import (
     VIDEO_DONE,
@@ -143,10 +144,46 @@ def _make_language_chips_widget(langs: List[str]) -> QWidget:
     return container
 
 
+def _configured_languages(profiles: Optional[List[Any]] = None) -> List[Tuple[str, str]]:
+    """Return ``(code, display_name)`` pairs from script language profiles (with ``vi`` first)."""
+    if profiles is None:
+        try:
+            profiles = load_profiles()
+        except Exception:
+            profiles = []
+    items: List[Tuple[str, str]] = [("vi", "Tiếng Việt")]
+    seen = {"vi"}
+    if profiles:
+        for prof in profiles:
+            code = normalize_language_code(getattr(prof, "language", "") or "", "")
+            if not code:
+                continue
+            custom = getattr(prof, "name", "") or language_name(code)
+            if code in seen:
+                if getattr(prof, "name", ""):
+                    items = [(c, custom if c == code else lbl) for c, lbl in items]
+                continue
+            seen.add(code)
+            items.append((code, custom))
+    else:
+        for code, label in [
+            ("en", "Tiếng Anh"),
+            ("ja", "Tiếng Nhật"),
+            ("zh", "Tiếng Trung"),
+            ("ko", "Tiếng Hàn"),
+            ("fr", "Tiếng Pháp"),
+        ]:
+            if code not in seen:
+                seen.add(code)
+                items.append((code, label))
+    return items
+
+
 class AssignLanguagesDialog(QDialog):
     """Dialog for assigning target languages to a YouTube channel."""
 
-    def __init__(self, channel_name: str, current_langs: List[str], parent=None) -> None:
+    def __init__(self, channel_name: str, current_langs: List[str], parent=None,
+                 profiles: Optional[List[Any]] = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"Gán ngôn ngữ chỉ định — {channel_name}")
         self.setMinimumWidth(460)
@@ -164,11 +201,14 @@ class AssignLanguagesDialog(QDialog):
         self.all_cb.setStyleSheet("font-weight: bold; margin-bottom: 4px;")
         layout.addWidget(self.all_cb)
 
-        grid_box = QGroupBox("Ngôn ngữ phổ biến")
+        grid_box = QGroupBox("Ngôn ngữ đã cấu hình")
         grid = QGridLayout(grid_box)
         grid.setSpacing(8)
         self.checkboxes: Dict[str, QCheckBox] = {}
-        for idx, (code, label) in enumerate(COMMON_LANGUAGES):
+        lang_items = _configured_languages(profiles)
+        for idx, (code, name) in enumerate(lang_items):
+            flag = LANGUAGE_FLAGS.get(code, "🌐")
+            label = f"{flag} {name} ({code})" if code not in name else f"{flag} {name}"
             cb = QCheckBox(label)
             self.checkboxes[code] = cb
             grid.addWidget(cb, idx // 2, idx % 2)
@@ -365,7 +405,6 @@ class YouTubeConfigTab(QWidget):
 
         self.thumbnail_panel = ThumbnailPanel()
         self.thumbnail_panel.thumbnail_saved.connect(self.thumbnail_saved.emit)
-        self.sub_tabs.addTab(self.thumbnail_panel, "Thumbnail")
 
         content = QWidget()
         content.setObjectName("PageContent")
@@ -1184,10 +1223,11 @@ class YouTubeConfigTab(QWidget):
         self.login_button.setEnabled(enabled)
         self.check_button.setEnabled(enabled)
 
-        if hasattr(self, "sub_tabs") and self.sub_tabs.count() > 2:
-            self.sub_tabs.setTabVisible(2, not browser)
-            if browser and self.sub_tabs.currentIndex() == 2:
-                self.sub_tabs.setCurrentIndex(1)
+        if hasattr(self, "sub_tabs") and self.sub_tabs.count() >= 2:
+            acc_tab_idx = self.sub_tabs.count() - 1
+            self.sub_tabs.setTabVisible(acc_tab_idx, not browser)
+            if browser and self.sub_tabs.currentIndex() == acc_tab_idx:
+                self.sub_tabs.setCurrentIndex(0)
 
         self.channels_changed.emit()
 
@@ -1447,22 +1487,16 @@ class YouTubeConfigTab(QWidget):
         langs_box = QWidget()
         langs_vbox = QVBoxLayout(langs_box)
         langs_vbox.setContentsMargins(0, 0, 0, 0)
-        langs_vbox.setSpacing(4)
+        langs_vbox.setSpacing(6)
 
-        langs_row1 = QHBoxLayout()
-        langs_row1.setSpacing(8)
+        self.acc_lang_grid = QGridLayout()
+        self.acc_lang_grid.setContentsMargins(0, 0, 0, 0)
+        self.acc_lang_grid.setHorizontalSpacing(12)
+        self.acc_lang_grid.setVerticalSpacing(6)
         self.acc_lang_all_cb = QCheckBox("🌐 Tất cả")
         self.acc_lang_all_cb.setChecked(True)
-        langs_row1.addWidget(self.acc_lang_all_cb)
-
         self.acc_lang_checkboxes: Dict[str, QCheckBox] = {}
-        for code, _ in COMMON_LANGUAGES[:6]:
-            cb = QCheckBox(f"{LANGUAGE_FLAGS.get(code, '')} {code.upper()}")
-            cb.setToolTip(language_name(code))
-            self.acc_lang_checkboxes[code] = cb
-            langs_row1.addWidget(cb)
-        langs_row1.addStretch(1)
-        langs_vbox.addLayout(langs_row1)
+        langs_vbox.addLayout(self.acc_lang_grid)
 
         langs_row2 = QHBoxLayout()
         langs_row2.setSpacing(6)
@@ -1474,34 +1508,10 @@ class YouTubeConfigTab(QWidget):
         langs_row2.addStretch(1)
         langs_vbox.addLayout(langs_row2)
 
-        def _on_all_toggled(checked: bool) -> None:
-            if checked:
-                for c in self.acc_lang_checkboxes.values():
-                    c.blockSignals(True)
-                    c.setChecked(False)
-                    c.blockSignals(False)
-                self.acc_lang_other_edit.setEnabled(False)
-            else:
-                self.acc_lang_other_edit.setEnabled(True)
-
-        def _on_lang_toggled(_checked: bool) -> None:
-            any_checked = any(c.isChecked() for c in self.acc_lang_checkboxes.values()) or bool(self.acc_lang_other_edit.text().strip())
-            if any_checked:
-                self.acc_lang_all_cb.blockSignals(True)
-                self.acc_lang_all_cb.setChecked(False)
-                self.acc_lang_all_cb.blockSignals(False)
-                self.acc_lang_other_edit.setEnabled(True)
-            else:
-                self.acc_lang_all_cb.blockSignals(True)
-                self.acc_lang_all_cb.setChecked(True)
-                self.acc_lang_all_cb.blockSignals(False)
-                self.acc_lang_other_edit.setEnabled(False)
-
-        self.acc_lang_all_cb.toggled.connect(_on_all_toggled)
-        for cb in self.acc_lang_checkboxes.values():
-            cb.toggled.connect(_on_lang_toggled)
-        self.acc_lang_other_edit.textChanged.connect(lambda: _on_lang_toggled(True))
+        self.acc_lang_all_cb.toggled.connect(self._on_acc_lang_all_toggled)
+        self.acc_lang_other_edit.textChanged.connect(lambda: self._on_acc_lang_item_toggled(True))
         self.acc_lang_other_edit.setEnabled(False)
+        self.sync_languages()
 
         add_form.addRow("Ngôn ngữ chỉ định", self._wrap(langs_vbox))
 
@@ -1578,6 +1588,56 @@ class YouTubeConfigTab(QWidget):
 
         root.addWidget(list_box, 1)
         return page
+
+    def _on_acc_lang_all_toggled(self, checked: bool) -> None:
+        if checked:
+            for c in self.acc_lang_checkboxes.values():
+                c.blockSignals(True)
+                c.setChecked(False)
+                c.blockSignals(False)
+            self.acc_lang_other_edit.setEnabled(False)
+        else:
+            self.acc_lang_other_edit.setEnabled(True)
+
+    def _on_acc_lang_item_toggled(self, _checked: bool) -> None:
+        any_checked = any(c.isChecked() for c in self.acc_lang_checkboxes.values()) or bool(self.acc_lang_other_edit.text().strip())
+        if any_checked:
+            self.acc_lang_all_cb.blockSignals(True)
+            self.acc_lang_all_cb.setChecked(False)
+            self.acc_lang_all_cb.blockSignals(False)
+            self.acc_lang_other_edit.setEnabled(True)
+        else:
+            self.acc_lang_all_cb.blockSignals(True)
+            self.acc_lang_all_cb.setChecked(True)
+            self.acc_lang_all_cb.blockSignals(False)
+            self.acc_lang_other_edit.setEnabled(False)
+
+    def sync_languages(self, profiles: Optional[List[Any]] = None) -> None:
+        self._last_profiles = profiles
+        checked_before = {
+            code: cb.isChecked() for code, cb in self.acc_lang_checkboxes.items()
+        }
+        items = _configured_languages(profiles)
+        self.acc_lang_grid.removeWidget(self.acc_lang_all_cb)
+        while self.acc_lang_grid.count():
+            child = self.acc_lang_grid.takeAt(0)
+            if child.widget() and child.widget() is not self.acc_lang_all_cb:
+                child.widget().deleteLater()
+        self.acc_lang_checkboxes.clear()
+
+        cols_per_row = 5
+        self.acc_lang_grid.addWidget(self.acc_lang_all_cb, 0, 0)
+        for idx, (code, name) in enumerate(items, start=1):
+            flag = LANGUAGE_FLAGS.get(code, "🌐")
+            cb = QCheckBox(f"{flag} {code.upper()}")
+            cb.setToolTip(f"{name} ({code})" if code not in name else name)
+            cb.setChecked(checked_before.get(code, False))
+            cb.toggled.connect(self._on_acc_lang_item_toggled)
+            self.acc_lang_checkboxes[code] = cb
+            self.acc_lang_grid.addWidget(cb, idx // cols_per_row, idx % cols_per_row)
+        self.acc_lang_grid.setColumnStretch(cols_per_row, 1)
+        if hasattr(self, "thumbnail_panel"):
+            self.thumbnail_panel.sync_languages(profiles)
 
     def _browse_acc_secret(self) -> None:
         start = self.acc_secret_edit.text().strip() or str(Path.home())
@@ -1821,7 +1881,12 @@ class YouTubeConfigTab(QWidget):
             except Exception:
                 pass
         current = current or []
-        dlg = AssignLanguagesDialog(channel_name, current, self)
+        dlg = AssignLanguagesDialog(
+            channel_name,
+            current,
+            self,
+            profiles=getattr(self, "_last_profiles", None),
+        )
         if dlg.exec():
             new_langs = dlg.get_languages()
             self._save_channel_languages(channel_name, new_langs)

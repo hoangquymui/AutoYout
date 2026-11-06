@@ -49,6 +49,7 @@ from ui.tab_settings import SettingsTab
 from ui.tab_script import ScriptTab
 from ui.tab_dubbing import DubbingTab
 from ui.tab_frame import FrameTab
+from ui.tab_thumbnail import ThumbnailPanel
 from ui.tab_video import VideoConfigTab
 from ui.tab_youtube import YouTubeConfigTab
 from ui.console_window import ConsoleWindow
@@ -158,13 +159,16 @@ class MainWindow(QMainWindow):
         self.tts_tab = DubbingTab()
         self.video_tab = VideoConfigTab()
         self.frame_tab = self.video_tab.frame_tab
+        self.thumbnail_tab = ThumbnailPanel()
         self.youtube_tab = YouTubeConfigTab()
+        self.youtube_tab.thumbnail_panel = self.thumbnail_tab
         self.automation_tab = AutomationTab()
         self.tabs.addTab(self.project_tab, icon("folder", theme.TEXT_DIM, 15), "Dự án")
         self.tabs.addTab(self.settings_tab, icon("settings", theme.TEXT_DIM, 15), "Cài đặt")
         self.tabs.addTab(self.script_tab, icon("file", theme.TEXT_DIM, 15), "Kịch bản")
         self.tabs.addTab(self.tts_tab, icon("mic", theme.TEXT_DIM, 15), "Lồng tiếng")
         self.tabs.addTab(self.video_tab, icon("film", theme.TEXT_DIM, 15), "Video")
+        self.tabs.addTab(self.thumbnail_tab, icon("image", theme.TEXT_DIM, 15), "Thumbnail")
         self.tabs.addTab(self.youtube_tab, icon("youtube", theme.TEXT_DIM, 15), "YouTube")
         self._automation_index = self.tabs.addTab(
             self.automation_tab, icon("zap", theme.TEXT_DIM, 15), "Automation"
@@ -177,6 +181,9 @@ class MainWindow(QMainWindow):
         self.automation_tab.run_requested.connect(self._start_pipeline)
         self.automation_tab.pause_requested.connect(self._toggle_pause)
         self.automation_tab.stop_requested.connect(self._stop_pipeline)
+        self.automation_tab.topic_input.textChanged.connect(self._on_automation_topic_changed)
+        self.script_tab.topic_edit.textChanged.connect(self._on_script_topic_changed)
+        self.script_tab.languages_changed.connect(self._on_languages_changed)
 
         self.project_tab.reload_requested.connect(self._reload_project)
         self.script_tab.reload_requested.connect(self._reload_project)
@@ -186,6 +193,7 @@ class MainWindow(QMainWindow):
         self.tts_tab.reload_requested.connect(self._reload_project)
         self.video_tab.tools_changed.connect(self._check_tools)
         self.video_tab.run_requested.connect(lambda: self._start_pipeline("video"))
+        self.thumbnail_tab.thumbnail_saved.connect(self._on_thumbnail_saved)
         self.youtube_tab.busy_changed.connect(self._on_auth_busy)
         self.youtube_tab.channels_changed.connect(self._on_channels_changed)
         self.youtube_tab.thumbnail_saved.connect(self._on_thumbnail_saved)
@@ -327,6 +335,7 @@ class MainWindow(QMainWindow):
         self.tts_tab.load_from(self.settings)
         self.video_tab.load_from(self.settings)
         self.frame_tab.load_from(self.settings)
+        self.thumbnail_tab.load_from(self.settings)
         self.youtube_tab.load_from(self.settings)
         self.automation_tab.load_from(self.settings)
 
@@ -337,9 +346,30 @@ class MainWindow(QMainWindow):
         self.tts_tab.apply_to(self.settings)
         self.video_tab.apply_to(self.settings)
         self.frame_tab.apply_to(self.settings)
+        self.thumbnail_tab.apply_to(self.settings)
         self.youtube_tab.apply_to(self.settings)
         self.automation_tab.apply_to(self.settings)
         save_settings(self.settings)
+
+    def _on_languages_changed(self, profiles: list) -> None:
+        self.automation_tab.sync_languages(profiles)
+        self.thumbnail_tab.sync_languages(profiles)
+        self.youtube_tab.sync_languages(profiles)
+        if self.manager is not None:
+            codes = [getattr(p, "language", "") for p in profiles if getattr(p, "language", "")]
+            self.manager.ensure_language_dirs(codes)
+
+    def _on_automation_topic_changed(self, text: str) -> None:
+        if self.script_tab.topic_edit.text() != text:
+            self.script_tab.topic_edit.blockSignals(True)
+            self.script_tab.topic_edit.setText(text)
+            self.script_tab.topic_edit.blockSignals(False)
+
+    def _on_script_topic_changed(self, text: str) -> None:
+        if self.automation_tab.topic_input.text() != text:
+            self.automation_tab.topic_input.blockSignals(True)
+            self.automation_tab.topic_input.setText(text)
+            self.automation_tab.topic_input.blockSignals(False)
 
     def _on_settings_tab_changed(self) -> None:
         self.settings_tab.apply_to(self.settings)
@@ -502,6 +532,7 @@ class MainWindow(QMainWindow):
             self.script_tab.set_project(None)
             self.tts_tab.set_project(None)
             self.video_tab.set_project(None)
+            self.thumbnail_tab.set_project(None)
             self.youtube_tab.set_project(None)
             return
         path = Path(project)
@@ -511,6 +542,7 @@ class MainWindow(QMainWindow):
             self.script_tab.set_project(None)
             self.tts_tab.set_project(None)
             self.video_tab.set_project(None)
+            self.thumbnail_tab.set_project(None)
             self.youtube_tab.set_project(None)
             if not silent:
                 QMessageBox.warning(self, "Project", f"Không tìm thấy thư mục:\n{project}")
@@ -542,6 +574,7 @@ class MainWindow(QMainWindow):
         self.script_tab.set_project(manager)
         self.tts_tab.set_project(manager)
         self.video_tab.set_project(manager)
+        self.thumbnail_tab.set_project(manager)
         self.youtube_tab.set_project(manager)
         self.project_label.setText(str(path))
         self.settings.setdefault("project", {})["last_project"] = str(path)
@@ -808,7 +841,7 @@ class MainWindow(QMainWindow):
 
     # ── theme ────────────────────────────────────────────────────────────────
     def _update_tab_icons(self, index: int | None = None) -> None:
-        names = ("folder", "settings", "file", "mic", "film", "youtube", "zap")
+        names = ("folder", "settings", "file", "mic", "film", "image", "youtube", "zap")
         current = self.tabs.currentIndex() if index is None else index
         for position, name in enumerate(names):
             color = theme.ACCENT_SOFT if position == current else theme.TEXT_DIM
@@ -843,6 +876,7 @@ class MainWindow(QMainWindow):
         self.tts_tab.apply_theme()
         self.video_tab.apply_theme()
         self.frame_tab.apply_theme()
+        self.thumbnail_tab.apply_theme()
         self.youtube_tab.apply_theme()
         if hasattr(self, "console_window"):
             self.console_window.apply_theme()
