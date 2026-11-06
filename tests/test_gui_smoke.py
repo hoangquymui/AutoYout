@@ -28,6 +28,7 @@ def window(app, monkeypatch, tmp_path: Path):
     # user_settings.json reflects whatever the app was last run with; pin the
     # language defaults so the assertions below are deterministic.
     settings.setdefault("tts", {})["language"] = "vi"
+    settings.setdefault("thumbnail", {})["provider"] = "pollinations"
     # A retired model also exercises the migration back to the current default.
     settings.setdefault("script", {})["model"] = "gemini-2.0-flash"
     win = main_window.MainWindow(settings)
@@ -43,11 +44,11 @@ def window(app, monkeypatch, tmp_path: Path):
 def test_window_builds_all_tabs(window) -> None:
     assert window.windowTitle() == "AutoYout"
     assert not window.windowIcon().isNull()
-    assert window.tabs.count() == 7
+    assert window.tabs.count() == 8
     labels = [window.tabs.tabText(i) for i in range(window.tabs.count())]
     assert labels == ["Dự án", "Cài đặt", "Kịch bản",
-                      "Lồng tiếng", "Video", "YouTube",
-                      "Automation"]
+                      "Lồng tiếng", "Video", "Thumbnail",
+                      "YouTube", "Automation"]
     assert window.settings_tab.inner_tabs.count() == 2
     assert window.settings_tab.inner_tabs.tabText(0) == "Cài đặt chung"
     assert window.settings_tab.inner_tabs.tabText(1) == "API"
@@ -121,24 +122,27 @@ def test_browser_login_button_follows_upload_method(window) -> None:
     assert tab.browser_login_button.isHidden() is False
     assert tab.browser_status.isHidden() is False
     assert tab.browser_login_button.isEnabled() is True
-    assert tab.sub_tabs.isTabVisible(2) is False
+    assert tab.sub_tabs.isTabVisible(1) is False
 
     tab.method_combo.setCurrentIndex(api_index)
     assert tab.browser_box.isHidden() is True
     assert tab.api_box.isHidden() is False
     assert tab.browser_login_button.isHidden() is True
     assert tab.browser_status.isHidden() is True
-    assert tab.sub_tabs.isTabVisible(2) is True
+    assert tab.sub_tabs.isTabVisible(1) is True
 
 
 def test_youtube_tab_has_upload_and_thumbnail_pages(window) -> None:
     tab = window.youtube_tab
     labels = [tab.sub_tabs.tabText(i) for i in range(tab.sub_tabs.count())]
-    assert labels == ["Thumbnail", "Đăng tải", "Tài khoản"]
+    assert labels == ["Đăng tải", "Tài khoản"]
     assert tab.sub_tabs.currentIndex() == 0
-    assert tab.sub_tabs.widget(0) is tab.thumbnail_panel
-    assert tab.thumbnail_panel.template_list.count() >= 2
-    assert tab.thumbnail_panel.provider_combo.currentData() == "pollinations"
+    assert window.thumbnail_tab is not None
+    assert tab.thumbnail_panel is window.thumbnail_tab
+    assert window.thumbnail_tab.template_list.count() >= 2
+    assert window.thumbnail_tab.provider_combo.currentData() == "pollinations"
+    assert hasattr(window.thumbnail_tab, "lang_checks")
+    assert hasattr(window.thumbnail_tab, "preview_gallery_combo")
     assert hasattr(tab, "acc_table")
     assert tab.acc_table.columnCount() == 7
     assert hasattr(tab, "acc_add_btn")
@@ -642,6 +646,85 @@ def test_automation_quick_input_and_settings_roundtrip(window) -> None:
     # Test clear
     tab.btn_clear.click()
     assert tab.get_youtube_url() == ""
+
+    # Test topic input & node toggle switches (steps 3, 4, 5)
+    assert hasattr(tab, "topic_input")
+    tab.topic_input.setText("Chủ đề AI 2026")
+    assert tab.get_topic_name() == "Chủ đề AI 2026"
+    assert window.script_tab.topic_edit.text() == "Chủ đề AI 2026"
+
+    assert tab.card_script.enable_toggle is None
+    assert tab.card_tts.enable_toggle is None
+    assert tab.card_video.enable_toggle is not None
+    assert tab.card_thumbnail.enable_toggle is not None
+    assert tab.card_upload.enable_toggle is not None
+
+    tab.card_thumbnail.set_step_enabled(False)
+    tab.card_upload.set_step_enabled(False)
+    assert tab.card_thumbnail.is_step_enabled() is False
+    assert tab.card_thumbnail.run_button.isEnabled() is False
+    assert tab.card_thumbnail.status_chip.text() == "Đã tắt"
+    assert tab.card_upload.is_step_enabled() is False
+
+    s2 = {}
+    tab.apply_to(s2)
+    assert s2["automation"]["topic_name"] == "Chủ đề AI 2026"
+    assert s2["automation"]["video_enabled"] is True
+    assert s2["automation"]["thumbnail_enabled"] is False
+    assert s2["automation"]["upload_enabled"] is False
+
+    # Dynamic language sync from ScriptTab to AutomationTab & ThumbnailPanel
+    from core.language_profiles import LanguageProfile
+    window._on_languages_changed([
+        LanguageProfile("en", "prompt en"),
+        LanguageProfile("zh", "prompt zh"),
+        LanguageProfile("ja", "prompt ja"),
+        LanguageProfile("aa", "prompt pt"),
+        LanguageProfile("th", "prompt th"),
+        LanguageProfile("ca", "prompt kh"),
+        LanguageProfile("aas", "prompt lo"),
+    ])
+    for code in ("vi", "en", "zh", "ja", "aa", "th", "ca", "aas"):
+        assert code in tab._lang_checkboxes
+        assert code in window.thumbnail_tab.lang_checks
+        assert code in window.youtube_tab.acc_lang_checkboxes
+
+
+def test_frame_video_layer_and_ui_cleanups(window) -> None:
+    # 1. ScriptTab: model_combo hidden, fetch_button in right config box above clean & translate
+    script_tab = window.script_tab
+    assert script_tab.model_combo.isHidden() is True
+    assert script_tab.fetch_button.parentWidget() is script_tab.clean_button.parentWidget()
+
+    # 2. FrameTab: _add_button hidden, "Video" layer at the bottom of _image_list
+    frame_tab = window.frame_tab
+    window.settings["frame"] = {}
+    frame_tab.load_from(window.settings)
+    assert frame_tab._add_button.isHidden() is True
+    count = frame_tab._image_list.count()
+    assert count >= 3
+    last_item = frame_tab._image_list.item(count - 1)
+    assert last_item is not None
+    assert last_item.text().startswith("Video")
+
+    # Selecting "Video" row selects ("video", -1) on canvas and enables width/pos sliders
+    frame_tab._image_list.setCurrentRow(count - 1)
+    assert frame_tab._canvas.selection() == ("video", -1)
+    assert frame_tab._width.isEnabled() is True
+    assert frame_tab._up_button.isEnabled() is True
+    assert frame_tab._down_button.isEnabled() is False
+    frame_tab._on_width_spin(75)
+    assert abs(frame_tab._layout.video_w - 0.75) < 1e-6
+    rect = frame_tab._layout.video_rect(1920, 1080)
+    assert rect == (0, 0, 1440, 810)
+
+    # All layers (subtitle, wave, images, video) can be moved up and down
+    frame_tab._move_layer(-1)
+    assert frame_tab._layout.ordered_layers()[-2] == ("video", -1)
+    assert frame_tab._up_button.isEnabled() is True
+    assert frame_tab._down_button.isEnabled() is True
+    frame_tab._move_layer(1)
+    assert frame_tab._layout.ordered_layers()[-1] == ("video", -1)
 
 
 def test_tabs_accessible_and_read_only_while_running(window) -> None:

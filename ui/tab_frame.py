@@ -175,7 +175,18 @@ class FrameCanvas(QWidget):
             return False
         if not (0 <= self._selected_index < len(self._layout.images)):
             return False
-        self._layout.images.pop(self._selected_index)
+        del_idx = self._selected_index
+        old_layers = self._layout.ordered_layers()
+        self._layout.images.pop(del_idx)
+        new_layers: List[Tuple[str, int]] = []
+        for k, idx in old_layers:
+            if k == "image":
+                if idx == del_idx:
+                    continue
+                new_layers.append(("image", idx - 1 if idx > del_idx else idx))
+            else:
+                new_layers.append((k, idx))
+        self._layout.set_ordered_layers(new_layers)
         self.set_selection("", -1)
         self.layout_changed.emit()
         self.edit_committed.emit()
@@ -187,7 +198,9 @@ class FrameCanvas(QWidget):
             return False
         if not (0 <= self._selected_index < len(self._layout.images)):
             return False
-        original = self._layout.images[self._selected_index]
+        src_idx = self._selected_index
+        old_layers = self._layout.ordered_layers()
+        original = self._layout.images[src_idx]
         clone = FrameImage(
             path=original.path,
             x=min(0.85, original.x + 0.03),
@@ -200,8 +213,18 @@ class FrameCanvas(QWidget):
             visible=True,
             locked=False,
         ).clamp()
-        insert_at = self._selected_index + 1
+        insert_at = src_idx + 1
         self._layout.images.insert(insert_at, clone)
+        new_layers: List[Tuple[str, int]] = []
+        for k, idx in old_layers:
+            if k == "image":
+                shifted = idx + 1 if idx >= insert_at else idx
+                if idx == src_idx:
+                    new_layers.append(("image", insert_at))
+                new_layers.append(("image", shifted))
+            else:
+                new_layers.append((k, idx))
+        self._layout.set_ordered_layers(new_layers)
         self.set_selection("image", insert_at)
         self.layout_changed.emit()
         self.edit_committed.emit()
@@ -228,12 +251,24 @@ class FrameCanvas(QWidget):
             self.edit_committed.emit()
             self.update()
             return True
+        elif self._selected_kind == "video":
+            self._layout.video_visible = not getattr(self._layout, "video_visible", True)
+            self.layout_changed.emit()
+            self.edit_committed.emit()
+            self.update()
+            return True
         return False
 
     def toggle_selected_lock(self) -> bool:
         if self._selected_kind == "image" and 0 <= self._selected_index < len(self._layout.images):
             img = self._layout.images[self._selected_index]
             img.locked = not getattr(img, "locked", False)
+            self.layout_changed.emit()
+            self.edit_committed.emit()
+            self.update()
+            return True
+        elif self._selected_kind == "video":
+            self._layout.video_locked = not getattr(self._layout, "video_locked", False)
             self.layout_changed.emit()
             self.edit_committed.emit()
             self.update()
@@ -303,6 +338,18 @@ class FrameCanvas(QWidget):
             self._layout.wave_h * frame.height(),
         )
 
+    def _video_box(self) -> QRectF:
+        frame = self._frame_rect()
+        vw = float(getattr(self._layout, "video_w", 1.0))
+        vx = float(getattr(self._layout, "video_x", 0.0))
+        vy = float(getattr(self._layout, "video_y", 0.0))
+        return QRectF(
+            frame.left() + vx * frame.width(),
+            frame.top() + vy * frame.height(),
+            vw * frame.width(),
+            vw * frame.height(),
+        )
+
     def _image_box(self, index: int) -> QRectF:
         frame = self._frame_rect()
         if not (0 <= index < len(self._layout.images)):
@@ -326,6 +373,8 @@ class FrameCanvas(QWidget):
                           box.bottom() - _HANDLE / 2, _HANDLE, _HANDLE)
         if kind == "wave":
             box = self._wave_box()
+        elif kind == "video":
+            box = self._video_box()
         elif kind == "image":
             box = self._image_box(index)
         else:
@@ -386,6 +435,23 @@ class FrameCanvas(QWidget):
             elif mode == "bottom":
                 self._layout.wave_y = max(0.0, round(1.0 - self._layout.wave_h - 0.06, 4))
             self._layout.clamp()
+        elif kind == "video":
+            vw = self._layout.video_w
+            if mode == "left":
+                self._layout.video_x = 0.0
+            elif mode in ("center_x", "center_both"):
+                self._layout.video_x = max(0.0, round((1.0 - vw) / 2.0, 4))
+            elif mode == "right":
+                self._layout.video_x = max(0.0, round(1.0 - vw, 4))
+            elif mode == "top":
+                self._layout.video_y = 0.0
+            elif mode in ("center_y", "center_both"):
+                self._layout.video_y = max(0.0, round((1.0 - vw) / 2.0, 4))
+            elif mode == "bottom":
+                self._layout.video_y = max(0.0, round(1.0 - vw, 4))
+            if mode == "center_both":
+                self._layout.video_y = max(0.0, round((1.0 - vw) / 2.0, 4))
+            self._layout.clamp()
 
         self.layout_changed.emit()
         self.update()
@@ -425,18 +491,23 @@ class FrameCanvas(QWidget):
         path.addRoundedRect(frame, 10, 10)
         painter.setClipPath(path)
 
-        self._paint_preview(painter, frame)
+        painter.fillRect(frame, QColor("#050810"))
+
+        layers = self._layout.ordered_layers()
+        for kind, idx in reversed(layers):
+            if kind == "video":
+                self._paint_preview(painter, frame)
+            elif kind == "wave":
+                self._paint_wave(painter)
+            elif kind == "image" and 0 <= idx < len(self._layout.images):
+                self._paint_image(painter, idx)
+            elif kind == "subtitle":
+                self._paint_subtitle(painter)
+
         if self.show_grid:
             self._paint_grid(painter, frame)
         if self.show_safe_area:
             self._paint_safe_area(painter, frame)
-
-        self._paint_wave(painter)
-
-        for index in range(len(self._layout.images)):
-            self._paint_image(painter, index)
-
-        self._paint_subtitle(painter)
 
         if self.show_center_guides and (self._snap_x or self._snap_y):
             self._paint_snap_guides(painter, frame)
@@ -453,32 +524,51 @@ class FrameCanvas(QWidget):
         painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 10, 10)
 
     def _paint_preview(self, painter: QPainter, frame: QRectF) -> None:
-        if self._preview is not None and not self._preview.isNull():
-            scaled = self._preview.scaled(
-                frame.size().toSize(), Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.SmoothTransformation)
-            source = QRectF(
-                max(0.0, (scaled.width() - frame.width()) / 2),
-                max(0.0, (scaled.height() - frame.height()) / 2),
-                frame.width(), frame.height())
-            painter.drawPixmap(frame, scaled, source)
-            shade = QColor("#000000")
-            shade.setAlpha(60)
-            painter.fillRect(frame, shade)
+        vid_vis = getattr(self._layout, "video_visible", True)
+        vbox = self._video_box()
+        if not vid_vis:
+            if self._selected_kind == "video":
+                painter.setPen(QPen(_qcolor(theme.TEXT_MUTED, 120), 1.0, Qt.PenStyle.DotLine))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRoundedRect(vbox, 6, 6)
+                self._paint_caption(painter, vbox, "Video (Đang ẩn)")
             return
 
-        gradient = QLinearGradient(frame.topLeft(), frame.bottomRight())
-        gradient.setColorAt(0.0, QColor(theme.SURFACE_RAISED))
-        gradient.setColorAt(0.55, QColor(theme.SURFACE))
-        gradient.setColorAt(1.0, QColor(theme.BG))
-        painter.fillRect(frame, gradient)
+        if self._preview is not None and not self._preview.isNull():
+            scaled = self._preview.scaled(
+                vbox.size().toSize(), Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation)
+            source = QRectF(
+                max(0.0, (scaled.width() - vbox.width()) / 2),
+                max(0.0, (scaled.height() - vbox.height()) / 2),
+                vbox.width(), vbox.height())
+            painter.drawPixmap(vbox, scaled, source)
+            shade = QColor("#000000")
+            shade.setAlpha(60)
+            painter.fillRect(vbox, shade)
+        else:
+            gradient = QLinearGradient(vbox.topLeft(), vbox.bottomRight())
+            gradient.setColorAt(0.0, QColor(theme.SURFACE_RAISED))
+            gradient.setColorAt(0.55, QColor(theme.SURFACE))
+            gradient.setColorAt(1.0, QColor(theme.BG))
+            painter.fillRect(vbox, gradient)
 
-        glow = QRadialGradient(frame.center(), frame.width() * 0.6)
-        accent = QColor(theme.ACCENT)
-        accent.setAlpha(60)
-        glow.setColorAt(0.0, accent)
-        glow.setColorAt(1.0, QColor(0, 0, 0, 0))
-        painter.fillRect(frame, glow)
+            glow = QRadialGradient(vbox.center(), vbox.width() * 0.6)
+            accent = QColor(theme.ACCENT)
+            accent.setAlpha(60)
+            glow.setColorAt(0.0, accent)
+            glow.setColorAt(1.0, QColor(0, 0, 0, 0))
+            painter.fillRect(vbox, glow)
+
+        locked = getattr(self._layout, "video_locked", False)
+        if self._selected_kind == "video":
+            label = "Video 🔒" if locked else "Video"
+            self._paint_selection(painter, vbox, label)
+        elif self._layout.video_w < 0.999 or self._layout.video_x > 0.001 or self._layout.video_y > 0.001:
+            painter.setPen(QPen(_qcolor(theme.BLUE, 130), 1.0, Qt.PenStyle.DashLine))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(vbox, 6, 6)
+            self._paint_caption(painter, vbox, "Video")
 
     def _paint_grid(self, painter: QPainter, frame: QRectF) -> None:
         pen = QPen(QColor(theme.BORDER_STRONG))
@@ -700,14 +790,20 @@ class FrameCanvas(QWidget):
 
     # ── interaction ──────────────────────────────────────────────────────────
     def _hit_test(self, pos: QPointF) -> Tuple[str, int]:
-        if self._subtitle_box().contains(pos):
-            return "subtitle", -1
-        for index in range(len(self._layout.images) - 1, -1, -1):
-            img = self._layout.images[index]
-            if getattr(img, "visible", True) and self._image_box(index).contains(pos):
-                return "image", index
-        if self._layout.waveform and self._wave_box().contains(pos):
-            return "wave", -1
+        for kind, idx in self._layout.ordered_layers():
+            if kind == "subtitle":
+                if getattr(self._layout, "subtitle_visible", True) and self._subtitle_box().contains(pos):
+                    return "subtitle", -1
+            elif kind == "wave":
+                if self._layout.waveform and self._wave_box().contains(pos):
+                    return "wave", -1
+            elif kind == "image" and 0 <= idx < len(self._layout.images):
+                img = self._layout.images[idx]
+                if getattr(img, "visible", True) and self._image_box(idx).contains(pos):
+                    return "image", idx
+            elif kind == "video":
+                if getattr(self._layout, "video_visible", True) and self._video_box().contains(pos):
+                    return "video", -1
         return "", -1
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt override)
@@ -719,19 +815,29 @@ class FrameCanvas(QWidget):
             self.set_selection("", -1)
             return
         self.setFocus()
-        kind, index = self._hit_test(pos)
-        if kind and self._resize_handle().contains(pos):
-            self.set_selection(kind, index)
+        cur_kind, cur_idx = self.selection()
+        if cur_kind and self._resize_handle().contains(pos):
+            kind, index = cur_kind, cur_idx
             self._drag_mode = "resize"
-        elif kind:
-            self.set_selection(kind, index)
-            self._drag_mode = "move"
         else:
-            self.set_selection("", -1)
-            return
+            kind, index = self._hit_test(pos)
+            if kind:
+                self.set_selection(kind, index)
+                if self._resize_handle().contains(pos):
+                    self._drag_mode = "resize"
+                else:
+                    self._drag_mode = "move"
+            else:
+                self.set_selection("", -1)
+                return
 
         if kind == "image" and 0 <= index < len(self._layout.images):
             if getattr(self._layout.images[index], "locked", False):
+                self._drag_mode = ""
+                self.update()
+                return
+        elif kind == "video":
+            if getattr(self._layout, "video_locked", False):
                 self._drag_mode = ""
                 self.update()
                 return
@@ -745,6 +851,9 @@ class FrameCanvas(QWidget):
         elif kind == "wave":
             self._origin = {"x": layout.wave_x, "y": layout.wave_y,
                             "w": layout.wave_w, "h": layout.wave_h}
+        elif kind == "video":
+            self._origin = {"x": layout.video_x, "y": layout.video_y,
+                            "w": layout.video_w}
         else:
             self._origin = {"x": layout.subtitle_x, "y": layout.subtitle_y,
                             "scale": layout.subtitle_scale}
@@ -816,6 +925,23 @@ class FrameCanvas(QWidget):
             else:
                 image.width = max(0.02, min(1.0 - image.x, self._origin["width"] + dx))
             image.clamp()
+        elif kind == "video":
+            if self._drag_mode == "move":
+                target_x = self._origin["x"] + dx
+                target_y = self._origin["y"] + dy
+                center_x = target_x + layout.video_w / 2.0
+                center_y = target_y + layout.video_w / 2.0
+                if abs(center_x - 0.5) < 0.02:
+                    target_x = 0.5 - layout.video_w / 2.0
+                    self._snap_x = True
+                if abs(center_y - 0.5) < 0.02:
+                    target_y = 0.5 - layout.video_w / 2.0
+                    self._snap_y = True
+                layout.video_x = target_x
+                layout.video_y = target_y
+            else:
+                layout.video_w = max(0.1, min(1.0 - layout.video_x, self._origin["w"] + dx))
+            layout.clamp()
 
         self.layout_changed.emit()
         self.update()
@@ -1108,7 +1234,8 @@ class FrameTab(QWidget):
         self._add_button = QPushButton("Thêm ảnh")
         set_icon(self._add_button, "plus", "accent", 12)
         self._add_button.clicked.connect(self._add_image)
-        layer_actions.addWidget(self._add_button, 1)
+        self._add_button.hide()
+        layer_actions.addStretch(1)
 
         self._up_button = icon_button("chevron-up", "Lên 1 lớp", size=12, side=26)
         self._up_button.clicked.connect(lambda: self._move_layer(-1))
@@ -1697,6 +1824,8 @@ class FrameTab(QWidget):
                         18, 18, Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation))
             return QIcon(pixmap("image", theme.WARNING, 15))
+        if kind == "video":
+            return QIcon(pixmap("film", theme.icon_color("accent"), 15))
         name = "waveform" if kind == "wave" else "type"
         role = "accent" if kind == "wave" else "muted"
         return QIcon(pixmap(name, theme.icon_color(role), 15))
@@ -1705,28 +1834,55 @@ class FrameTab(QWidget):
         self._block = True
         self._image_list.clear()
 
-        sub_vis = getattr(self._layout, "subtitle_visible", True)
-        sub_text = "Phụ đề (Subtitle)" if sub_vis else "Phụ đề (Đang ẩn)"
-        item_sub = QListWidgetItem(self._layer_icon("subtitle"), sub_text)
-        item_sub.setToolTip("Lớp phụ đề tự động trên video.")
-        self._image_list.addItem(item_sub)
+        layers = self._layout.ordered_layers()
+        for kind, idx in layers:
+            if kind == "subtitle":
+                sub_vis = getattr(self._layout, "subtitle_visible", True)
+                sub_text = "Phụ đề (Subtitle)" if sub_vis else "Phụ đề (Đang ẩn)"
+                item = QListWidgetItem(self._layer_icon("subtitle"), sub_text)
+                item.setToolTip("Lớp phụ đề tự động trên video.")
+                item.setData(Qt.ItemDataRole.UserRole, ("subtitle", -1))
+                self._image_list.addItem(item)
+            elif kind == "wave":
+                wave_text = "Sóng âm thanh" if self._layout.waveform else "Sóng âm thanh (Đang ẩn)"
+                item = QListWidgetItem(self._layer_icon("wave"), wave_text)
+                item.setToolTip("Dải sóng âm thanh chuyển động.")
+                item.setData(Qt.ItemDataRole.UserRole, ("wave", -1))
+                self._image_list.addItem(item)
+            elif kind == "image" and 0 <= idx < len(self._layout.images):
+                image = self._layout.images[idx]
+                name_label = image.name
+                if not getattr(image, "visible", True):
+                    name_label += " [Ẩn]"
+                if getattr(image, "locked", False):
+                    name_label += " [Khóa]"
+                item = QListWidgetItem(self._layer_icon("image", image), name_label)
+                item.setToolTip(image.path)
+                item.setData(Qt.ItemDataRole.UserRole, ("image", idx))
+                self._image_list.addItem(item)
+            elif kind == "video":
+                vid_vis = getattr(self._layout, "video_visible", True)
+                vid_text = "Video" if vid_vis else "Video (Đang ẩn)"
+                if getattr(self._layout, "video_locked", False):
+                    vid_text += " [Khóa]"
+                item = QListWidgetItem(self._layer_icon("video"), vid_text)
+                item.setToolTip("Khung hình video chính.")
+                item.setData(Qt.ItemDataRole.UserRole, ("video", -1))
+                self._image_list.addItem(item)
 
-        wave_text = "Sóng âm thanh" if self._layout.waveform else "Sóng âm thanh (Đang ẩn)"
-        item_wave = QListWidgetItem(self._layer_icon("wave"), wave_text)
-        item_wave.setToolTip("Dải sóng âm thanh chuyển động.")
-        self._image_list.addItem(item_wave)
+        if select >= 0:
+            wanted = ("image", select)
+        else:
+            sel_kind, sel_idx = self._canvas.selection()
+            wanted = (sel_kind, sel_idx if sel_kind == "image" else -1)
 
-        for image in self._layout.images:
-            name_label = image.name
-            if not getattr(image, "visible", True):
-                name_label += " [Ẩn]"
-            if getattr(image, "locked", False):
-                name_label += " [Khóa]"
-            item = QListWidgetItem(self._layer_icon("image", image), name_label)
-            item.setToolTip(image.path)
-            self._image_list.addItem(item)
-
-        target_row = select + 2 if select >= 0 else -1
+        target_row = -1
+        if wanted[0]:
+            for r in range(self._image_list.count()):
+                it = self._image_list.item(r)
+                if it is not None and it.data(Qt.ItemDataRole.UserRole) == wanted:
+                    target_row = r
+                    break
         if 0 <= target_row < self._image_list.count():
             self._image_list.setCurrentRow(target_row)
         self._block = False
@@ -1735,42 +1891,48 @@ class FrameTab(QWidget):
     def _on_list_row(self, row: int) -> None:
         if self._block or row < 0:
             return
-        if row == 0:
-            self._canvas.set_selection("subtitle", -1)
-        elif row == 1:
-            self._canvas.set_selection("wave", -1)
-        else:
-            self._canvas.set_selection("image", row - 2)
+        it = self._image_list.item(row)
+        if it is not None:
+            data = it.data(Qt.ItemDataRole.UserRole)
+            if isinstance(data, tuple) and len(data) == 2:
+                self._canvas.set_selection(str(data[0]), int(data[1]))
+                return
+        layers = self._layout.ordered_layers()
+        if 0 <= row < len(layers):
+            self._canvas.set_selection(*layers[row])
 
     def _on_selection(self, kind: str, index: int) -> None:
         self._block = True
-        if kind == "subtitle":
-            self._image_list.setCurrentRow(0)
-        elif kind == "wave":
-            self._image_list.setCurrentRow(1)
-        elif kind == "image" and 0 <= index < len(self._layout.images):
-            self._image_list.setCurrentRow(index + 2)
-        else:
-            self._image_list.setCurrentRow(-1)
+        wanted = (kind, index if kind == "image" else -1)
+        target_row = -1
+        if kind:
+            for r in range(self._image_list.count()):
+                it = self._image_list.item(r)
+                if it is not None and it.data(Qt.ItemDataRole.UserRole) == wanted:
+                    target_row = r
+                    break
+        self._image_list.setCurrentRow(target_row)
         self._block = False
         self._update_inspector()
 
     def _update_inspector(self) -> None:
         kind, index = self._canvas.selection()
         valid_img = (kind == "image" and 0 <= index < len(self._layout.images))
-        total = len(self._layout.images)
+        layers = self._layout.ordered_layers()
+        cur_pair = (kind, index if kind == "image" else -1)
+        cur_pos = layers.index(cur_pair) if cur_pair in layers else -1
 
         self._remove_button.setEnabled(valid_img)
         self._dup_button.setEnabled(valid_img)
-        self._eye_button.setEnabled(valid_img or kind in ("wave", "subtitle"))
-        self._lock_button.setEnabled(valid_img)
+        self._eye_button.setEnabled(valid_img or kind in ("wave", "subtitle", "video"))
+        self._lock_button.setEnabled(valid_img or kind == "video")
         self._flip_h_btn.setEnabled(valid_img)
         self._flip_v_btn.setEnabled(valid_img)
         self._rotate.setEnabled(valid_img)
         self._rotate_spin.setEnabled(valid_img)
         self._replace_img_btn.setEnabled(valid_img)
-        self._up_button.setEnabled(valid_img and index > 0)
-        self._down_button.setEnabled(valid_img and index < total - 1)
+        self._up_button.setEnabled(cur_pos > 0)
+        self._down_button.setEnabled(0 <= cur_pos < len(layers) - 1)
 
         self._block = True
         if valid_img:
@@ -1895,6 +2057,46 @@ class FrameTab(QWidget):
             self._wave_h_slider.setValue(wh_val)
             self._wave_h_spin.setValue(wh_val)
             self._wave_h_label.setText(f"Chiều cao sóng: {wh_val}%")
+        elif kind == "video":
+            vid_vis = getattr(self._layout, "video_visible", True)
+            vid_locked = getattr(self._layout, "video_locked", False)
+            vid_tag = "" if vid_vis else " (Đang ẩn)"
+            if vid_locked:
+                vid_tag += " (Đã khóa)"
+            self._inspector_title.setText(f"Đang chọn: Video{vid_tag}")
+
+            w_val = int(round(getattr(self._layout, "video_w", 1.0) * 100))
+            self._width.setEnabled(not vid_locked)
+            self._width.setValue(w_val)
+            self._width_spin.setEnabled(not vid_locked)
+            self._width_spin.setValue(w_val)
+            self._width_label.setText(f"Kích thước khung Video: {w_val}%")
+
+            x_val = int(round(getattr(self._layout, "video_x", 0.0) * 100))
+            self._pos_x.setEnabled(not vid_locked)
+            self._pos_x.setValue(x_val)
+            self._pos_x_spin.setEnabled(not vid_locked)
+            self._pos_x_spin.setValue(x_val)
+            self._pos_x_label.setText(f"Vị trí X: {x_val}%")
+
+            y_val = int(round(getattr(self._layout, "video_y", 0.0) * 100))
+            self._pos_y.setEnabled(not vid_locked)
+            self._pos_y.setValue(y_val)
+            self._pos_y_spin.setEnabled(not vid_locked)
+            self._pos_y_spin.setValue(y_val)
+            self._pos_y_label.setText(f"Vị trí Y: {y_val}%")
+
+            self._rotate.setValue(0)
+            self._rotate_spin.setValue(0)
+            self._rotate_label.setText("Góc xoay: 0°")
+
+            self._opacity.setEnabled(False)
+            self._opacity_spin.setEnabled(False)
+            self._scale.setEnabled(False)
+            self._scale_spin.setEnabled(False)
+            self._sample_text_edit.setEnabled(False)
+            self._wave_h_slider.setEnabled(False)
+            self._wave_h_spin.setEnabled(False)
         else:
             self._inspector_title.setText("Chọn một đối tượng để chỉnh sửa")
             self._width.setEnabled(False)
@@ -2066,6 +2268,12 @@ class FrameTab(QWidget):
             self._layout.clamp()
             self._width_label.setText(f"Độ rộng sóng: {value}%")
             self._canvas.update()
+        elif kind == "video":
+            self._layout.video_w = max(0.10, value / 100.0)
+            self._layout.clamp()
+            w_pct = int(round(self._layout.video_w * 100))
+            self._width_label.setText(f"Kích thước khung Video: {w_pct}%")
+            self._canvas.update()
 
     def _on_width_spin(self, value: int) -> None:
         if self._block:
@@ -2083,6 +2291,12 @@ class FrameTab(QWidget):
             self._layout.wave_w = value / 100.0
             self._layout.clamp()
             self._width_label.setText(f"Độ rộng sóng: {value}%")
+            self._canvas.update()
+        elif kind == "video":
+            self._layout.video_w = max(0.10, value / 100.0)
+            self._layout.clamp()
+            w_pct = int(round(self._layout.video_w * 100))
+            self._width_label.setText(f"Kích thước khung Video: {w_pct}%")
             self._canvas.update()
 
     def _on_pos_x_slider(self, value: int) -> None:
@@ -2111,6 +2325,9 @@ class FrameTab(QWidget):
             self._layout.clamp()
         elif kind == "wave":
             self._layout.wave_x = norm
+            self._layout.clamp()
+        elif kind == "video":
+            self._layout.video_x = norm
             self._layout.clamp()
         self._pos_x_label.setText(f"Vị trí X: {int(round(norm * 100))}%")
         self._canvas.update()
@@ -2141,6 +2358,9 @@ class FrameTab(QWidget):
             self._layout.clamp()
         elif kind == "wave":
             self._layout.wave_y = norm
+            self._layout.clamp()
+        elif kind == "video":
+            self._layout.video_y = norm
             self._layout.clamp()
         self._pos_y_label.setText(f"Vị trí Y: {int(round(norm * 100))}%")
         self._canvas.update()
@@ -2197,10 +2417,18 @@ class FrameTab(QWidget):
         asset = _resolve_asset(path)
         if asset is None:
             return
+        old_layers = self._layout.ordered_layers()
         index = len(self._layout.images)
         offset = 0.03 * (index % 5)
         self._layout.images.append(FrameImage(
             path=str(asset.resolve()), x=0.35 + offset, y=0.35 + offset, width=0.22))
+        if self._layout.layer_order:
+            new_layers = list(old_layers)
+            if new_layers and new_layers[-1] == ("video", -1):
+                new_layers.insert(len(new_layers) - 1, ("image", index))
+            else:
+                new_layers.append(("image", index))
+            self._layout.set_ordered_layers(new_layers)
         self._layout.enabled = True
         self._canvas.reload_assets()
         self._rebuild_list(index)
@@ -2212,10 +2440,18 @@ class FrameTab(QWidget):
         path, _filter = QFileDialog.getOpenFileName(self, "Chọn ảnh lớp phủ", "", _IMAGE_FILTER)
         if not path:
             return
+        old_layers = self._layout.ordered_layers()
         index = len(self._layout.images)
         offset = 0.03 * (index % 5)
         self._layout.images.append(FrameImage(
             path=str(Path(path)), x=0.06 + offset, y=0.06 + offset, width=0.18))
+        if self._layout.layer_order:
+            new_layers = list(old_layers)
+            if new_layers and new_layers[-1] == ("video", -1):
+                new_layers.insert(len(new_layers) - 1, ("image", index))
+            else:
+                new_layers.append(("image", index))
+            self._layout.set_ordered_layers(new_layers)
         self._layout.enabled = True
         self._canvas.reload_assets()
         self._rebuild_list(index)
@@ -2255,15 +2491,20 @@ class FrameTab(QWidget):
 
     def _move_layer(self, delta: int) -> None:
         kind, index = self._canvas.selection()
-        images = self._layout.images
-        if kind != "image" or not (0 <= index < len(images)):
+        if not kind:
             return
-        target = index + delta
-        if not (0 <= target < len(images)):
+        layers = self._layout.ordered_layers()
+        cur_pair = (kind, index if kind == "image" else -1)
+        if cur_pair not in layers:
             return
-        images[index], images[target] = images[target], images[index]
-        self._rebuild_list(target)
-        self._canvas.set_selection("image", target)
+        cur_pos = layers.index(cur_pair)
+        target_pos = cur_pos + delta
+        if not (0 <= target_pos < len(layers)):
+            return
+        layers[cur_pos], layers[target_pos] = layers[target_pos], layers[cur_pos]
+        self._layout.set_ordered_layers(layers)
+        self._rebuild_list(index if kind == "image" else -1)
+        self._canvas.set_selection(kind, index if kind == "image" else -1)
         self._canvas.update()
         self._commit_history()
 

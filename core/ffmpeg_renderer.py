@@ -537,10 +537,20 @@ class FFmpegRenderer:
             return plans
         plans = []
         for item in items:
+            in_lang_dir = bool(
+                (item.text_file is not None and item.text_file.parent != manager.script_dir)
+                or (item.json_file is not None and item.json_file.parent != manager.script_dir)
+                or (item.audio_path.parent != manager.audio_dir)
+                or any(item.base.lower().endswith(f"_{lc}") for lc in ("vi", "en", "ja", "zh", "ko", "fr", "de", "es", "ru", "th", "id", "pt"))
+            )
+            if in_lang_dir and getattr(item, "language", ""):
+                out_dir = manager.lang_dir("video", item.language, create=True)
+            else:
+                out_dir = manager.video_dir
             plans.append(_Plan(
                 id=f"one::{item.base}",
                 title=_item_label(item),
-                path=manager.video_dir / f"{safe_filename(item.base)}.mp4",
+                path=out_dir / f"{safe_filename(item.base)}.mp4",
                 items=[item],
             ))
         return plans
@@ -1521,6 +1531,10 @@ class FFmpegRenderer:
         if item.text_file is not None:
             candidates += [item.text_file.with_suffix(".srt"),
                            item.text_file.with_suffix(".vtt")]
+        lang = getattr(item, "language", "") or ""
+        if lang:
+            for base in (manager.audio_dir / lang, manager.script_dir / lang):
+                candidates += [Path(base) / f"{item.base}.srt", Path(base) / f"{item.base}.vtt"]
         for base in (manager.script_dir, manager.audio_dir, manager.project_dir):
             candidates += [Path(base) / f"{item.base}.srt", Path(base) / f"{item.base}.vtt"]
         seen: set[str] = set()
@@ -1671,78 +1685,178 @@ class FFmpegRenderer:
                 vchain += ",tpad=stop_mode=clone:stop_duration=60"
         parts.append(f"[1:v]{vchain}[vbase]")
         vlabel = "vbase"
-        language = self._segments_language(segments or [])
-
-        if cfg.chapter_titles and entries and self._write_chapters(
-                entries, total, temp_dir, cfg, language):
-            parts.append(f"[{vlabel}]subtitles=chapters.ass:fontsdir=.[vsub]")
-            vlabel = "vsub"
-
-        if cfg.subtitle_srt and srt_events:
-            if self._write_ass(srt_events, total, temp_dir, cfg, language):
-                parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
-                vlabel = "vsub2"
-            else:
-                logger.warning("Bật phụ đề .srt nhưng không có dòng nào hiển thị.")
-        elif (cfg.subtitle_enabled or (cfg.frame and cfg.frame.enabled and getattr(cfg.frame, "subtitle_visible", True))) and segments:
-            if self._write_subtitles(segments, total, temp_dir, cfg, language):
-                parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
-                vlabel = "vsub2"
-            else:
-                logger.warning("Bật phụ đề nhưng không có nội dung để hiển thị.")
-
         frame = cfg.frame if cfg.frame.enabled else None
+        language = self._segments_language(segments or [])
         wave_active = bool(cfg.showwaves or (frame is not None and frame.waveform))
-        if wave_active:
+
+        custom_order = bool(frame is not None and getattr(frame, "layer_order", None))
+        if not custom_order:
             if frame is not None:
+                if not getattr(frame, "video_visible", True):
+                    parts.append(f"[{vlabel}]drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill[vvid]")
+                    vlabel = "vvid"
+                else:
+                    vx, vy, vw, vh = frame.video_rect(width, height)
+                    vw_even = _even(max(2, vw))
+                    vh_even = _even(max(2, vh))
+                    if vw_even != width or vh_even != height or vx != 0 or vy != 0:
+                        parts.append(
+                            f"[{vlabel}]scale={vw_even}:{vh_even}:force_original_aspect_ratio=decrease,"
+                            f"pad={width}:{height}:{vx}:{vy}:color=black[vvid]"
+                        )
+                        vlabel = "vvid"
+
+            if cfg.chapter_titles and entries and self._write_chapters(
+                    entries, total, temp_dir, cfg, language):
+                parts.append(f"[{vlabel}]subtitles=chapters.ass:fontsdir=.[vsub]")
+                vlabel = "vsub"
+
+            if cfg.subtitle_srt and srt_events:
+                if self._write_ass(srt_events, total, temp_dir, cfg, language):
+                    parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
+                    vlabel = "vsub2"
+                else:
+                    logger.warning("Bật phụ đề .srt nhưng không có dòng nào hiển thị.")
+            elif (cfg.subtitle_enabled or (cfg.frame and cfg.frame.enabled and getattr(cfg.frame, "subtitle_visible", True))) and segments:
+                if self._write_subtitles(segments, total, temp_dir, cfg, language):
+                    parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
+                    vlabel = "vsub2"
+                else:
+                    logger.warning("Bật phụ đề nhưng không có nội dung để hiển thị.")
+
+            if wave_active:
+                if frame is not None:
+                    wave_x, wave_y, wave_w, wave_h = frame.wave_rect(width, height)
+                    wave_color = color_ffmpeg(frame.wave_color)
+                else:
+                    wave_w = width
+                    wave_h = max(90, min(height // 4, int(round(180 * height / 1080))))
+                    wave_x, wave_y = 0, height - wave_h
+                    wave_color = "0x4FC3F7"
+                audio_head = "[0:a]asplit=2[a_main][a_wave]"
+                parts.append(audio_head)
+                parts.append(
+                    f"[a_wave]showwaves=s={_even(wave_w)}x{_even(wave_h)}:mode=cline:"
+                    f"rate={cfg.fps}:colors={wave_color}:scale=sqrt:draw=full[waves]"
+                )
+                parts.append(f"[{vlabel}][waves]overlay={wave_x}:{wave_y}:format=auto[vwave]")
+                vlabel = "vwave"
+            else:
+                audio_head = "[0:a]anull[a_main]"
+                parts.append(audio_head)
+
+            for index, (input_index, image) in enumerate(frame_images or []):
+                if not getattr(image, "visible", True):
+                    continue
+                image_w = _even(max(2, int(round(image.width * width))))
+                chain = f"[{input_index}:v]scale={image_w}:-1,format=rgba"
+                if getattr(image, "flip_h", False):
+                    chain += ",hflip"
+                if getattr(image, "flip_v", False):
+                    chain += ",vflip"
+                rot = float(getattr(image, "rotation", 0.0) or 0.0)
+                if rot:
+                    angle_rad = -rot * math.pi / 180.0
+                    chain += f",rotate={angle_rad:.5f}:ow=rotw({angle_rad:.5f}):oh=roth({angle_rad:.5f}):c=none"
+                if image.opacity < 0.999:
+                    chain += f",colorchannelmixer=aa={image.opacity:.3f}"
+                parts.append(chain + f"[frameimg{index}]")
+                image_x = max(0, min(width - 1, int(round(image.x * width))))
+                image_y = max(0, min(height - 1, int(round(image.y * height))))
+                if rot:
+                    parts.append(
+                        f"[{vlabel}][frameimg{index}]overlay='{image_x}+({image_w}-w)/2':'{image_y}+({image_w}-h)/2':"
+                        f"format=auto[vframe{index}]"
+                    )
+                else:
+                    parts.append(
+                        f"[{vlabel}][frameimg{index}]overlay={image_x}:{image_y}:"
+                        f"format=auto[vframe{index}]"
+                    )
+                vlabel = f"vframe{index}"
+        else:
+            # Custom layer ordering (bottom-most to top-most = reversed(ordered_layers()))
+            assert frame is not None
+            layers_bottom_up = list(reversed(frame.ordered_layers()))
+            img_map = {idx: (inp_idx, img) for idx, (inp_idx, img) in enumerate(frame_images or [])}
+            if wave_active:
                 wave_x, wave_y, wave_w, wave_h = frame.wave_rect(width, height)
                 wave_color = color_ffmpeg(frame.wave_color)
+                parts.append("[0:a]asplit=2[a_main][a_wave]")
+                parts.append(
+                    f"[a_wave]showwaves=s={_even(wave_w)}x{_even(wave_h)}:mode=cline:"
+                    f"rate={cfg.fps}:colors={wave_color}:scale=sqrt:draw=full[waves]"
+                )
             else:
-                wave_w = width
-                wave_h = max(90, min(height // 4, int(round(180 * height / 1080))))
-                wave_x, wave_y = 0, height - wave_h
-                wave_color = "0x4FC3F7"
-            audio_head = "[0:a]asplit=2[a_main][a_wave]"
-            parts.append(audio_head)
-            parts.append(
-                f"[a_wave]showwaves=s={_even(wave_w)}x{_even(wave_h)}:mode=cline:"
-                f"rate={cfg.fps}:colors={wave_color}:scale=sqrt:draw=full[waves]"
-            )
-            parts.append(f"[{vlabel}][waves]overlay={wave_x}:{wave_y}:format=auto[vwave]")
-            vlabel = "vwave"
-        else:
-            audio_head = "[0:a]anull[a_main]"
-            parts.append(audio_head)
+                parts.append("[0:a]anull[a_main]")
 
-        for index, (input_index, image) in enumerate(frame_images or []):
-            if not getattr(image, "visible", True):
-                continue
-            image_w = _even(max(2, int(round(image.width * width))))
-            chain = f"[{input_index}:v]scale={image_w}:-1,format=rgba"
-            if getattr(image, "flip_h", False):
-                chain += ",hflip"
-            if getattr(image, "flip_v", False):
-                chain += ",vflip"
-            rot = float(getattr(image, "rotation", 0.0) or 0.0)
-            if rot:
-                angle_rad = -rot * math.pi / 180.0
-                chain += f",rotate={angle_rad:.5f}:ow=rotw({angle_rad:.5f}):oh=roth({angle_rad:.5f}):c=none"
-            if image.opacity < 0.999:
-                chain += f",colorchannelmixer=aa={image.opacity:.3f}"
-            parts.append(chain + f"[frameimg{index}]")
-            image_x = max(0, min(width - 1, int(round(image.x * width))))
-            image_y = max(0, min(height - 1, int(round(image.y * height))))
-            if rot:
-                parts.append(
-                    f"[{vlabel}][frameimg{index}]overlay='{image_x}+({image_w}-w)/2':'{image_y}+({image_w}-h)/2':"
-                    f"format=auto[vframe{index}]"
-                )
-            else:
-                parts.append(
-                    f"[{vlabel}][frameimg{index}]overlay={image_x}:{image_y}:"
-                    f"format=auto[vframe{index}]"
-                )
-            vlabel = f"vframe{index}"
+            # Prepare black base canvas and scaled video stream
+            parts.append(f"[vbase]split=2[vbase_bg][vbase_fg]")
+            parts.append(f"[vbase_bg]drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill[vcanvas0]")
+            vlabel = "vcanvas0"
+
+            for step_i, (kind, idx) in enumerate(layers_bottom_up):
+                if kind == "video":
+                    if getattr(frame, "video_visible", True):
+                        vx, vy, vw, vh = frame.video_rect(width, height)
+                        vw_even = _even(max(2, vw))
+                        vh_even = _even(max(2, vh))
+                        parts.append(
+                            f"[vbase_fg]scale={vw_even}:{vh_even}:force_original_aspect_ratio=decrease[vvid_scaled]"
+                        )
+                        parts.append(
+                            f"[{vlabel}][vvid_scaled]overlay='{vx}+({vw_even}-w)/2':'{vy}+({vh_even}-h)/2':format=auto[vvid]"
+                        )
+                        vlabel = "vvid"
+                    else:
+                        parts.append("[vbase_fg]nullsink")
+                    if cfg.chapter_titles and entries and self._write_chapters(
+                            entries, total, temp_dir, cfg, language):
+                        parts.append(f"[{vlabel}]subtitles=chapters.ass:fontsdir=.[vsub]")
+                        vlabel = "vsub"
+                elif kind == "wave" and wave_active:
+                    wave_x, wave_y, _ww, _wh = frame.wave_rect(width, height)
+                    parts.append(f"[{vlabel}][waves]overlay={wave_x}:{wave_y}:format=auto[vwave]")
+                    vlabel = "vwave"
+                elif kind == "image" and idx in img_map:
+                    input_index, image = img_map[idx]
+                    if not getattr(image, "visible", True):
+                        continue
+                    image_w = _even(max(2, int(round(image.width * width))))
+                    chain = f"[{input_index}:v]scale={image_w}:-1,format=rgba"
+                    if getattr(image, "flip_h", False):
+                        chain += ",hflip"
+                    if getattr(image, "flip_v", False):
+                        chain += ",vflip"
+                    rot = float(getattr(image, "rotation", 0.0) or 0.0)
+                    if rot:
+                        angle_rad = -rot * math.pi / 180.0
+                        chain += f",rotate={angle_rad:.5f}:ow=rotw({angle_rad:.5f}):oh=roth({angle_rad:.5f}):c=none"
+                    if image.opacity < 0.999:
+                        chain += f",colorchannelmixer=aa={image.opacity:.3f}"
+                    parts.append(chain + f"[frameimg{idx}]")
+                    image_x = max(0, min(width - 1, int(round(image.x * width))))
+                    image_y = max(0, min(height - 1, int(round(image.y * height))))
+                    if rot:
+                        parts.append(
+                            f"[{vlabel}][frameimg{idx}]overlay='{image_x}+({image_w}-w)/2':'{image_y}+({image_w}-h)/2':"
+                            f"format=auto[vframe{idx}]"
+                        )
+                    else:
+                        parts.append(
+                            f"[{vlabel}][frameimg{idx}]overlay={image_x}:{image_y}:"
+                            f"format=auto[vframe{idx}]"
+                        )
+                    vlabel = f"vframe{idx}"
+                elif kind == "subtitle":
+                    if cfg.subtitle_srt and srt_events:
+                        if self._write_ass(srt_events, total, temp_dir, cfg, language):
+                            parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
+                            vlabel = "vsub2"
+                    elif (cfg.subtitle_enabled or getattr(frame, "subtitle_visible", True)) and segments:
+                        if self._write_subtitles(segments, total, temp_dir, cfg, language):
+                            parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
+                            vlabel = "vsub2"
 
         parts.append(f"[{vlabel}]null[vout]")
 

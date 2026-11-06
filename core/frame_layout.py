@@ -146,8 +146,52 @@ class FrameLayout:
     wave_w: float = 0.88
     wave_h: float = 0.08
     wave_color: str = DEFAULT_WAVE_COLOR
+    video_x: float = 0.0
+    video_y: float = 0.0
+    video_w: float = 1.0
+    video_visible: bool = True
+    video_locked: bool = False
     preview: str = ""
     images: List[FrameImage] = field(default_factory=list)
+    layer_order: List[str] = field(default_factory=list)
+
+    def ordered_layers(self) -> List[Tuple[str, int]]:
+        """Return ``(kind, index)`` from top-most layer (row 0) to bottom-most layer."""
+        default_tokens = ["subtitle", "wave"] + [f"image:{i}" for i in range(len(self.images))] + ["video"]
+        seen: set[str] = set()
+        result: List[Tuple[str, int]] = []
+        for token in list(self.layer_order or []) + default_tokens:
+            token = str(token or "").strip()
+            if not token or token in seen:
+                continue
+            if token == "subtitle":
+                seen.add(token)
+                result.append(("subtitle", -1))
+            elif token == "wave":
+                seen.add(token)
+                result.append(("wave", -1))
+            elif token == "video":
+                seen.add(token)
+                result.append(("video", -1))
+            elif token.startswith("image:"):
+                try:
+                    idx = int(token.split(":", 1)[1])
+                except ValueError:
+                    continue
+                if 0 <= idx < len(self.images):
+                    seen.add(token)
+                    result.append(("image", idx))
+        return result
+
+    def set_ordered_layers(self, layers: List[Tuple[str, int]]) -> None:
+        tokens: List[str] = []
+        for kind, idx in layers:
+            if kind in ("subtitle", "wave", "video"):
+                tokens.append(kind)
+            elif kind == "image" and 0 <= idx < len(self.images):
+                tokens.append(f"image:{idx}")
+        default_tokens = ["subtitle", "wave"] + [f"image:{i}" for i in range(len(self.images))] + ["video"]
+        self.layer_order = [] if tokens == default_tokens else tokens
 
     # ── validation ───────────────────────────────────────────────────────────
     def clamp(self) -> "FrameLayout":
@@ -166,6 +210,11 @@ class FrameLayout:
         self.wave_y = round(_clamp(_as_float(self.wave_y, 0.74), 0.0,
                                    1.0 - self.wave_h), 4)
         self.wave_color = normalize_color(self.wave_color)
+        self.video_w = round(_clamp(_as_float(self.video_w, 1.0), 0.1, 1.0), 4)
+        self.video_x = round(_clamp(_as_float(self.video_x, 0.0), 0.0, 1.0 - self.video_w), 4)
+        self.video_y = round(_clamp(_as_float(self.video_y, 0.0), 0.0, 1.0 - self.video_w), 4)
+        self.video_visible = bool(self.video_visible)
+        self.video_locked = bool(self.video_locked)
         for image in self.images:
             image.clamp()
         return self
@@ -191,8 +240,14 @@ class FrameLayout:
             wave_w=_as_float(raw.get("wave_w"), 0.88),
             wave_h=_as_float(raw.get("wave_h"), 0.08),
             wave_color=raw.get("wave_color") or DEFAULT_WAVE_COLOR,
+            video_x=_as_float(raw.get("video_x"), 0.0),
+            video_y=_as_float(raw.get("video_y"), 0.0),
+            video_w=_as_float(raw.get("video_w"), 1.0),
+            video_visible=bool(raw.get("video_visible", True)),
+            video_locked=bool(raw.get("video_locked", False)),
             preview=str(raw.get("preview") or ""),
             images=[FrameImage.from_dict(image, base) for image in images],
+            layer_order=[str(x) for x in (raw.get("layer_order") or []) if str(x).strip()],
         ).clamp()
 
     @classmethod
@@ -220,12 +275,38 @@ class FrameLayout:
         }
         if not self.subtitle_visible:
             d["subtitle_visible"] = False
+        if self.video_x != 0.0:
+            d["video_x"] = self.video_x
+        if self.video_y != 0.0:
+            d["video_y"] = self.video_y
+        if self.video_w != 1.0:
+            d["video_w"] = self.video_w
+        if not self.video_visible:
+            d["video_visible"] = False
+        if self.video_locked:
+            d["video_locked"] = True
+        if self.layer_order:
+            default_tokens = ["subtitle", "wave"] + [f"image:{i}" for i in range(len(self.images))] + ["video"]
+            current_tokens = [
+                k if k != "image" else f"image:{idx}"
+                for k, idx in self.ordered_layers()
+            ]
+            if current_tokens != default_tokens:
+                d["layer_order"] = current_tokens
         return d
 
     # ── derived geometry ─────────────────────────────────────────────────────
     @property
     def wave_active(self) -> bool:
         return bool(self.enabled and self.waveform)
+
+    def video_rect(self, width: int, height: int) -> Tuple[int, int, int, int]:
+        """Pixel ``(x, y, w, h)`` box for the bottom-most video layer."""
+        w = max(2, int(round(self.video_w * max(1, width))))
+        h = max(2, int(round(self.video_w * max(1, height))))
+        x = max(0, min(max(0, width - w), int(round(self.video_x * max(1, width)))))
+        y = max(0, min(max(0, height - h), int(round(self.video_y * max(1, height)))))
+        return x, y, w, h
 
     def subtitle_pos(self, width: int, height: int) -> Tuple[int, int]:
         """Pixel centre anchor for ASS ``\\pos``."""
