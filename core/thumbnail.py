@@ -482,25 +482,58 @@ def render_thumbnail(
 
 
 # ── attach to project ────────────────────────────────────────────────────────
-def attach_thumbnail(manager, base: str, image_path: str | os.PathLike) -> Path:
-    """Copy the image to ``thumbs/<base>.jpg`` and merge it into the item JSON."""
+def attach_thumbnail(
+    manager,
+    base: str,
+    image_path: str | os.PathLike,
+    language: str = "",
+) -> Path:
+    """Copy the image to ``thumbs/<lang>/<base>.jpg`` (or ``thumbs/<base>.jpg`` for flat legacy items) and merge it into the item JSON."""
     source = Path(image_path)
     if not source.is_file():
         raise RuntimeError(f"Không tìm thấy ảnh thumbnail: {source}")
-    target = Path(manager.thumbs_dir) / f"{base}.jpg"
+    item = manager.get_item(base) if hasattr(manager, "get_item") else None
+    in_lang_dir = bool(
+        language
+        or (
+            item is not None
+            and (
+                (item.text_file is not None and item.text_file.parent != manager.script_dir)
+                or (item.json_file is not None and item.json_file.parent != manager.script_dir)
+                or any(item.base.lower().endswith(f"_{lc}") for lc in ("vi", "en", "ja", "zh", "ko", "fr", "de", "es", "ru", "th", "id", "pt"))
+            )
+        )
+    )
+    lang = str(language or getattr(item, "language", "") or getattr(manager, "default_language", "vi")).strip().lower() or "vi"
+    if in_lang_dir:
+        if hasattr(manager, "lang_dir"):
+            thumbs_dir = manager.lang_dir("thumbs", lang, create=True)
+        else:
+            thumbs_dir = Path(manager.thumbs_dir) / lang
+            thumbs_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        thumbs_dir = Path(manager.thumbs_dir)
+        thumbs_dir.mkdir(parents=True, exist_ok=True)
+    target = thumbs_dir / f"{base}.jpg"
     target.parent.mkdir(parents=True, exist_ok=True)
     if source.resolve() != target.resolve():
         with Image.open(source) as image:
             image.convert("RGB").save(target, "JPEG", quality=92)
-    json_path = Path(manager.script_dir) / f"{base}.json"
+    if item is not None and getattr(item, "json_file", None):
+        json_path = Path(item.json_file)
+    elif item is not None and getattr(item, "text_file", None):
+        json_path = Path(item.text_file).with_suffix(".json")
+    elif in_lang_dir and hasattr(manager, "lang_dir"):
+        json_path = manager.lang_dir("script", lang, create=True) / f"{base}.json"
+    else:
+        json_path = Path(manager.script_dir) / f"{base}.json"
     data = load_json(json_path, {}) or {}
     if not isinstance(data, dict):
         data = {}
     data["thumbnail_path"] = str(target.resolve())
     write_json_atomic(json_path, data)
-    item = manager.get_item(base)
     if item is not None:
         item.metadata["thumbnail_path"] = str(target.resolve())
         manager.save_state()
-    logger.info("Đã gắn thumbnail %s cho %s.", target.name, base)
+    logger.info("Đã gắn thumbnail %s cho %s (%s).", target.name, base, lang)
     return target

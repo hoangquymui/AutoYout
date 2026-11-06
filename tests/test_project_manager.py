@@ -138,3 +138,26 @@ def test_write_json_atomic_concurrent_read(tmp_path: Path) -> None:
     data = load_json(state_file)
     assert data == {"updated": True}
 
+
+def test_language_subfolders_and_scan(tmp_path: Path) -> None:
+    manager = ProjectManager(tmp_path)
+    created = manager.ensure_language_dirs(["vi", "en", "ja"])
+    assert (tmp_path / "script" / "vi").is_dir()
+    assert (tmp_path / "audio" / "en").is_dir()
+    assert (tmp_path / "video" / "ja").is_dir()
+    assert (tmp_path / "thumbs" / "vi").is_dir()
+    assert len(created) == 12
+
+    _write(tmp_path / "script" / "vi" / "de_tai_vi.txt", "Kịch bản tiếng Việt.")
+    _write(tmp_path / "script" / "en" / "de_tai_en.txt", "English script content.")
+    items = manager.scan()
+    assert [it.base for it in items] == ["de_tai_en", "de_tai_vi"]
+    vi_item = manager.get_item("de_tai_vi")
+    en_item = manager.get_item("de_tai_en")
+    assert vi_item is not None and vi_item.language == "vi"
+    assert en_item is not None and en_item.language == "en"
+    assert vi_item.audio_path == (tmp_path / "audio" / "vi" / "de_tai_vi.mp3")
+    assert en_item.audio_path == (tmp_path / "audio" / "en" / "de_tai_en.mp3")
+    assert vi_item.cues_path == (tmp_path / "audio" / "vi" / "de_tai_vi.cues.json")
+
+

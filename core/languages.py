@@ -147,11 +147,28 @@ def detect_suffix_language(stem: str, fallback: str = DEFAULT_LANGUAGE) -> str:
     return tail if tail in LANGUAGES else fallback
 
 
+def normalize_language_code(value: object, fallback: str = DEFAULT_LANGUAGE) -> str:
+    """Coerce ``value`` to a known code or preserve short custom codes (e.g. ``aa``, ``ca``, ``aas``)."""
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return fallback
+    norm = normalize_language(raw, "")
+    if norm:
+        return norm
+    if raw.isalnum() and len(raw) <= 5:
+        return raw
+    return fallback
+
+
 def resolve_language(metadata: Optional[dict], stem: str,
                      default: str = DEFAULT_LANGUAGE) -> str:
     """Language precedence: metadata > filename suffix > project default."""
     if isinstance(metadata, dict):
         explicit = metadata.get("language") or metadata.get("lang")
-        if explicit and is_known(explicit):
-            return normalize_language(explicit)
-    return detect_suffix_language(stem, normalize_language(default))
+        if explicit:
+            if is_known(explicit):
+                return normalize_language(explicit)
+            raw_exp = str(explicit).strip().lower()
+            if raw_exp.isalnum() and len(raw_exp) <= 5:
+                return raw_exp
+    return detect_suffix_language(stem, normalize_language_code(default))

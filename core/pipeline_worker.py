@@ -26,7 +26,7 @@ from core.ffmpeg_renderer import (
     RenderError,
     VideoConfig,
 )
-from core.languages import normalize_language
+from core.languages import normalize_language, normalize_language_code
 from core.project_manager import (
     ITEM_ERROR,
     ITEM_PENDING,
@@ -263,14 +263,18 @@ class PipelineWorker(QThread):
     # ── stage planning ───────────────────────────────────────────────────────
     def _stage_plan(self) -> List[Tuple[str, float, float]]:
         if self.mode == "all":
+            auto_cfg = self.settings.get("automation") or {}
             has_yt = bool(
-                self.settings.get("automation", {}).get("youtube_url")
+                auto_cfg.get("youtube_url")
                 or self.settings.get("script", {}).get("youtube_url")
             )
-            if has_yt:
-                names = ["script", "tts", "video", "thumbnail", "upload"]
-            else:
-                names = ["tts", "video", "thumbnail", "upload"]
+            names = ["script", "tts"] if has_yt else ["tts"]
+            if auto_cfg.get("video_enabled", True):
+                names.append("video")
+            if auto_cfg.get("thumbnail_enabled", True):
+                names.append("thumbnail")
+            if auto_cfg.get("upload_enabled", True):
+                names.append("upload")
         else:
             names = [self.mode]
         total = sum(_STAGE_WEIGHTS[name] for name in names) or 1
@@ -358,8 +362,10 @@ class PipelineWorker(QThread):
         self.script_updated.emit(yt_url, raw_text, {}, meta)
 
         api_key = (
-            (self.settings.get("script") or {}).get("api_key")
+            (self.settings.get("api") or {}).get("gemini_key")
+            or (self.settings.get("script") or {}).get("api_key")
             or (self.settings.get("ai") or {}).get("api_key")
+            or (self.settings.get("video") or {}).get("ai_api_key")
             or ""
         ).strip()
         model = str((self.settings.get("script") or {}).get("model") or DEFAULT_MODEL)
@@ -389,8 +395,23 @@ class PipelineWorker(QThread):
         if isinstance(target_langs, str):
             target_langs = [target_langs]
 
-        base_title = meta.get("title") or meta.get("video_id") or "youtube_video"
+        topic_name = str(
+            (self.settings.get("automation") or {}).get("topic_name")
+            or (self.settings.get("script") or {}).get("topic_name")
+            or ""
+        ).strip()
+        base_title = topic_name or meta.get("title") or meta.get("video_id") or "youtube_video"
         base_name = safe_filename(base_title, "video")
+
+        from core.language_profiles import load_profiles
+        from utils.files import write_json_atomic
+        profiles_by_lang = {
+            normalize_language_code(p.language): p.prompt
+            for p in load_profiles()
+            if p.language
+        }
+        source_lang = normalize_language_code(meta.get("source_language") or "vi")
+        self.manager.ensure_language_dirs(target_langs)
 
         errors: List[str] = []
         translations: Dict[str, str] = {}
@@ -401,25 +422,33 @@ class PipelineWorker(QThread):
                 50 + int((idx / total_langs) * 45),
                 f"Đang chuẩn bị kịch bản tiếng {lang} ({idx + 1}/{total_langs})…",
             )
-            lang_code = lang.strip().lower()
+            lang_code = normalize_language_code(lang)
             text_for_lang = cleaned_text
-            if api_key and lang_code != "vi" and lang_code != meta.get("source_language"):
+            if api_key and lang_code != source_lang:
                 try:
                     text_for_lang = translate_text(
                         cleaned_text,
                         api_key=api_key,
                         model=model,
-                        source_lang=meta.get("source_language") or "vi",
+                        source_lang=source_lang,
                         target_lang=lang_code,
+                        custom_prompt=profiles_by_lang.get(lang_code, ""),
                     )
                 except Exception as exc:
                     logger.warning("Dịch sang %s lỗi: %s, dùng bản tiếng gốc.", lang_code, exc)
                     errors.append(f"Dịch kịch bản {lang_code}: {exc}")
 
-            out_file = self.manager.script_dir / f"{base_name}_{lang_code}.txt"
+            lang_script_dir = self.manager.lang_dir("script", lang_code, create=True)
+            out_file = lang_script_dir / f"{base_name}_{lang_code}.txt"
             try:
-                out_file.write_text(text_for_lang, encoding="utf-8")
-                logger.info("Đã tạo file kịch bản: %s", out_file.name)
+                out_file.write_text(text_for_lang.strip() + "\n", encoding="utf-8", newline="\n")
+                is_source = lang_code == source_lang
+                write_json_atomic(out_file.with_suffix(".json"), {
+                    "title": base_title if is_source else f"{base_title} [{lang_code.upper()}]",
+                    "language": lang_code,
+                    "url": yt_url,
+                })
+                logger.info("Đã tạo file kịch bản: %s/%s", lang_code, out_file.name)
                 translations[lang_code] = text_for_lang
                 self.script_updated.emit(yt_url, cleaned_text, dict(translations), meta)
             except Exception as exc:
@@ -757,67 +786,90 @@ class PipelineWorker(QThread):
             report(100, "Thumbnail: không có mục nào.")
             return []
 
+        from core.thumbnail import (
+            DEFAULT_HIGHLIGHT_PALETTE,
+            attach_thumbnail,
+            build_image_prompt,
+            default_font_path,
+            generate_image,
+            render_thumbnail,
+        )
+
+        thumb_cfg = self.settings.get("thumbnail") or {}
+        selected_langs_raw = thumb_cfg.get("languages")
+        if isinstance(selected_langs_raw, list) and selected_langs_raw:
+            allowed_langs = {normalize_language_code(c) for c in selected_langs_raw if str(c).strip()}
+            filtered = [
+                it for it in items
+                if normalize_language_code(getattr(it, "language", "") or self.manager.default_language) in allowed_langs
+            ]
+            if filtered:
+                items = filtered
+
         report(10, "Bắt đầu tạo thumbnail cho các mục…")
         errors: List[str] = []
         total = len(items)
 
-        from core.thumbnail import (
-            build_image_prompt,
-            generate_image,
-            render_thumbnail,
-            attach_thumbnail,
-            default_font_path,
-        )
-
-        thumb_cfg = self.settings.get("thumbnail") or {}
         provider = str(thumb_cfg.get("provider") or "pollinations")
-        api_key = (
+        api = self.settings.get("api") or {}
+        api_key = str(
             thumb_cfg.get("api_key")
+            or api.get("imagen_key")
+            or api.get("gemini_key")
             or (self.settings.get("ai") or {}).get("api_key")
+            or (self.settings.get("video") or {}).get("ai_api_key")
             or ""
         ).strip()
-        model = str(thumb_cfg.get("model") or "imagen-3.0-generate-002")
+        style = str(thumb_cfg.get("style") or "")
+        template_id = str(thumb_cfg.get("template_id") or "drama_left")
+        palette = dict(DEFAULT_HIGHLIGHT_PALETTE)
+        palette.update(thumb_cfg.get("palette") or {})
+        font_path = str(thumb_cfg.get("font_path") or default_font_path())
 
         for idx, item in enumerate(items):
             self._checkpoint()
+            item_lang = normalize_language_code(getattr(item, "language", "") or self.manager.default_language)
+            thumbs_lang_dir = self.manager.lang_dir("thumbs", item_lang, create=True)
             report(
                 int((idx / total) * 100),
-                f"Tạo thumbnail ({idx + 1}/{total}): {item.display_name}",
+                f"Tạo thumbnail ({idx + 1}/{total}): {item.display_name} [{item_lang}]",
             )
-            target_thumb = self.manager.thumbs_dir / f"{item.base}.png"
+            target_thumb = thumbs_lang_dir / f"{item.base}.jpg"
             if target_thumb.is_file() and not self.force and not is_retry:
                 continue
 
             try:
-                title = item.title or item.base
+                title = str(item.metadata.get("title") or item.display_name or item.base)
                 prompt = build_image_prompt(
                     title=title,
                     transcript_excerpt=item.text[:600],
-                    style=str(thumb_cfg.get("style") or "cinematic"),
-                    language=getattr(item, "language", "vi"),
+                    style=style,
+                    template_id=template_id,
                 )
-                bg_target = self.manager.thumbs_dir / f"{item.base}_bg.png"
+                bg_target = thumbs_lang_dir / f"{item.base}_bg.png"
                 generate_image(
                     provider=provider,
                     prompt=prompt,
-                    target=bg_target,
+                    out_path=bg_target,
                     api_key=api_key,
-                    model=model,
-                    width=1280,
-                    height=720,
+                    cancel_cb=self.is_cancelled,
                 )
                 render_thumbnail(
-                    background=bg_target,
+                    bg_path=bg_target,
                     title=title,
-                    target=target_thumb,
-                    font_path=default_font_path(),
+                    highlights=[],
+                    template_id=template_id,
+                    palette=palette,
+                    out_path=target_thumb,
+                    font_path=font_path,
                 )
-                attach_thumbnail(self.manager, item.base, target_thumb)
-                logger.info("Tạo thumbnail thành công: %s", target_thumb.name)
+                attach_thumbnail(self.manager, item.base, target_thumb, language=item_lang)
+                logger.info("Tạo thumbnail thành công: %s/%s", item_lang, target_thumb.name)
             except Exception as exc:
                 logger.warning("Không tạo được thumbnail cho %s: %s", item.base, exc)
                 errors.append(f"Thumbnail {item.display_name}: {exc}")
 
+        self.items_updated.emit()
         report(100, f"Hoàn tất tạo thumbnail ({total - len(errors)}/{total}).")
         return errors
 

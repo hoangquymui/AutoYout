@@ -523,7 +523,12 @@ class DubbingTab(QWidget):
         if self._manager is None or not self._base:
             self._set_status("Hãy chọn file trước khi tải lại.", "warning")
             return
-        txt_path = Path(self._manager.script_dir) / f"{self._base}.txt"
+        item = self._manager.get_item(self._base)
+        txt_path = (
+            item.text_file
+            if item is not None and item.text_file is not None
+            else Path(self._manager.script_dir) / f"{self._base}.txt"
+        )
         min_words = int(self.min_words_spin.value())
         max_words = int(self.max_words_spin.value())
 
@@ -673,7 +678,13 @@ class DubbingTab(QWidget):
             if not path.is_absolute():
                 path = Path(self._manager.project_dir) / path
             return path
-        return Path(self._manager.audio_dir) / "cues" / self._base / f"{int(cue.id):04d}.mp3"
+        item = self._manager.get_item(self._base)
+        audio_parent = (
+            item.audio_path.parent
+            if item is not None and getattr(item, "audio_path", None)
+            else Path(self._manager.audio_dir)
+        )
+        return audio_parent / "cues" / self._base / f"{int(cue.id):04d}.mp3"
 
     @staticmethod
     def _output_name(cue: CueJob) -> str:

@@ -124,7 +124,21 @@ class CueJob:
 
 # ── persistence ──────────────────────────────────────────────────────────────
 def cues_path(manager, base: str) -> Path:
-    return Path(manager.audio_dir) / f"{base}.cues.json"
+    item = manager.get_item(base) if hasattr(manager, "get_item") else None
+    if item is not None:
+        if getattr(item, "cues_path", None):
+            return Path(item.cues_path)
+        audio_p = getattr(item, "audio_path", None)
+        if audio_p:
+            return Path(audio_p).parent / f"{base}.cues.json"
+    flat = Path(manager.audio_dir) / f"{base}.cues.json"
+    if flat.is_file():
+        return flat
+    if item is not None and getattr(item, "language", ""):
+        lang = normalize_language(item.language)
+        if hasattr(manager, "lang_dir"):
+            return manager.lang_dir("audio", lang, create=True) / f"{base}.cues.json"
+    return flat
 
 
 def load_cues(manager, base: str) -> List[CueJob]:
@@ -164,7 +178,26 @@ def reindex(cues: Iterable[CueJob]) -> List[CueJob]:
 
 
 # ── importing ────────────────────────────────────────────────────────────────
-def _ensure_input_text(manager, base: str, text: str, title: str) -> None:
+def _ensure_input_text(manager, base: str, text: str, title: str,
+                       source_path: Optional[Path] = None) -> None:
+    item = manager.get_item(base) if hasattr(manager, "get_item") else None
+    if item is not None and item.text_file is not None:
+        return
+    if source_path is not None and source_path.is_file():
+        try:
+            source_path.resolve().relative_to(Path(manager.script_dir).resolve())
+            txt_path = source_path
+            json_path = source_path.with_suffix(".json")
+            if not json_path.exists():
+                lang = normalize_language(
+                    source_path.parent.name
+                    if source_path.parent != Path(manager.script_dir)
+                    else getattr(manager, "default_language", DEFAULT_LANGUAGE)
+                )
+                write_json_atomic(json_path, {"title": title, "language": lang})
+            return
+        except ValueError:
+            pass
     txt_path = Path(manager.script_dir) / f"{base}.txt"
     json_path = Path(manager.script_dir) / f"{base}.json"
     if not txt_path.exists():
@@ -193,7 +226,8 @@ def import_srt(manager, srt_path: str | os.PathLike) -> str:
     if not cues:
         raise DubbingError(f"Không đọc được cue nào từ {source.name}.")
     base = safe_filename(source.stem, "script")
-    _ensure_input_text(manager, base, cues_to_text(cues), source.stem)
+    _ensure_input_text(manager, base, cues_to_text(cues), source.stem, source)
+    manager.scan()
     jobs = [CueJob(index, cue.start, cue.end, cue.text) for index, cue in enumerate(cues, 1)]
     save_cues(manager, base, jobs)
     _mark_dubbing(manager, base)
@@ -227,7 +261,8 @@ def import_txt(manager, txt_path: str | os.PathLike,
     if not pieces:
         raise DubbingError(f"{source.name} không có nội dung để lồng tiếng.")
     base = safe_filename(source.stem, "script")
-    _ensure_input_text(manager, base, text, source.stem)
+    _ensure_input_text(manager, base, text, source.stem, source)
+    manager.scan()
     jobs = _cues_from_pieces(pieces)
     save_cues(manager, base, jobs)
     _mark_dubbing(manager, base)
@@ -384,7 +419,12 @@ class DubbingEngine:
     ) -> float:
         """Render every pending cue; returns the total audio duration (seconds)."""
         item_base = str(getattr(item, "base", ""))
-        out_dir = Path(manager.audio_dir) / "cues" / item_base
+        audio_parent = (
+            Path(item.audio_path).parent
+            if getattr(item, "audio_path", None)
+            else Path(manager.audio_dir)
+        )
+        out_dir = audio_parent / "cues" / item_base
         out_dir.mkdir(parents=True, exist_ok=True)
         language = normalize_language(
             getattr(item, "language", "") or manager.default_language)

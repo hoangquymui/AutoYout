@@ -13,6 +13,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from core.languages import (
     DEFAULT_LANGUAGE,
     normalize_language,
+    normalize_language_code,
     resolve_language,
 )
 from utils.files import (
@@ -142,9 +143,15 @@ def normalize_metadata(raw: Any, json_path: Optional[Path] = None) -> Dict[str, 
         if not candidate.is_absolute() and json_path is not None:
             candidate = json_path.parent / candidate
         if not candidate.is_file() and json_path is not None:
-            alt = json_path.parent.parent / "assets" / str(thumb)
-            if alt.is_file():
-                candidate = alt
+            for p_dir in (json_path.parent.parent, json_path.parent.parent.parent):
+                alt = p_dir / "assets" / str(thumb)
+                if alt.is_file():
+                    candidate = alt
+                    break
+                alt_thumbs = p_dir / "thumbs" / str(thumb)
+                if alt_thumbs.is_file():
+                    candidate = alt_thumbs
+                    break
         meta["thumbnail_path"] = str(candidate) if candidate.is_file() else ""
     else:
         meta["thumbnail_path"] = ""
@@ -372,6 +379,33 @@ class ProjectManager:
             "assets": self.assets_dir,
         }
 
+    def lang_dir(self, kind: str, language: str, create: bool = True) -> Path:
+        """Return (and optionally create) ``<kind>/<lang_code>`` inside the project."""
+        base_map = {
+            "script": self.script_dir,
+            "audio": self.audio_dir,
+            "video": self.video_dir,
+            "thumbs": self.thumbs_dir,
+        }
+        root = base_map.get(str(kind or "").strip().lower(), self.script_dir)
+        code = normalize_language_code(language or self.default_language)
+        target = root / code
+        if create:
+            target.mkdir(parents=True, exist_ok=True)
+        return target
+
+    def ensure_language_dirs(self, languages: Iterable[str]) -> List[Path]:
+        """Create ``script/<lang>``, ``audio/<lang>``, ``video/<lang>``, ``thumbs/<lang>``."""
+        created: List[Path] = []
+        for raw in languages:
+            code = normalize_language_code(raw, "")
+            if not code:
+                continue
+            for kind in ("script", "audio", "video", "thumbs"):
+                folder = self.lang_dir(kind, code, create=True)
+                created.append(folder)
+        return created
+
     def ensure_structure(self) -> List[str]:
         """Create any missing standard folder and return the keys it created."""
         created: List[str] = []
@@ -447,14 +481,43 @@ class ProjectManager:
             old_items = dict(self._state.get("items") or {})
         text_files: Dict[str, Path] = {}
         json_files: Dict[str, Path] = {}
-        for path in natural_sorted(self.script_dir.iterdir() if self.script_dir.exists() else []):
-            if not path.is_file():
-                continue
-            suffix = path.suffix.lower()
-            if suffix == ".txt":
-                text_files[path.stem] = path
-            elif suffix == ".json":
-                json_files[path.stem] = path
+        folder_langs: Dict[str, str] = {}
+        in_lang_subfolder: set[str] = set()
+        if self.script_dir.exists():
+            # 1) Flat files directly under script/ (backward compatibility)
+            for path in natural_sorted(self.script_dir.iterdir()):
+                if not path.is_file():
+                    continue
+                suffix = path.suffix.lower()
+                if suffix == ".txt":
+                    text_files[path.stem] = path
+                elif suffix == ".json":
+                    json_files[path.stem] = path
+            # 2) Language subfolders script/<lang>/
+            for subdir in natural_sorted(self.script_dir.iterdir()):
+                if not subdir.is_dir() or subdir.name.startswith("."):
+                    continue
+                lang_code = normalize_language_code(subdir.name, "")
+                if not lang_code:
+                    continue
+                for path in natural_sorted(subdir.iterdir()):
+                    if not path.is_file():
+                        continue
+                    suffix = path.suffix.lower()
+                    if suffix not in (".txt", ".json"):
+                        continue
+                    stem = path.stem
+                    base = stem
+                    # Disambiguate if another language folder has an identical stem without suffix
+                    if base in folder_langs and folder_langs[base] != lang_code:
+                        if not base.lower().endswith(f"_{lang_code}"):
+                            base = f"{stem}_{lang_code}"
+                    folder_langs[base] = lang_code
+                    in_lang_subfolder.add(base)
+                    if suffix == ".txt":
+                        text_files[base] = path
+                    elif suffix == ".json":
+                        json_files[base] = path
 
         bases = sorted(set(text_files) | set(json_files), key=natural_key)
         items: Dict[str, ProjectItem] = {}
@@ -486,6 +549,11 @@ class ProjectManager:
 
             digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
             previous = old_items.get(base) or {}
+            item_lang = resolve_language(
+                metadata,
+                base,
+                folder_langs.get(base) or previous.get("language") or self.default_language,
+            )
             image_takes = _path_list(previous.get("image_takes"))
             voice_takes = _path_list(previous.get("voice_takes"))
             voice_takes = [
@@ -496,9 +564,25 @@ class ProjectManager:
                 previous.get("selected_image_index"), len(image_takes))
             selected_voice_index = _clamp_index(
                 previous.get("selected_voice_index"), len(voice_takes))
-            audio_path = Path(previous.get("audio_path") or (self.audio_dir / f"{base}.mp3"))
-            if not audio_path.is_absolute():
-                audio_path = self.project_dir / audio_path
+            default_audio_dir = (
+                self.lang_dir("audio", item_lang, create=True)
+                if base in in_lang_subfolder or (self.audio_dir / item_lang / f"{base}.mp3").is_file()
+                else self.audio_dir
+            )
+            prev_audio_raw = previous.get("audio_path")
+            if prev_audio_raw:
+                audio_path = Path(prev_audio_raw)
+                if not audio_path.is_absolute():
+                    audio_path = self.project_dir / audio_path
+                # Migrate to language subfolder if script is in script/<lang>/ and old flat file doesn't exist
+                if (
+                    base in in_lang_subfolder
+                    and audio_path.parent == self.audio_dir
+                    and not audio_path.is_file()
+                ):
+                    audio_path = default_audio_dir / f"{base}.mp3"
+            else:
+                audio_path = default_audio_dir / f"{base}.mp3"
             if voice_takes:
                 audio_path = Path(voice_takes[selected_voice_index])
             duration = float(previous.get("duration") or 0.0)
@@ -523,11 +607,22 @@ class ProjectManager:
 
             dub_mode = str(previous.get("dub_mode") or "text")
             cues_raw = str(previous.get("cues_path") or "").strip()
-            cues_file = Path(cues_raw) if cues_raw else self.audio_dir / f"{base}.cues.json"
-            if not cues_file.is_absolute():
-                cues_file = self.project_dir / cues_file
+            default_cues_file = default_audio_dir / f"{base}.cues.json"
+            if cues_raw:
+                cues_file = Path(cues_raw)
+                if not cues_file.is_absolute():
+                    cues_file = self.project_dir / cues_file
+                if (
+                    base in in_lang_subfolder
+                    and cues_file.parent == self.audio_dir
+                    and not cues_file.is_file()
+                ):
+                    cues_file = default_cues_file
+            else:
+                cues_file = default_cues_file
             if (
                 cues_file.is_file()
+                or audio_path.with_suffix(".srt").is_file()
                 or (self.audio_dir / f"{base}.srt").is_file()
                 or (txt_path and txt_path.with_suffix(".srt").is_file())
             ):
@@ -551,8 +646,7 @@ class ProjectManager:
                 selected_image_index=selected_image_index,
                 voice_takes=voice_takes,
                 selected_voice_index=selected_voice_index,
-                language=resolve_language(
-                    metadata, base, previous.get("language") or self.default_language),
+                language=item_lang,
                 dub_mode=dub_mode,
                 cues_path=cues_file,
             )
@@ -599,7 +693,7 @@ class ProjectManager:
 
     def set_item_language(self, base: str, language: str) -> Optional[ProjectItem]:
         """Pin the TTS/subtitle language of one item (overrides suffix detection)."""
-        return self.update_item(base, language=normalize_language(language))
+        return self.update_item(base, language=normalize_language_code(language))
 
     def select_take(self, base: str, kind: str, index: int) -> Optional[ProjectItem]:
         """Switch the selected take ("image"/"voice") of one item and persist state."""
@@ -724,6 +818,7 @@ class ProjectManager:
                         item.audio_path.unlink()
                     except OSError as exc:
                         logger.warning("Không xoá được %s: %s", item.audio_path, exc)
+                shutil.rmtree(item.audio_path.parent / "cues" / item.base, ignore_errors=True)
                 shutil.rmtree(self.audio_dir / "cues" / item.base, ignore_errors=True)
                 self._reset_item_cues(item.base)
                 item.state = ITEM_PENDING
@@ -744,7 +839,12 @@ class ProjectManager:
 
     def _reset_item_cues(self, base: str) -> None:
         """Mark every cue PENDING again but keep the cue list itself."""
-        path = self.audio_dir / f"{base}.cues.json"
+        item = self.items.get(base)
+        path = (item.cues_path if item and item.cues_path else None) or (self.audio_dir / f"{base}.cues.json")
+        if not path.is_file() and item and item.language:
+            alt = self.audio_dir / item.language / f"{base}.cues.json"
+            if alt.is_file():
+                path = alt
         data = load_json(path, None)
         entries = data.get("cues") if isinstance(data, dict) else data
         if not isinstance(entries, list):
