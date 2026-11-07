@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-07T09:49:00Z",
+  "title": "Design System: AutoYout - The Obsidian Command Center",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Cyber Sky",
+        "canonical": "#0EA5E9",
+        "tonalRamp": ["#0284C7", "#0EA5E9", "#38BDF8", "#7DD3FC", "#BAE6FD"]
+      },
+      "primary-pressed": {
+        "role": "primary",
+        "displayName": "Electric Cerulean",
+        "canonical": "#0284C7",
+        "tonalRamp": ["#0369A1", "#0284C7", "#0EA5E9"]
+      },
+      "run-action": {
+        "role": "secondary",
+        "displayName": "Pipeline Emerald",
+        "canonical": "#10B981",
+        "tonalRamp": ["#16A34A", "#10B981", "#0D9488", "#2DD4BF"]
+      },
+      "pause-state": {
+        "role": "tertiary",
+        "displayName": "Amber Beacon",
+        "canonical": "#FBBF24",
+        "tonalRamp": ["#664C0D", "#FBBF24", "#FCD34D"]
+      },
+      "stop-state": {
+        "role": "tertiary",
+        "displayName": "Signal Coral",
+        "canonical": "#F87171",
+        "tonalRamp": ["#6E262E", "#F87171", "#FCA5A5"]
+      },
+      "obsidian-bg": {
+        "role": "neutral",
+        "displayName": "Obsidian Void",
+        "canonical": "#060A12",
+        "tonalRamp": ["#040710", "#060A12", "#080E1A", "#0C1424", "#101B30"]
+      },
+      "border-slate": {
+        "role": "neutral",
+        "displayName": "Border Slate",
+        "canonical": "#16253D",
+        "tonalRamp": ["#121E33", "#16253D", "#1B2D4A", "#223B63"]
+      },
+      "icy-white": {
+        "role": "neutral",
+        "displayName": "Icy White Text",
+        "canonical": "#F4F8FE",
+        "tonalRamp": ["#F4F8FE", "#E4EEFB", "#D1E1F5", "#8FAAC9", "#6681A3"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display (Branding)",
+        "purpose": "App title & prominent marketing banner headings."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Main tab titles and major module headings."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Group box titles and workflow step labels."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Standard interactive form values and general UI labels."
+      },
+      "label": {
+        "displayName": "Label / Caption",
+        "purpose": "Status pills, metadata tags, field descriptors."
+      },
+      "code": {
+        "displayName": "Monospace Code",
+        "purpose": "Timecodes, terminal logs, and parameter metrics."
+      }
+    },
+    "shadows": [
+      {
+        "name": "tonal-edge",
+        "value": "0 0 0 1px #16253D",
+        "purpose": "Structural separation for dark panels without blur."
+      },
+      {
+        "name": "luminous-focus",
+        "value": "0 0 0 1px #0EA5E9, 0 0 8px rgba(14, 165, 233, 0.35)",
+        "purpose": "Tactile focus state for inputs and buttons."
+      },
+      {
+        "name": "selected-card",
+        "value": "0 0 0 1px #38BDF8",
+        "purpose": "Active canvas layer or selected item highlight."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Hover and state transition easing."
+      },
+      {
+        "name": "duration-fast",
+        "value": "120ms",
+        "purpose": "Micro-interactions like button clicks."
+      },
+      {
+        "name": "duration-normal",
+        "value": "200ms",
+        "purpose": "Panel accordion or tab transitions."
+      }
+    ],
+    "breakpoints": [
+      { "name": "compact-deck", "value": "1280px" },
+      { "name": "standard-deck", "value": "1440px" },
+      { "name": "widescreen-deck", "value": "1920px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Hero Run All Button",
+      "kind": "button",
+      "refersTo": "button-run",
+      "description": "High-visibility green-teal gradient button initiating the end-to-end automation workflow.",
+      "html": "<button class=\"ay-btn-run\">⚡ THỰC HIỆN TOÀN BỘ (END-TO-END)</button>",
+      "css": ".ay-btn-run { background: linear-gradient(135deg, #16A34A, #10B981, #0D9488); color: #F0FDF4; font-weight: 800; border: 1px solid #2DD4BF; border-radius: 8px; padding: 9px 16px; font-family: 'Segoe UI', sans-serif; cursor: pointer; transition: all 0.15s ease; } .ay-btn-run:hover { border-color: #5EEAD4; box-shadow: 0 0 12px rgba(45, 212, 191, 0.4); }"
+    },
+    {
+      "name": "Primary Action Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Cerulean blue action button used for step execution and confirmations.",
+      "html": "<button class=\"ay-btn-primary\">Chuyển thể</button>",
+      "css": ".ay-btn-primary { background: #0284C7; color: #FFFFFF; font-weight: 600; border: 1px solid #38BDF8; border-radius: 8px; padding: 7px 14px; font-family: 'Segoe UI', sans-serif; cursor: pointer; transition: background 0.12s; } .ay-btn-primary:hover { background: #0EA5E9; }"
+    },
+    {
+      "name": "Input Well",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Recessed dark input with subtle border and cyber sky focus glow.",
+      "html": "<input type=\"text\" class=\"ay-input\" placeholder=\"Nhập nội dung...\" />",
+      "css": ".ay-input { background: #070E1A; color: #D1E1F5; border: 1px solid #1B2D4A; border-radius: 8px; padding: 6px 10px; font-size: 13px; outline: none; transition: border-color 0.15s; } .ay-input:focus { border-color: #0EA5E9; box-shadow: 0 0 6px rgba(14, 165, 233, 0.3); }"
+    },
+    {
+      "name": "Workflow Node Card",
+      "kind": "card",
+      "refersTo": "card-panel",
+      "description": "Modular step card with status pill and local action trigger.",
+      "html": "<div class=\"ay-step-card\"><div class=\"ay-card-header\"><strong>3. Tạo Video</strong><span class=\"ay-badge\">Chờ chạy</span></div><p>Ghép MP4, khung hình...</p><button class=\"ay-btn-step\">Chạy Video</button></div>",
+      "css": ".ay-step-card { background: #0C1424; border: 1px solid #16253D; border-radius: 12px; padding: 12px; font-family: 'Segoe UI', sans-serif; } .ay-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; } .ay-badge { background: #101B30; color: #7A96B8; font-size: 11px; padding: 2px 6px; border-radius: 6px; } .ay-btn-step { background: #0F1C31; color: #D1E2F7; border: 1px solid #1E3456; border-radius: 6px; padding: 4px 10px; cursor: pointer; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Obsidian Command Center",
+    "overview": "AutoYout is built as a precision workstation for creators producing and localizing video at industrial scale. The interface channels the clarity, gravity, and control of a mission-critical broadcast master suite: deep obsidian surfaces, crisp 1px structural framing, and focused cybernetic sky-blue illuminations.",
+    "keyCharacteristics": [
+      "Obsidian Depth: Deep space slate (#060A12 base, #0C1424 surfaces) eliminates eye fatigue.",
+      "Luminous Precision: High-frequency interactions ignite with Cyber Sky (#0EA5E9).",
+      "Tactile Certainty: Strict corner radii (16px down to 8px) and 1px micro-borders.",
+      "Workflow Continuity: Synchronized language lanes guide operators seamlessly."
+    ],
+    "rules": [
+      {
+        "name": "The Luminous Focus Rule",
+        "body": "The obsidian base canvas dominates ≥85% of visual area. Cyber Sky (#0EA5E9) is strictly reserved for actionable controls and active states, never exceeding 15% of total screen area.",
+        "section": "colors"
+      },
+      {
+        "name": "The Timecode Monospace Rule",
+        "body": "Any timestamp, audio duration, frame position, or log output must render exclusively in Cascadia Mono/Consolas to prevent horizontal jitter during playback.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Surfaces sit flat in rest state without heavy blur shadows. Depth is communicated exclusively through surface luminance steps and luminous edge definition.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do maintain a strict 1px border on all floating containers and input fields.",
+      "Do position newly added assets or stickers directly at the top of the layer stack.",
+      "Do format all timecodes and durations with fixed-width Cascadia Mono/Consolas fonts.",
+      "Do use the triple-stop green gradient (#16A34A -> #10B981 -> #0D9488) exclusively for major pipeline execution triggers.",
+      "Do preserve full contrast and color pairing parity when switching between Dark Mode and Light Mode."
+    ],
+    "donts": [
+      "Don't apply diffuse blur drop shadows; delineate depth purely through surface luminance steps and crisp 1px borders.",
+      "Don't saturate greater than 15% of the total viewport with accent colors (#0EA5E9 / #38BDF8).",
+      "Don't use arbitrary corner radiuses; adhere strictly to the 16 / 14 / 12 / 10 / 8 / 6 / 4px scale.",
+      "Don't hide or obscure critical error messages; display descriptive fault details in #F87171 accompanied by icon feedback.",
+      "Don't change component backgrounds on hover without simultaneously updating the border tone."
+    ]
+  }
+}
