@@ -393,7 +393,7 @@ def build_metadata(manager: ProjectManager, job: VideoJob, cfg: YouTubeConfig,
 
     playlist = str(meta.get("playlist_id") or "").strip() or cfg.playlist_id
     category = str(meta.get("category_id") or "").strip() or cfg.category_id or "22"
-    privacy = str(meta.get("privacy") or "").strip().lower()
+    privacy = str(meta.get("privacy") or getattr(job, "privacy", "") or "").strip().lower()
     if privacy not in ("public", "private", "unlisted"):
         privacy = cfg.privacy
     if publish_at:

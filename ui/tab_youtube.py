@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import copy
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QDateTime, QSize, Qt, QThread, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -49,7 +51,7 @@ from core.project_manager import (
 )
 from core.youtube_uploader import YouTubeUploader
 from ui import theme
-from ui.components.icons import icon, set_icon
+from ui.components.icons import icon, set_icon, set_pixmap
 from ui.components.page import (
     PageHeader,
     icon_button,
@@ -293,6 +295,521 @@ class AssignLanguagesDialog(QDialog):
                 if p and p not in res:
                     res.append(p)
         return res
+
+
+class PreFlightUploadDialog(QDialog):
+    """Cổng an toàn kiểm duyệt thông tin trước khi tải lên YouTube (Pre-Flight Safety Gate).
+
+    Hiển thị thông tin trực quan và chi tiết cho từng video trong hàng đợi đăng tải:
+    - Ảnh bìa (Thumbnail preview hoặc placeholder nếu chưa có)
+    - Tên video & tệp MP4 nguồn (hỗ trợ tooltip đầy đủ)
+    - Định tuyến ngôn ngữ & Kênh YouTube đích (kèm trạng thái kết nối tài khoản)
+    - Thiết lập quyền riêng tư (Private / Unlisted / Public) với khả năng ghi đè độc lập
+    - Công cụ đổi quyền riêng tư hàng loạt (Batch Override) và chọn/bỏ chọn linh hoạt
+    - Thanh cảnh báo rủi ro an toàn (Safety Banner) cập nhật tức thời khi có video đặt Công khai (Public)
+    - Tổng hợp dung lượng, thời lượng ước tính và tự động vô hiệu hóa nút đăng khi 0 video được chọn
+    """
+
+    def __init__(
+        self,
+        jobs: List[VideoJob],
+        settings: Dict[str, Any],
+        manager: Optional[Any] = None,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Xác nhận tải lên YouTube — Pre-Flight Safety Gate")
+        self.resize(960, 620)
+        self.setMinimumSize(820, 480)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+
+        self._jobs: List[VideoJob] = list(jobs)
+        self._settings: Dict[str, Any] = settings or {}
+        self._manager = manager
+        self._row_data: List[Dict[str, Any]] = []
+
+        self._init_ui()
+        self._populate_table()
+        self._update_safety_banner()
+
+    def _init_ui(self) -> None:
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {theme.DIALOG_BG};
+                color: {theme.TEXT};
+            }}
+            QTableWidget {{
+                background-color: {theme.TABLE_BG};
+                alternate-background-color: {theme.TABLE_ALT};
+                gridline-color: {theme.TABLE_GRID};
+                border: 1px solid {theme.BORDER};
+                border-radius: 6px;
+                color: {theme.TEXT};
+            }}
+            QHeaderView::section {{
+                background-color: {theme.TABLE_HEADER_BG};
+                color: {theme.TABLE_HEADER_TEXT};
+                font-weight: 600;
+                font-size: 11px;
+                padding: 6px 8px;
+                border: none;
+                border-bottom: 1px solid {theme.TABLE_HEADER_BORDER};
+                text-transform: uppercase;
+            }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        # Header Title
+        header_layout = QHBoxLayout()
+        header_icon = QLabel()
+        set_pixmap(header_icon, "shield-alert", "accent", 24)
+        header_layout.addWidget(header_icon)
+
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        title_lbl = QLabel("Cổng kiểm soát an toàn trước khi đăng (Pre-Flight Safety Gate)")
+        title_lbl.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {theme.TEXT};")
+        subtitle_lbl = QLabel(
+            "Rà soát kỹ kênh YouTube đích, ảnh thumbnail và quyền riêng tư trước khi phát hành trực tiếp."
+        )
+        subtitle_lbl.setStyleSheet(f"font-size: 11px; color: {theme.TEXT_MUTED};")
+        title_box.addWidget(title_lbl)
+        title_box.addWidget(subtitle_lbl)
+        header_layout.addLayout(title_box, 1)
+        layout.addLayout(header_layout)
+
+        # Safety Banner Frame
+        self.banner_frame = QFrame()
+        self.banner_frame.setObjectName("safetyBanner")
+        banner_layout = QHBoxLayout(self.banner_frame)
+        banner_layout.setContentsMargins(12, 10, 12, 10)
+        banner_layout.setSpacing(10)
+        self.banner_icon = QLabel()
+        self.banner_text = QLabel()
+        self.banner_text.setWordWrap(True)
+        banner_layout.addWidget(self.banner_icon, 0, Qt.AlignmentFlag.AlignTop)
+        banner_layout.addWidget(self.banner_text, 1)
+        layout.addWidget(self.banner_frame)
+
+        # Batch Controls Toolbar
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(10)
+        self.cb_select_all = QCheckBox(f"Chọn tất cả ({len(self._jobs)} video)")
+        self.cb_select_all.setChecked(True)
+        self.cb_select_all.setStyleSheet(f"font-weight: 600; color: {theme.TEXT};")
+        self.cb_select_all.toggled.connect(self._on_select_all_toggled)
+        toolbar.addWidget(self.cb_select_all)
+
+        toolbar.addStretch(1)
+
+        batch_lbl = QLabel("Đặt quyền riêng tư tất cả:")
+        batch_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+        toolbar.addWidget(batch_lbl)
+
+        self.combo_batch_privacy = QComboBox()
+        self.combo_batch_privacy.addItem("🔒 Riêng tư (Private)", "private")
+        self.combo_batch_privacy.addItem("👁️ Không công khai (Unlisted)", "unlisted")
+        self.combo_batch_privacy.addItem("🌐 Công khai (Public)", "public")
+        self.combo_batch_privacy.setMinimumWidth(170)
+        toolbar.addWidget(self.combo_batch_privacy)
+
+        btn_apply_batch = QPushButton("Áp dụng tất cả")
+        set_icon(btn_apply_batch, "check", "accent", 12)
+        btn_apply_batch.clicked.connect(self._apply_batch_privacy)
+        toolbar.addWidget(btn_apply_batch)
+
+        layout.addLayout(toolbar)
+
+        # Review Table
+        self.table = QTableWidget(len(self._jobs), 6)
+        self.table.setHorizontalHeaderLabels([
+            "Chọn", "Ảnh bìa", "Tiêu đề video & Tệp gốc",
+            "Kênh YouTube đích", "Quyền riêng tư", "Thời lượng & Dung lượng"
+        ])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(1, 80)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self.table.setColumnWidth(3, 220)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(4, 180)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+
+        layout.addWidget(self.table, 1)
+
+        # Footer Action Bar
+        footer = QHBoxLayout()
+        footer.setSpacing(12)
+
+        self.lbl_summary = QLabel()
+        self.lbl_summary.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px;")
+        footer.addWidget(self.lbl_summary)
+
+        footer.addStretch(1)
+
+        btn_cancel = QPushButton("Hủy bỏ")
+        btn_cancel.clicked.connect(self.reject)
+        footer.addWidget(btn_cancel)
+
+        self.btn_confirm = QPushButton("🚀 Xác nhận & Bắt đầu tải lên")
+        self.btn_confirm.setObjectName("primaryButton")
+        set_icon(self.btn_confirm, "upload", "white", 14)
+        self.btn_confirm.clicked.connect(self.accept)
+        footer.addWidget(self.btn_confirm)
+
+        layout.addLayout(footer)
+
+    def _populate_table(self) -> None:
+        uploader = YouTubeUploader(self._settings)
+        auth_channels = {ch.name: ch for ch in uploader.channels()}
+        default_channel = (self._settings.get("youtube") or {}).get("channel") or "default"
+        default_privacy = str((self._settings.get("youtube") or {}).get("privacy") or "private").lower()
+
+        for row, job in enumerate(self._jobs):
+            self.table.setRowHeight(row, 56)
+
+            # Language detection
+            lang = ""
+            if hasattr(job, "language") and getattr(job, "language", None):
+                lang = str(job.language).strip().lower()
+            if not lang and job.path:
+                match_stem = re.search(r"[_\-\(\[\s]([a-zA-Z]{2}(?:-[a-zA-Z]{2})?)$", job.path.stem)
+                if match_stem and normalize_language(match_stem.group(1).lower(), ""):
+                    lang = match_stem.group(1).lower()
+            if not lang and job.title:
+                match_title = re.search(r"[\b_\-\(\[]([a-zA-Z]{2}(?:-[a-zA-Z]{2})?)[\b_\-\)\]]", job.title)
+                if match_title and normalize_language(match_title.group(1).lower(), ""):
+                    lang = match_title.group(1).lower()
+            if not lang and self._manager and hasattr(self._manager, "get_item") and job.items:
+                item = self._manager.get_item(job.items[0])
+                if item:
+                    item_lang = (item.metadata or {}).get("language") or getattr(item, "language", "")
+                    if item_lang:
+                        lang = str(item_lang).strip().lower()
+            if not lang:
+                lang = (self._settings.get("youtube") or {}).get("language") or "vi"
+
+            flag = LANGUAGE_FLAGS.get(lang, "🌐")
+
+            # Target channel
+            target_ch_name = uploader.get_channel_for_language(lang) or default_channel
+            ch_info = auth_channels.get(target_ch_name)
+            is_authorized = bool(ch_info and ch_info.authorized)
+            ch_display_title = ch_info.title if (ch_info and ch_info.title) else target_ch_name
+
+            # Privacy status
+            initial_privacy = default_privacy
+            if hasattr(job, "privacy") and getattr(job, "privacy", None):
+                initial_privacy = str(job.privacy).lower()
+            elif self._manager and hasattr(self._manager, "get_item") and job.items:
+                item = self._manager.get_item(job.items[0])
+                if item and (item.metadata or {}).get("privacy"):
+                    initial_privacy = str(item.metadata.get("privacy")).lower()
+
+            if initial_privacy not in ("public", "unlisted", "private"):
+                initial_privacy = "private"
+
+            # File size & duration
+            size_mb = 0.0
+            if job.path:
+                try:
+                    p = Path(job.path)
+                    if p.is_file():
+                        size_mb = p.stat().st_size / (1024 * 1024)
+                except Exception:
+                    pass
+
+            dur_text = format_duration(job.duration) if getattr(job, "duration", 0) > 0 else "—"
+
+            # Col 0: Checkbox
+            cb_container = QWidget()
+            cb_layout = QHBoxLayout(cb_container)
+            cb_layout.setContentsMargins(6, 0, 6, 0)
+            cb_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            cb = QCheckBox()
+            cb.setChecked(True)
+            cb.toggled.connect(lambda _c: self._update_safety_banner())
+            cb_layout.addWidget(cb)
+            self.table.setCellWidget(row, 0, cb_container)
+
+            # Col 1: Thumbnail preview
+            thumb_container = QWidget()
+            thumb_layout = QHBoxLayout(thumb_container)
+            thumb_layout.setContentsMargins(4, 4, 4, 4)
+            thumb_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            thumb_label = QLabel()
+            thumb_label.setFixedSize(68, 40)
+            thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            thumb_pixmap = self._find_thumbnail_pixmap(job, lang)
+            if thumb_pixmap and not thumb_pixmap.isNull():
+                thumb_label.setPixmap(
+                    thumb_pixmap.scaled(
+                        68, 40,
+                        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+                thumb_label.setStyleSheet(f"border-radius: 4px; border: 1px solid {theme.BORDER};")
+            else:
+                thumb_label.setText("Chưa có\nảnh bìa")
+                thumb_label.setStyleSheet(
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.TEXT_MUTED}; "
+                    f"font-size: 9px; font-weight: 500; border-radius: 4px; "
+                    f"border: 1px dashed {theme.BORDER};"
+                )
+            thumb_layout.addWidget(thumb_label)
+            self.table.setCellWidget(row, 1, thumb_container)
+
+            # Col 2: Title & File
+            info_widget = QWidget()
+            info_layout = QVBoxLayout(info_widget)
+            info_layout.setContentsMargins(8, 4, 8, 4)
+            info_layout.setSpacing(2)
+            lbl_title = QLabel(job.title or (job.path.stem if job.path else job.id))
+            lbl_title.setStyleSheet(f"font-weight: 600; font-size: 12px; color: {theme.TEXT};")
+            lbl_title.setToolTip(f"{job.title}\n{job.path}")
+            lbl_file = QLabel(job.path.name if job.path else job.id)
+            lbl_file.setStyleSheet(f"font-size: 10px; color: {theme.TEXT_MUTED};")
+            info_layout.addWidget(lbl_title)
+            info_layout.addWidget(lbl_file)
+            self.table.setCellWidget(row, 2, info_widget)
+
+            # Col 3: Channel & Language
+            ch_widget = QWidget()
+            ch_layout = QVBoxLayout(ch_widget)
+            ch_layout.setContentsMargins(8, 4, 8, 4)
+            ch_layout.setSpacing(2)
+            lbl_channel = QLabel(f"📺 {ch_display_title}")
+            lbl_channel.setStyleSheet(f"font-weight: 600; font-size: 11px; color: {theme.TEXT};")
+            lbl_channel.setToolTip(f"Kênh: {target_ch_name} ({ch_display_title})")
+
+            auth_text = "🟢 Sẵn sàng" if is_authorized else "⚠️ Chưa kết nối"
+            auth_color = theme.SUCCESS if is_authorized else theme.WARNING
+            lbl_lang_auth = QLabel(f"{flag} {lang.upper()}  •  {auth_text}")
+            lbl_lang_auth.setStyleSheet(f"font-size: 10px; color: {auth_color};")
+            ch_layout.addWidget(lbl_channel)
+            ch_layout.addWidget(lbl_lang_auth)
+            self.table.setCellWidget(row, 3, ch_widget)
+
+            # Col 4: Privacy ComboBox
+            combo_container = QWidget()
+            combo_layout = QHBoxLayout(combo_container)
+            combo_layout.setContentsMargins(6, 6, 6, 6)
+            privacy_combo = QComboBox()
+            privacy_combo.addItem("🔒 Riêng tư", "private")
+            privacy_combo.addItem("👁️ Không công khai", "unlisted")
+            privacy_combo.addItem("🌐 Công khai", "public")
+            idx = privacy_combo.findData(initial_privacy)
+            if idx >= 0:
+                privacy_combo.setCurrentIndex(idx)
+            privacy_combo.currentIndexChanged.connect(lambda _i, r=row: self._on_row_privacy_changed(r))
+            self._style_privacy_combo(privacy_combo)
+            combo_layout.addWidget(privacy_combo)
+            self.table.setCellWidget(row, 4, combo_container)
+
+            # Col 5: Duration & Size
+            stat_widget = QWidget()
+            stat_layout = QVBoxLayout(stat_widget)
+            stat_layout.setContentsMargins(6, 4, 6, 4)
+            stat_layout.setSpacing(2)
+            lbl_dur = QLabel(f"⏱️ {dur_text}")
+            lbl_dur.setStyleSheet(f"font-size: 11px; color: {theme.TEXT};")
+            lbl_size = QLabel(f"💾 {size_mb:.1f} MB" if size_mb >= 0.1 else "💾 <0.1 MB")
+            lbl_size.setStyleSheet(f"font-size: 10px; color: {theme.TEXT_MUTED};")
+            stat_layout.addWidget(lbl_dur)
+            stat_layout.addWidget(lbl_size)
+            self.table.setCellWidget(row, 5, stat_widget)
+
+            self._row_data.append({
+                "job": job,
+                "cb": cb,
+                "privacy_combo": privacy_combo,
+                "size_mb": size_mb,
+                "target_channel": target_ch_name,
+                "lang": lang,
+                "is_authorized": is_authorized,
+            })
+
+    def _style_privacy_combo(self, combo: QComboBox) -> None:
+        data = combo.currentData()
+        if data == "public":
+            combo.setStyleSheet(f"""
+                QComboBox {{
+                    background-color: {theme.SURFACE_RAISED};
+                    color: {theme.WARNING};
+                    border: 1px solid {theme.WARNING};
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                    font-weight: 600;
+                }}
+            """)
+        elif data == "unlisted":
+            combo.setStyleSheet(f"""
+                QComboBox {{
+                    background-color: {theme.SURFACE};
+                    color: {theme.ACCENT};
+                    border: 1px solid {theme.BORDER};
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                }}
+            """)
+        else:
+            combo.setStyleSheet(f"""
+                QComboBox {{
+                    background-color: {theme.SURFACE};
+                    color: {theme.TEXT};
+                    border: 1px solid {theme.BORDER};
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                }}
+            """)
+
+    def _on_row_privacy_changed(self, row: int) -> None:
+        if 0 <= row < len(self._row_data):
+            combo = self._row_data[row]["privacy_combo"]
+            self._style_privacy_combo(combo)
+        self._update_safety_banner()
+
+    def _on_select_all_toggled(self, checked: bool) -> None:
+        for r in self._row_data:
+            r["cb"].blockSignals(True)
+            r["cb"].setChecked(checked)
+            r["cb"].blockSignals(False)
+        self._update_safety_banner()
+
+    def _apply_batch_privacy(self) -> None:
+        val = self.combo_batch_privacy.currentData()
+        for r in self._row_data:
+            combo = r["privacy_combo"]
+            idx = combo.findData(val)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+                self._style_privacy_combo(combo)
+        self._update_safety_banner()
+
+    def _find_thumbnail_pixmap(self, job: VideoJob, lang: str) -> Optional[QPixmap]:
+        candidate_paths: List[Path] = []
+        if self._manager:
+            if hasattr(self._manager, "get_item") and job.items:
+                item = self._manager.get_item(job.items[0])
+                if item and (item.metadata or {}).get("thumbnail_path"):
+                    candidate_paths.append(Path(item.metadata["thumbnail_path"]))
+            pdir = getattr(self._manager, "project_dir", None)
+            if pdir:
+                base = job.items[0] if job.items else (job.path.stem if job.path else job.id)
+                if lang:
+                    candidate_paths.append(pdir / "thumbs" / lang / f"{base}.jpg")
+                    candidate_paths.append(pdir / "thumbs" / lang / f"{base}.png")
+                candidate_paths.append(pdir / "thumbs" / f"{base}.jpg")
+                candidate_paths.append(pdir / "thumbs" / f"{base}.png")
+
+        if job.path:
+            candidate_paths.append(Path(job.path).with_suffix(".jpg"))
+            candidate_paths.append(Path(job.path).with_suffix(".png"))
+
+        global_thumb = (self._settings.get("youtube") or {}).get("thumbnail")
+        if global_thumb:
+            candidate_paths.append(Path(global_thumb))
+
+        for cand in candidate_paths:
+            try:
+                if cand and cand.is_file():
+                    pm = QPixmap(str(cand))
+                    if not pm.isNull():
+                        return pm
+            except Exception:
+                pass
+        return None
+
+    def _update_safety_banner(self) -> None:
+        selected_rows = [r for r in self._row_data if r["cb"].isChecked()]
+        selected_count = len(selected_rows)
+        total_count = len(self._row_data)
+        total_mb = sum(r["size_mb"] for r in selected_rows)
+        public_count = sum(1 for r in selected_rows if r["privacy_combo"].currentData() == "public")
+        unauth_count = sum(1 for r in selected_rows if not r["is_authorized"])
+
+        if public_count > 0:
+            set_pixmap(self.banner_icon, "alert-triangle", "warning", 20)
+            self.banner_frame.setStyleSheet(f"""
+                QFrame#safetyBanner {{
+                    background-color: {theme.SURFACE_RAISED};
+                    border: 1px solid {theme.WARNING};
+                    border-radius: 6px;
+                }}
+            """)
+            self.banner_text.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px;")
+            self.banner_text.setText(
+                f"<b>⚠️ CẢNH BÁO XUẤT BẢN CÔNG KHAI:</b> Có <b>{public_count}</b> video được đặt ở chế độ <b>Công khai (Public)</b>.<br>"
+                f"Video sẽ hiển thị công khai ngay lập tức trên kênh YouTube và gửi thông báo tới người đăng ký sau khi tải lên."
+            )
+        else:
+            set_pixmap(self.banner_icon, "shield-check", "accent", 20)
+            self.banner_frame.setStyleSheet(f"""
+                QFrame#safetyBanner {{
+                    background-color: {theme.SURFACE_RAISED};
+                    border: 1px solid {theme.ACCENT};
+                    border-radius: 6px;
+                }}
+            """)
+            self.banner_text.setStyleSheet(f"color: {theme.ACCENT}; font-size: 12px;")
+            self.banner_text.setText(
+                f"<b>🛡️ CHẾ ĐỘ AN TOÀN:</b> Tất cả {selected_count} video đã chọn đều ở chế độ <b>Riêng tư / Không công khai</b>.<br>"
+                f"Video tải lên an toàn để bạn kiểm tra nội dung và tối ưu SEO trong YouTube Studio trước khi công khai."
+            )
+
+        if unauth_count > 0:
+            auth_warn = f" · <span style='color: {theme.WARNING};'>⚠️ Có {unauth_count} video gửi tới kênh chưa đăng nhập!</span>"
+        else:
+            auth_warn = ""
+
+        self.lbl_summary.setText(
+            f"Đã chọn: <b>{selected_count}/{total_count}</b> video · Dung lượng: <b>{total_mb:.1f} MB</b>{auth_warn}"
+        )
+
+        self.btn_confirm.setEnabled(selected_count > 0)
+        if selected_count == 0:
+            self.btn_confirm.setToolTip("Vui lòng chọn ít nhất 1 video để tải lên.")
+        else:
+            self.btn_confirm.setToolTip("")
+
+    def apply_overrides(self) -> None:
+        """Lưu lại các lựa chọn quyền riêng tư của người dùng vào Job và ProjectItem."""
+        for r in self._row_data:
+            if not r["cb"].isChecked():
+                continue
+            job: VideoJob = r["job"]
+            chosen_privacy = r["privacy_combo"].currentData()
+            setattr(job, "privacy", chosen_privacy)
+
+            if self._manager and hasattr(self._manager, "get_item"):
+                for base in (getattr(job, "items", None) or []):
+                    item = self._manager.get_item(base)
+                    if item:
+                        meta = dict(getattr(item, "metadata", None) or {})
+                        meta["privacy"] = chosen_privacy
+                        if hasattr(self._manager, "update_item"):
+                            self._manager.update_item(base, metadata=meta)
+
+        if self._manager and hasattr(self._manager, "save_state"):
+            try:
+                self._manager.save_state()
+            except Exception as exc:
+                logger.debug("Lưu trạng thái project sau preflight: %s", exc)
+
+    def get_confirmed_jobs(self) -> List[VideoJob]:
+        """Danh sách các VideoJob đã được tích chọn để tải lên."""
+        return [r["job"] for r in self._row_data if r["cb"].isChecked()]
 
 
 class _AuthWorker(QThread):
@@ -1018,11 +1535,11 @@ class YouTubeConfigTab(QWidget):
 
             if has_file:
                 file_item = QTableWidgetItem(f"✓ Sẵn sàng{size_str}")
-                file_item.setForeground(QColor("#22C55E"))
+                file_item.setForeground(QColor(theme.SUCCESS))
                 file_item.setToolTip(str(job.path))
             else:
                 file_item = QTableWidgetItem("Chưa tạo video")
-                file_item.setForeground(QColor("#94A3B8"))
+                file_item.setForeground(QColor(theme.TEXT_MUTED))
                 file_item.setToolTip("File MP4 chưa được render hoặc không tồn tại.")
             file_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             file_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
@@ -1030,20 +1547,20 @@ class YouTubeConfigTab(QWidget):
 
             if job.youtube_url or job.state == VIDEO_UPLOAD_DONE:
                 yt_item = QTableWidgetItem("✓ Đã đăng")
-                yt_item.setForeground(QColor("#3B82F6"))
+                yt_item.setForeground(QColor(theme.ACCENT))
                 if job.youtube_url:
                     yt_item.setToolTip(f"Double click để mở: {job.youtube_url}")
             elif job.state == VIDEO_UPLOADING:
                 yt_item = QTableWidgetItem("Đang đăng…")
-                yt_item.setForeground(QColor("#F59E0B"))
+                yt_item.setForeground(QColor(theme.WARNING))
             elif job.state == VIDEO_ERROR or job.error:
                 yt_item = QTableWidgetItem("Lỗi đăng")
-                yt_item.setForeground(QColor("#EF4444"))
+                yt_item.setForeground(QColor(theme.DANGER))
                 if job.error:
                     yt_item.setToolTip(job.error)
             else:
                 yt_item = QTableWidgetItem("Chờ đăng")
-                yt_item.setForeground(QColor("#94A3B8"))
+                yt_item.setForeground(QColor(theme.TEXT_MUTED))
             yt_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             yt_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self.videos_table.setItem(row, 5, yt_item)
@@ -1138,23 +1655,30 @@ class YouTubeConfigTab(QWidget):
     def get_selected_video_ids(self) -> List[str]:
         return sorted(self._selected_video_ids)
 
-    def _on_upload_selected_clicked(self) -> None:
-        selected_ids = self.get_selected_video_ids()
-        if not selected_ids:
+    def confirm_preflight_upload(
+        self,
+        job_ids: Optional[Iterable[str]] = None,
+        parent: Optional[QWidget] = None,
+    ) -> Optional[List[str]]:
+        """Mở PreFlightUploadDialog để kiểm tra và xác nhận trước khi đăng tải."""
+        if job_ids is None:
+            job_ids = self.get_selected_video_ids()
+        job_ids = list(job_ids or [])
+        if not job_ids:
             QMessageBox.information(
                 self, "Chưa chọn video",
                 "Vui lòng chọn ít nhất một video trong danh sách để đăng tải."
             )
-            return
+            return None
 
         jobs_dict = {}
         if self._manager and hasattr(self._manager, "videos"):
             jobs_dict.update(self._manager.videos)
         jobs_dict.update(self._custom_videos)
 
-        valid_jobs = []
-        missing_files = []
-        for vid in selected_ids:
+        valid_jobs: List[VideoJob] = []
+        missing_files: List[str] = []
+        for vid in job_ids:
             job = jobs_dict.get(vid)
             if job and job.path and Path(job.path).is_file():
                 valid_jobs.append(job)
@@ -1168,7 +1692,7 @@ class YouTubeConfigTab(QWidget):
                 "Không có video nào trong số mục đã chọn có file MP4 trên đĩa.\n"
                 "Vui lòng tạo video trước khi đăng tải."
             )
-            return
+            return None
 
         if missing_files:
             reply = QMessageBox.question(
@@ -1180,9 +1704,30 @@ class YouTubeConfigTab(QWidget):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply != QMessageBox.StandardButton.Yes:
-                return
+                return None
 
-        self.upload_requested.emit([j.id for j in valid_jobs])
+        dialog = PreFlightUploadDialog(
+            valid_jobs,
+            self._settings,
+            self._manager,
+            parent=parent or self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            logger.info("Người dùng đã hủy đăng tải tại PreFlightUploadDialog.")
+            return None
+
+        confirmed_jobs = dialog.get_confirmed_jobs()
+        if not confirmed_jobs:
+            logger.info("Không có video nào được chọn sau khi duyệt PreFlightUploadDialog.")
+            return None
+
+        dialog.apply_overrides()
+        return [j.id for j in confirmed_jobs]
+
+    def _on_upload_selected_clicked(self) -> None:
+        confirmed_ids = self.confirm_preflight_upload()
+        if confirmed_ids:
+            self.upload_requested.emit(confirmed_ids)
 
     def set_project(self, manager) -> None:
         self._manager = manager

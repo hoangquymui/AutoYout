@@ -615,8 +615,20 @@ class MainWindow(QMainWindow):
 
         if mode == "upload" and only is None:
             selected_ids = self.youtube_tab.get_selected_video_ids()
+            if not selected_ids and self.manager and hasattr(self.manager, "videos"):
+                selected_ids = [
+                    vid for vid, job in self.manager.videos.items()
+                    if job.path and Path(job.path).is_file() and not job.youtube_video_id
+                ]
             if selected_ids:
-                only = selected_ids
+                confirmed_ids = self.youtube_tab.confirm_preflight_upload(selected_ids, parent=self)
+                if not confirmed_ids:
+                    self._set_status("Đã hủy đăng tải YouTube.", error=False)
+                    return
+                only = confirmed_ids
+            else:
+                self._set_status("Chưa có video nào sẵn sàng để đăng tải.", error=True)
+                return
 
         snapshot = copy.deepcopy(self.settings)
         worker = PipelineWorker(
