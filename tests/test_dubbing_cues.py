@@ -136,6 +136,27 @@ def test_split_cues_by_words_japanese_overlong_cue() -> None:
     assert len(pieces) > 1
     assert pieces[0].start == 0.0
     assert abs(pieces[-1].end - 180.375) < 1e-4
+
+
+def test_dubbing_cues_clean_heuristics_noise(tmp_path: Path) -> None:
+    from core.dubbing import _cues_from_pieces, save_cues
+    pm = ProjectManager(tmp_path)
+
+    # 1. _cues_from_pieces cleans noise
+    pieces = ["Này các bạn >> [âm nhạc] hôm nay chúng ta chơi.", "Bài Magic [tiếng cười] [vỗ tay] >> rất vui."]
+    cues = _cues_from_pieces(pieces)
+    assert "[âm nhạc]" not in cues[0].text
+    assert ">>" not in cues[0].text
+    assert "[tiếng cười]" not in cues[1].text
+    assert "[vỗ tay]" not in cues[1].text
+    assert ">>" not in cues[1].text
+
+    # 2. save_cues and load_cues cleans noise even if raw cues were written
+    save_cues(pm, "test_base", cues)
+    loaded = load_cues(pm, "test_base")
+    assert len(loaded) == 2
+    assert "[âm nhạc]" not in loaded[0].text
+
     assert Path(item.cues_path).name == f"{base}.cues.json"
 
 
@@ -182,6 +203,27 @@ def test_split_cues_by_words_japanese_overlong_cue() -> None:
     assert abs(pieces[-1].end - 180.375) < 1e-4
 
 
+def test_dubbing_cues_clean_heuristics_noise(tmp_path: Path) -> None:
+    from core.dubbing import _cues_from_pieces, save_cues
+    pm = ProjectManager(tmp_path)
+
+    # 1. _cues_from_pieces cleans noise
+    pieces = ["Này các bạn >> [âm nhạc] hôm nay chúng ta chơi.", "Bài Magic [tiếng cười] [vỗ tay] >> rất vui."]
+    cues = _cues_from_pieces(pieces)
+    assert "[âm nhạc]" not in cues[0].text
+    assert ">>" not in cues[0].text
+    assert "[tiếng cười]" not in cues[1].text
+    assert "[vỗ tay]" not in cues[1].text
+    assert ">>" not in cues[1].text
+
+    # 2. save_cues and load_cues cleans noise even if raw cues were written
+    save_cues(pm, "test_base", cues)
+    loaded = load_cues(pm, "test_base")
+    assert len(loaded) == 2
+    assert "[âm nhạc]" not in loaded[0].text
+
+
+
 def test_split_cues_by_words_japanese_overlong_cue() -> None:
     text = (
         "前回の動画で私は皆さんにこう伝えました。Claude CodeやCodex自体がハーネスなので、わざわざ新しいハーネスを自作する必要はないと。"
@@ -196,3 +238,24 @@ def test_split_cues_by_words_japanese_overlong_cue() -> None:
     assert len(pieces) > 1
     assert pieces[0].start == 0.0
     assert abs(pieces[-1].end - 180.375) < 1e-4
+
+
+def test_dubbing_cues_clean_heuristics_noise(tmp_path: Path) -> None:
+    from core.dubbing import _cues_from_pieces, save_cues
+    pm = ProjectManager(tmp_path)
+
+    # 1. _cues_from_pieces cleans noise
+    pieces = ["Này các bạn >> [âm nhạc] hôm nay chúng ta chơi.", "Bài Magic [tiếng cười] [vỗ tay] >> rất vui."]
+    cues = _cues_from_pieces(pieces)
+    assert "[âm nhạc]" not in cues[0].text
+    assert ">>" not in cues[0].text
+    assert "[tiếng cười]" not in cues[1].text
+    assert "[vỗ tay]" not in cues[1].text
+    assert ">>" not in cues[1].text
+
+    # 2. save_cues and load_cues cleans noise even if raw cues were written
+    save_cues(pm, "test_base", cues)
+    loaded = load_cues(pm, "test_base")
+    assert len(loaded) == 2
+    assert "[âm nhạc]" not in loaded[0].text
+

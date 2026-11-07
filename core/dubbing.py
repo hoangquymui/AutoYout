@@ -21,6 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from core.ai_client import clean_transcript_heuristics
 from core.edge_tts_engine import EdgeTTSEngine
 from core.ffmpeg_renderer import FFmpegRenderer
 from core.languages import DEFAULT_LANGUAGE, normalize_language
@@ -154,7 +155,10 @@ def load_cues(manager, base: str) -> List[CueJob]:
         if not isinstance(entry, dict):
             continue
         try:
-            cues.append(CueJob.from_state(entry, index))
+            cue = CueJob.from_state(entry, index)
+            if cue.text and ("[" in cue.text or ">>" in cue.text):
+                cue.text = clean_transcript_heuristics(cue.text)
+            cues.append(cue)
         except Exception as exc:  # corrupt cue: skip it, keep the rest
             logger.warning("Bỏ qua cue lỗi trong %s: %s", base, exc)
     return cues
@@ -241,11 +245,11 @@ def _cues_from_pieces(pieces: Iterable[str]) -> List[CueJob]:
     cues: List[CueJob] = []
     cursor = 0.0
     for position, piece in enumerate(pieces, 1):
-        piece = str(piece or "").strip()
-        if not piece:
+        clean_piece = clean_transcript_heuristics(str(piece or "")).strip()
+        if not clean_piece:
             continue
-        duration = max(0.6, len(piece) * rate)
-        cues.append(CueJob(position, cursor, cursor + duration, piece))
+        duration = max(0.6, len(clean_piece) * rate)
+        cues.append(CueJob(position, cursor, cursor + duration, clean_piece))
         cursor += duration
     return cues
 
@@ -256,7 +260,7 @@ def import_txt(manager, txt_path: str | os.PathLike,
     source = Path(txt_path)
     if not source.is_file():
         raise DubbingError(f"Không tìm thấy file văn bản: {source}")
-    text = read_text_smart(source)
+    text = clean_transcript_heuristics(read_text_smart(source))
     pieces = split_by_words(text, min_words, max_words)
     if not pieces:
         raise DubbingError(f"{source.name} không có nội dung để lồng tiếng.")
@@ -289,7 +293,9 @@ def split_cues_by_words(cues: Iterable[CueJob], min_words: int = 15,
     hi = max(lo + 1, int(max_words or 30))
     out: List[CueJob] = []
     for cue in cues:
-        text = str(cue.text or "").strip()
+        raw_text = str(cue.text or "").strip()
+        text = clean_transcript_heuristics(raw_text) if ("[" in raw_text or ">>" in raw_text) else raw_text
+        cue.text = text
         if not text or count_words(text) <= hi:
             out.append(cue)
             continue

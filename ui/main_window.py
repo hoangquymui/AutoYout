@@ -979,6 +979,8 @@ class MainWindow(QMainWindow):
     def _on_pipeline_script_updated(self, url: str, text: str, translations: dict, meta: dict) -> None:
         if hasattr(self.script_tab, "update_from_pipeline"):
             self.script_tab.update_from_pipeline(url, text, translations, meta)
+        if hasattr(self.tts_tab, "refresh_file_list"):
+            self.tts_tab.refresh_file_list()
 
     def _on_pipeline_cues_updated(self, base: str) -> None:
         if hasattr(self.tts_tab, "update_from_pipeline"):

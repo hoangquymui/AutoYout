@@ -460,6 +460,9 @@ class DubbingTab(QWidget):
             self._base = ""
         self._reload_from_disk()
 
+    def refresh_file_list(self) -> None:
+        self._refresh_file_list()
+
     def _refresh_file_list(self) -> None:
         bases: List[tuple[str, str]] = []
         if self._manager is not None:
@@ -532,35 +535,30 @@ class DubbingTab(QWidget):
         min_words = int(self.min_words_spin.value())
         max_words = int(self.max_words_spin.value())
 
-        # Ưu tiên 1: Tách các cue hiện tại theo số từ nhưng vẫn giữ timing
-        if self._cues:
-            jobs = dubbing.split_cues_by_words(self._cues, min_words, max_words)
-            if len(jobs) > len(self._cues):
-                save_cues(self._manager, self._base, jobs)
-                self._reload_from_disk()
-                self._set_status(f"Đã chia lại thành {len(self._cues)} đoạn.", "success")
-                self.reload_requested.emit()
-                return
-
-        # Cách 1: Đọc lại file văn bản gốc và tách đoạn theo khoảng từ mới
+        # Ưu tiên: Đọc lại file văn bản mới nhất từ kịch bản, làm sạch và chia đoạn
         if txt_path.is_file():
             try:
-                text = read_text_smart(txt_path)
+                from core.ai_client import clean_transcript_heuristics
+                text = clean_transcript_heuristics(read_text_smart(txt_path))
                 pieces = dubbing.split_by_words(text, min_words, max_words)
                 if pieces:
-                    total_dur = max((c.end for c in self._cues), default=0.0) if self._cues else 0.0
-                    if total_dur > 1.0:
-                        fake_cue = dubbing.CueJob(1, 0.0, total_dur, text)
-                        jobs = dubbing.split_cues_by_words([fake_cue], min_words, max_words)
-                    else:
-                        jobs = dubbing._cues_from_pieces(pieces)
+                    jobs = dubbing._cues_from_pieces(pieces)
                     save_cues(self._manager, self._base, jobs)
                     self._reload_from_disk()
-                    self._set_status(f"Đã chia lại thành {len(self._cues)} đoạn.", "success")
+                    self._set_status(f"Đã tải lại từ kịch bản và chia thành {len(self._cues)} đoạn.", "success")
                     self.reload_requested.emit()
                     return
             except Exception as exc:
                 logger.warning("Lỗi chia lại từ file gốc %s: %s", txt_path, exc)
+
+        # Nếu không có file txt nhưng có cues hiện tại, chia lại các cue hiện tại
+        if self._cues:
+            jobs = dubbing.split_cues_by_words(self._cues, min_words, max_words)
+            save_cues(self._manager, self._base, jobs)
+            self._reload_from_disk()
+            self._set_status(f"Đã chia lại thành {len(self._cues)} đoạn.", "success")
+            self.reload_requested.emit()
+            return
 
         # Cách 2: Nếu có các đoạn hiện tại, gộp nội dung và chia lại
         if self._cues:

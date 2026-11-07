@@ -465,7 +465,8 @@ class PipelineWorker(QThread):
                     errors.append(f"Dịch kịch bản {lang_code}: {exc}")
 
             lang_script_dir = self.manager.lang_dir("script", lang_code, create=True)
-            out_file = lang_script_dir / f"{base_name}_{lang_code}.txt"
+            base_key = f"{base_name}_{lang_code}"
+            out_file = lang_script_dir / f"{base_key}.txt"
             try:
                 out_file.write_text(text_for_lang.strip() + "\n", encoding="utf-8", newline="\n")
                 is_source = lang_code == source_lang
@@ -474,21 +475,40 @@ class PipelineWorker(QThread):
                     "language": lang_code,
                     "url": yt_url,
                 })
+                # Xóa file cues cũ (nếu có từ lần chạy lỗi/chưa làm sạch trước đó) để buộc tạo lại sạch
+                from core.dubbing import cues_path
+                old_cues = cues_path(self.manager, base_key)
+                if old_cues.is_file():
+                    try:
+                        old_cues.unlink()
+                        logger.info("Đã xóa file cues cũ %s để đồng bộ kịch bản mới.", old_cues.name)
+                    except OSError:
+                        pass
                 logger.info("Đã tạo file kịch bản: %s/%s", lang_code, out_file.name)
                 translations[lang_code] = text_for_lang
                 self.script_updated.emit(yt_url, cleaned_text, dict(translations), meta)
+                self.cues_updated.emit(base_key)
             except Exception as exc:
                 errors.append(f"Lưu file {out_file.name}: {exc}")
 
         self.manager.scan()
         self.items_updated.emit()
         report(100, f"Đã chuẩn bị xong {len(target_langs)} bản kịch bản.")
+
+        # Automation: giới hạn các bước tiếp theo (TTS, Video, Upload) vào đúng kịch bản vừa tạo
+        created_bases = [f"{base_name}_{normalize_language_code(lang)}" for lang in target_langs]
+        if self.mode == "all" and created_bases:
+            self.only = set(created_bases)
+            logger.info("Automation giới hạn các bước TTS/Video/Upload vào kịch bản mới: %s", created_bases)
+
         return errors
 
     # ── TTS ──────────────────────────────────────────────────────────────────
     def _tts_targets(self, is_retry: bool = False):
         targets = []
         for item in self.manager.get_items():
+            if self.only and item.base not in self.only:
+                continue
             if not item.text.strip():
                 continue
             srt_path = item.audio_path.with_suffix(".srt")
@@ -666,7 +686,7 @@ class PipelineWorker(QThread):
     def _try_dubbing(self, item, report, errors: List[str], label: str) -> bool:
         """Synthesize cue-by-cue and join; returns True when the item was handled."""
         cues = load_cues(self.manager, item.base)
-        if not cues:
+        if not cues or self.force:
             if not getattr(item, "text", "").strip():
                 return False
             dub_cfg = self.settings.get("dubbing") or {}
