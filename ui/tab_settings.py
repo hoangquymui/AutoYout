@@ -194,19 +194,19 @@ class ToggleSwitch(QAbstractButton):
         rect = self.rect()
 
         if self.isChecked():
-            bg_color = QColor("#059669")
+            bg_color = QColor(theme.SUCCESS)
         else:
             bg_color = (
-                QColor("#475569")
+                QColor(theme.BORDER_STRONG)
                 if theme.current_mode() == "dark"
-                else QColor("#CBD5E1")
+                else QColor(theme.BORDER_CARD)
             )
 
         painter.setBrush(bg_color)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(rect, 11, 11)
 
-        thumb_color = QColor("#FFFFFF")
+        thumb_color = QColor(theme.PRIMARY_TEXT)
         painter.setBrush(thumb_color)
         thumb_x = rect.width() - 19 if self.isChecked() else 3
         painter.drawEllipse(thumb_x, 3, 16, 16)
@@ -332,7 +332,7 @@ class ServiceCard(QFrame):
         if tag:
             tag_lbl = QLabel(tag)
             tag_lbl.setStyleSheet(
-                "background: rgba(148, 163, 184, 0.2); color: #64748B; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.TEXT_MUTED}; "
                 "border-radius: 4px; padding: 2px 6px; font-size: 11px;"
             )
             top_row.addWidget(tag_lbl)
@@ -341,7 +341,7 @@ class ServiceCard(QFrame):
 
         self.status_badge = QLabel("• Chưa kích hoạt / Thiếu key")
         self.status_badge.setStyleSheet(
-            "background: rgba(239, 68, 68, 0.15); color: #EF4444; "
+            f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
             "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
         )
         top_row.addWidget(self.status_badge)
@@ -354,7 +354,7 @@ class ServiceCard(QFrame):
         # ── 2. Subtitle / Shared key info ────────────────────────────────────
         self.sub_lbl = QLabel()
         self.sub_lbl.setWordWrap(True)
-        self.sub_lbl.setStyleSheet("color: #64748B; font-size: 11px;")
+        self.sub_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
         if shared_from:
             self.sub_lbl.setText(
                 f"Dùng chung API key {shared_from}\n"
@@ -401,7 +401,7 @@ class ServiceCard(QFrame):
             self.ep_toggle_btn.setFlat(True)
             self.ep_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             self.ep_toggle_btn.setStyleSheet(
-                "color: #0284C7; text-align: left; font-size: 11px; padding: 0px;"
+                f"color: {theme.ACCENT}; text-align: left; font-size: 11px; padding: 0px;"
             )
             self.ep_toggle_btn.clicked.connect(self._toggle_endpoint)
             ep_toggle_row.addWidget(self.ep_toggle_btn)
@@ -425,7 +425,7 @@ class ServiceCard(QFrame):
         # ── 5. Price note ────────────────────────────────────────────────────
         if price_note:
             price_lbl = QLabel(price_note)
-            price_lbl.setStyleSheet("color: #94A3B8; font-size: 11px;")
+            price_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
             layout.addWidget(price_lbl)
 
         # ── 6. Bottom action buttons ─────────────────────────────────────────
@@ -602,22 +602,22 @@ class ServiceCard(QFrame):
         self.status_badge.setText(text)
         if kind == "valid":
             self.status_badge.setStyleSheet(
-                "background: rgba(16, 185, 129, 0.18); color: #10B981; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
         elif kind == "needed":
             self.status_badge.setStyleSheet(
-                "background: rgba(245, 158, 11, 0.18); color: #F59E0B; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
         elif kind == "running":
             self.status_badge.setStyleSheet(
-                "background: rgba(2, 132, 199, 0.18); color: #0284C7; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.BLUE}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
         else:
             self.status_badge.setStyleSheet(
-                "background: rgba(239, 68, 68, 0.15); color: #EF4444; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
 
@@ -643,11 +643,8 @@ class ServiceCard(QFrame):
             )
 
     def apply_theme(self) -> None:
-        dark = theme.current_mode() == "dark"
-        bg = "#111C2D" if dark else "#FFFFFF"
-        border = "#2A3E59" if dark else "#E2E8F0"
         self.setStyleSheet(
-            f"QFrame#ServiceCard {{ background-color: {bg}; border: 1px solid {border}; border-radius: 8px; }}"
+            f"QFrame#ServiceCard {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 8px; }}"
         )
 
 
@@ -657,8 +654,8 @@ H2M_PACKAGES: List[Dict[str, Any]] = [
         "id": "turbo",
         "name": "H2M-TTS v3 Turbo",
         "tag": "Khuyên dùng · GPU & CPU",
-        "tag_color": "#0284C7",
-        "tag_bg": "rgba(2, 132, 199, 0.15)",
+        "tag_color": theme.ACCENT,
+        "tag_bg": theme.SURFACE_RAISED,
         "repo": "hoangmui410/H2M-TTS-v3-Turbo",
         "size": "~295 MB",
         "desc": "Model chính đọc tiếng Việt tự nhiên (GGUF Q8, ONNX-Int8, G2P, Speaker Encoder, Denoiser).",
@@ -670,8 +667,8 @@ H2M_PACKAGES: List[Dict[str, Any]] = [
         "id": "moss",
         "name": "MOSS Audio Tokenizer Nano",
         "tag": "Bắt buộc cho Turbo",
-        "tag_color": "#D97706",
-        "tag_bg": "rgba(217, 119, 6, 0.15)",
+        "tag_color": theme.WARNING,
+        "tag_bg": theme.SURFACE_RAISED,
         "repo": "hoangmui410/MOSS-Audio-Tokenizer-Nano",
         "size": "~85 MB",
         "desc": "Audio Codec giải mã nơ-ron chất lượng 48kHz bắt buộc cho dòng Turbo.",
@@ -683,8 +680,8 @@ H2M_PACKAGES: List[Dict[str, Any]] = [
         "id": "voice_packs",
         "name": "H2M Voice Packs",
         "tag": "25+ Giọng Việt",
-        "tag_color": "#059669",
-        "tag_bg": "rgba(5, 150, 105, 0.15)",
+        "tag_color": theme.SUCCESS,
+        "tag_bg": theme.SURFACE_RAISED,
         "repo": "hoangmui410/H2M-Voice-Packs",
         "size": "~5 MB",
         "desc": "Danh mục 25+ giọng đọc Bắc / Trung / Nam, preset cảm xúc và file embeddings.",
@@ -937,7 +934,7 @@ class H2MTTSCard(QFrame):
 
         tag_lbl = QLabel("Nâng cao")
         tag_lbl.setStyleSheet(
-            "background: rgba(148, 163, 184, 0.2); color: #64748B; "
+            f"background: {theme.SURFACE_RAISED}; color: {theme.TEXT_MUTED}; "
             "border-radius: 4px; padding: 2px 6px; font-size: 11px;"
         )
         top_row.addWidget(tag_lbl)
@@ -953,7 +950,7 @@ class H2MTTSCard(QFrame):
             "Mã nguồn mở Apache 2.0 – audio dùng thương mại được."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #64748B; font-size: 11px;")
+        desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
         layout.addWidget(desc)
 
         # ── 2. Hardware Specifications Box ───────────────────────────────────
@@ -966,7 +963,7 @@ class H2MTTSCard(QFrame):
         rate_row = QHBoxLayout()
         self.rating_badge = QLabel("• Đánh giá cấu hình: TỐT - bản GPU")
         self.rating_badge.setStyleSheet(
-            "background: rgba(16, 185, 129, 0.18); color: #10B981; "
+            f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
             "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
         )
         rate_row.addWidget(self.rating_badge)
@@ -978,7 +975,7 @@ class H2MTTSCard(QFrame):
         self.btn_redetect.clicked.connect(self.detect_specs)
         btn_redetect_text = QPushButton("Dò lại")
         btn_redetect_text.setFlat(True)
-        btn_redetect_text.setStyleSheet("color: #0284C7; font-size: 11px;")
+        btn_redetect_text.setStyleSheet(f"color: {theme.ACCENT}; font-size: 11px;")
         btn_redetect_text.clicked.connect(self.detect_specs)
         rate_row.addWidget(self.btn_redetect)
         rate_row.addWidget(btn_redetect_text)
@@ -1005,7 +1002,7 @@ class H2MTTSCard(QFrame):
         specs_layout.addLayout(grid)
 
         self.lbl_note = QLabel("• GPU ... - đọc nhanh hơn thời gian thực nhiều lần")
-        self.lbl_note.setStyleSheet("color: #64748B; font-size: 11px;")
+        self.lbl_note.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
         specs_layout.addWidget(self.lbl_note)
         layout.addWidget(self.specs_box)
 
@@ -1048,7 +1045,7 @@ class H2MTTSCard(QFrame):
             "Tự động tải các model và voice-packs H2MTTS về thư mục trên máy để chạy offline."
         )
         dl_desc.setWordWrap(True)
-        dl_desc.setStyleSheet("color: #64748B; font-size: 11px;")
+        dl_desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
         dl_layout.addWidget(dl_desc)
 
         # Quick action buttons bar
@@ -1082,7 +1079,7 @@ class H2MTTSCard(QFrame):
 
         prog_top = QHBoxLayout()
         self.lbl_progress = QLabel("Đang chuẩn bị tải…")
-        self.lbl_progress.setStyleSheet("font-size: 11px; color: #0284C7; font-weight: bold;")
+        self.lbl_progress.setStyleSheet(f"font-size: 11px; color: {theme.ACCENT}; font-weight: bold;")
         prog_top.addWidget(self.lbl_progress, 1)
 
         self.btn_cancel_dl = QPushButton("Hủy")
@@ -1132,7 +1129,7 @@ class H2MTTSCard(QFrame):
             info_col.addLayout(title_row)
 
             sub_lbl = QLabel(f"{pkg['size']} — {pkg['desc']}")
-            sub_lbl.setStyleSheet("color: #64748B; font-size: 10.5px;")
+            sub_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 10.5px;")
             sub_lbl.setWordWrap(True)
             info_col.addWidget(sub_lbl)
             row_layout.addLayout(info_col, 1)
@@ -1169,7 +1166,7 @@ class H2MTTSCard(QFrame):
     @staticmethod
     def _make_spec_label(text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setStyleSheet("color: #64748B; font-weight: bold; font-size: 11px;")
+        lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-weight: bold; font-size: 11px;")
         lbl.setFixedWidth(80)
         return lbl
 
@@ -1211,7 +1208,7 @@ class H2MTTSCard(QFrame):
                 w["status_badge"].setText("✓ Đã có")
                 w["status_badge"].setToolTip("Gói tài nguyên đã được tải đầy đủ.")
                 w["status_badge"].setStyleSheet(
-                    "background: rgba(16, 185, 129, 0.15); color: #10B981; "
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
                     "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
                 )
                 w["btn_dl"].setText("Tải lại")
@@ -1221,7 +1218,7 @@ class H2MTTSCard(QFrame):
                 w["status_badge"].setText("Lỗi tải")
                 w["status_badge"].setToolTip(f"Lỗi: {errors[pkg_id]}")
                 w["status_badge"].setStyleSheet(
-                    "background: rgba(239, 68, 68, 0.15); color: #EF4444; "
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
                     "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
                 )
                 w["btn_dl"].setText("Thử lại")
@@ -1231,7 +1228,7 @@ class H2MTTSCard(QFrame):
                 w["status_badge"].setText("Chưa tải")
                 w["status_badge"].setToolTip("Gói chưa được tải về máy.")
                 w["status_badge"].setStyleSheet(
-                    "background: rgba(245, 158, 11, 0.15); color: #F59E0B; "
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
                     "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
                 )
                 w["btn_dl"].setText("Tải về")
@@ -1239,21 +1236,21 @@ class H2MTTSCard(QFrame):
         if path.exists() and all_core_ok:
             self.status_badge.setText("Đã cài đủ")
             self.status_badge.setStyleSheet(
-                "background: rgba(16, 185, 129, 0.18); color: #10B981; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
             self.btn_install.setText("🚀 Đã cài đủ gói khuyên dùng")
         elif path.exists() and has_any:
             self.status_badge.setText("Thiếu gói")
             self.status_badge.setStyleSheet(
-                "background: rgba(245, 158, 11, 0.18); color: #F59E0B; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
             self.btn_install.setText("🚀 Tải trọn bộ model (~385 MB)")
         else:
             self.status_badge.setText("Chưa cài")
             self.status_badge.setStyleSheet(
-                "background: rgba(239, 68, 68, 0.15); color: #EF4444; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
             self.btn_install.setText("🚀 Tải trọn bộ model (~385 MB)")
@@ -1315,20 +1312,20 @@ class H2MTTSCard(QFrame):
         w["status_badge"].setText(text)
         if status_kind == "downloading":
             w["status_badge"].setStyleSheet(
-                "background: rgba(2, 132, 199, 0.15); color: #0284C7; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.BLUE}; "
                 "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
             )
             w["status_badge"].setToolTip("Đang tải dữ liệu từ Hugging Face…")
         elif status_kind == "installed":
             w["status_badge"].setStyleSheet(
-                "background: rgba(16, 185, 129, 0.15); color: #10B981; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
                 "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
             )
             w["status_badge"].setToolTip("Gói tài nguyên đã cài đặt đầy đủ.")
             w["btn_dl"].setText("Tải lại")
         elif status_kind == "error":
             w["status_badge"].setStyleSheet(
-                "background: rgba(239, 68, 68, 0.15); color: #EF4444; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
                 "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
             )
             w["btn_dl"].setText("Thử lại")
@@ -1371,25 +1368,20 @@ class H2MTTSCard(QFrame):
         self.rating_badge.setText(f"• Đánh giá cấu hình: {data['rating']}")
 
     def apply_theme(self) -> None:
-        dark = theme.current_mode() == "dark"
-        bg = "#111C2D" if dark else "#FFFFFF"
-        border = "#2A3E59" if dark else "#E2E8F0"
-        box_bg = "rgba(15, 23, 42, 0.4)" if dark else "rgba(241, 245, 249, 0.7)"
-        row_bg = "rgba(30, 41, 59, 0.5)" if dark else "#FFFFFF"
         self.setStyleSheet(
-            f"QFrame#H2MTTSCard {{ background-color: {bg}; border: 1px solid {border}; border-radius: 8px; }}"
+            f"QFrame#H2MTTSCard {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 8px; }}"
         )
         self.specs_box.setStyleSheet(
-            f"QFrame#SpecsBox {{ background-color: {box_bg}; border: 1px solid {border}; border-radius: 6px; }}"
+            f"QFrame#SpecsBox {{ background-color: {theme.SURFACE_ALT}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
         )
         if hasattr(self, "downloads_box"):
             self.downloads_box.setStyleSheet(
-                f"QFrame#DownloadsBox {{ background-color: {box_bg}; border: 1px solid {border}; border-radius: 6px; }}"
+                f"QFrame#DownloadsBox {{ background-color: {theme.SURFACE_ALT}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
             )
         if hasattr(self, "pkg_widgets"):
             for w in self.pkg_widgets.values():
                 w["frame"].setStyleSheet(
-                    f"QFrame#PkgRow {{ background-color: {row_bg}; border: 1px solid {border}; border-radius: 6px; }}"
+                    f"QFrame#PkgRow {{ background-color: {theme.SURFACE}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
                 )
 
 

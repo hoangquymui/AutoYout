@@ -54,11 +54,11 @@ class WorkflowConnector(QWidget):
         cy = h / 2.0
 
         if self._active:
-            glow_color = QColor("#00D2FF" if theme.is_dark() else "#0284C7")
+            glow_color = QColor(theme.ACCENT_SOFT if theme.is_dark() else theme.ACCENT)
             pen = QPen(glow_color, 2.5)
             brush = QBrush(glow_color)
         else:
-            line_color = QColor("#475569" if theme.is_dark() else "#CBD5E1")
+            line_color = QColor(theme.BORDER_STRONG if theme.is_dark() else theme.BORDER_CARD)
             pen = QPen(line_color, 1.5, Qt.PenStyle.DashLine)
             brush = QBrush(line_color)
 
@@ -242,28 +242,28 @@ class WorkflowNodeCard(QFrame):
             title_color = "rgba(148, 163, 184, 0.45)" if dark else "rgba(100, 116, 139, 0.5)"
             sub_color = "rgba(148, 163, 184, 0.38)" if dark else "rgba(148, 163, 184, 0.6)"
         else:
-            bg = "#111827" if dark else "#FFFFFF"
+            bg = theme.SURFACE if dark else "#FFFFFF"
             title_color = theme.TEXT
             sub_color = theme.TEXT_MUTED
             if self._state == "running":
-                border = "2px solid #00D2FF" if dark else "2px solid #0284C7"
-                chip_bg = "rgba(0, 210, 255, 0.18)" if dark else "rgba(2, 132, 199, 0.15)"
-                chip_color = "#38BDF8" if dark else "#0284C7"
+                border = f"2px solid {theme.ACCENT_SOFT if dark else theme.ACCENT}"
+                chip_bg = "rgba(14, 165, 233, 0.18)" if dark else "rgba(2, 132, 199, 0.15)"
+                chip_color = theme.ACCENT_SOFT if dark else theme.ACCENT
                 chip_text = "⚡ ĐANG CHẠY..."
             elif self._state == "done":
-                border = "2px solid #10B981"
-                chip_bg = "rgba(16, 185, 129, 0.18)"
-                chip_color = "#10B981"
+                border = f"2px solid {theme.SUCCESS}"
+                chip_bg = "rgba(52, 211, 153, 0.18)" if dark else "rgba(5, 150, 105, 0.15)"
+                chip_color = theme.SUCCESS
                 chip_text = "✓ Hoàn thành"
             elif self._state == "error":
-                border = "2px solid #EF4444"
-                chip_bg = "rgba(239, 68, 68, 0.18)"
-                chip_color = "#EF4444"
+                border = f"2px solid {theme.DANGER}"
+                chip_bg = "rgba(248, 113, 113, 0.18)" if dark else "rgba(220, 38, 38, 0.15)"
+                chip_color = theme.DANGER
                 chip_text = "✕ Có lỗi"
             else:
-                border = "1px solid #334155" if dark else "1px solid #CBD5E1"
+                border = f"1px solid {theme.BORDER}"
                 chip_bg = "rgba(100, 116, 139, 0.12)"
-                chip_color = "#94A3B8" if dark else "#64748B"
+                chip_color = theme.TEXT_MUTED
                 chip_text = "Chờ chạy"
 
         self.setStyleSheet(f"""
@@ -304,23 +304,23 @@ class WorkflowNodeCard(QFrame):
         # Draw left connector pin (input)
         if self.step_num > 1:
             pin_color = (
-                QColor("#00D2FF" if theme.is_dark() else "#0284C7")
+                QColor(theme.ACCENT_SOFT if theme.is_dark() else theme.ACCENT)
                 if self._state == "running"
-                else QColor("#64748b")
+                else QColor(theme.BORDER_STRONG if theme.is_dark() else theme.BORDER)
             )
             painter.setPen(QPen(pin_color, 1.5))
-            painter.setBrush(QBrush(QColor("#0f172a" if theme.is_dark() else "#ffffff")))
+            painter.setBrush(QBrush(QColor(theme.SURFACE_ALT if theme.is_dark() else theme.SURFACE)))
             painter.drawEllipse(QPointF(1, cy), pin_radius, pin_radius)
 
         # Draw right connector pin (output)
         if self.step_num < self.total_steps:
             pin_color = (
-                QColor("#00D2FF" if theme.is_dark() else "#0284C7")
+                QColor(theme.ACCENT_SOFT if theme.is_dark() else theme.ACCENT)
                 if self._state == "running"
-                else QColor("#64748b")
+                else QColor(theme.BORDER_STRONG if theme.is_dark() else theme.BORDER)
             )
             painter.setPen(QPen(pin_color, 1.5))
-            painter.setBrush(QBrush(QColor("#0f172a" if theme.is_dark() else "#ffffff")))
+            painter.setBrush(QBrush(QColor(theme.SURFACE_ALT if theme.is_dark() else theme.SURFACE)))
             painter.drawEllipse(QPointF(w - 1, cy), pin_radius, pin_radius)
 
 
@@ -581,19 +581,19 @@ class AutomationTab(QWidget):
         # Pause and Stop control bar with dedicated container and styling
         ctrl_bar = QFrame()
         ctrl_bar.setObjectName("PipelineControlBar")
-        ctrl_bar.setStyleSheet("""
-            QFrame#PipelineControlBar {
-                background: rgba(148, 163, 184, 0.08);
-                border: 1px dashed rgba(148, 163, 184, 0.25);
+        ctrl_bar.setStyleSheet(f"""
+            QFrame#PipelineControlBar {{
+                background: {theme.SURFACE_ALT};
+                border: 1px dashed {theme.BORDER};
                 border-radius: 8px;
-            }
+            }}
         """)
         ctrl_layout = QHBoxLayout(ctrl_bar)
         ctrl_layout.setContentsMargins(10, 6, 10, 6)
         ctrl_layout.setSpacing(10)
 
         lbl_ctrl = QLabel("Điều khiển thực thi:")
-        lbl_ctrl.setStyleSheet("font-size: 11.5px; font-weight: 600; color: #64748B;")
+        lbl_ctrl.setStyleSheet(f"font-size: 11.5px; font-weight: 600; color: {theme.TEXT_MUTED};")
         ctrl_layout.addWidget(lbl_ctrl)
 
         self.btn_pause = QPushButton("Tạm dừng")

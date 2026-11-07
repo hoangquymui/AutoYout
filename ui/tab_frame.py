@@ -1696,7 +1696,7 @@ class FrameTab(QWidget):
             btn_col = QPushButton()
             btn_col.setToolTip(f"Màu {color_name} ({hex_code})")
             btn_col.setFixedSize(20, 20)
-            btn_col.setStyleSheet(f"background:{hex_code}; border-radius:3px; border:1px solid rgba(255,255,255,0.2);")
+            btn_col.setStyleSheet(f"background:{hex_code}; border-radius:4px; border:1px solid {theme.BORDER_STRONG};")
             btn_col.clicked.connect(lambda _c=False, h=hex_code: self._set_wave_color(h))
             palette_row.addWidget(btn_col)
         palette_row.addStretch(1)
@@ -2530,7 +2530,7 @@ class FrameTab(QWidget):
         self._color_button.setStyleSheet(
             "QPushButton {"
             f" background:{color.name()}; color:{text};"
-            f" border:1px solid {theme.BORDER_STRONG}; font-weight:600; border-radius:3px;"
+            f" border:1px solid {theme.BORDER_STRONG}; font-weight:600; border-radius:4px;"
             "}"
             "QPushButton:disabled { background:transparent; color:"
             f"{theme.TEXT_FAINT}; border-color:{theme.BORDER}; }}"

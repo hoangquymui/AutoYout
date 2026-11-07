@@ -35,7 +35,7 @@ QFrame#BottomPanel {
 }
 QSplitter#MainSplitter { background: transparent; }
 QSplitter#MainSplitter::handle { background: transparent; }
-QSplitter#MainSplitter::handle:hover { background: $BORDER; border-radius: 3px; }
+QSplitter#MainSplitter::handle:hover { background: $BORDER; border-radius: 4px; }
 QFrame#ProjectCard {
     background: $PROJECT_CARD_BG;
     border: 1px solid $BORDER;
@@ -126,7 +126,7 @@ QSlider#TimelineSlider::handle:horizontal {
 QWidget#AudioPreview {
     background: $AUDIO_PREVIEW_BG;
     border: 1px solid $BORDER;
-    border-radius: 9px;
+    border-radius: 8px;
 }
 QLabel { color: $TEXT; background: transparent; }
 QLabel#BrandTitle { font-size: 18pt; font-weight: 700; color: $TEXT_STRONG; }
@@ -392,7 +392,7 @@ QCheckBox::indicator {
     width: 17px;
     height: 17px;
     border: 1px solid $CHECK_BORDER;
-    border-radius: 5px;
+    border-radius: 4px;
     background: $CHECK_BG;
 }
 QCheckBox::indicator:hover { border-color: $ACCENT; }
@@ -409,7 +409,7 @@ QCheckBox:focus::indicator { border-color: $ACCENT; }
 QProgressBar {
     background: $PROGRESS_BG;
     border: 1px solid $PROGRESS_BORDER;
-    border-radius: 5px;
+    border-radius: 4px;
     min-height: 9px;
     max-height: 9px;
     text-align: center;

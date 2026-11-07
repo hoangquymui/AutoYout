@@ -124,8 +124,8 @@ def _make_language_chips_widget(langs: List[str]) -> QWidget:
     if not cleaned or "all" in cleaned or "*" in cleaned:
         lbl = QLabel("🌐 Tất cả")
         lbl.setStyleSheet(
-            "background: rgba(99, 102, 241, 0.15); color: #818cf8; "
-            "border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 10px; "
+            f"background: {theme.STAGE_BG}; color: {theme.STAGE_TEXT}; "
+            f"border: 1px solid {theme.STAGE_BORDER}; border-radius: 10px; "
             "padding: 3px 8px; font-weight: 600; font-size: 11px;"
         )
         lbl.setToolTip("Phụ trách tất cả ngôn ngữ (kênh mặc định/dự phòng)")
@@ -135,8 +135,8 @@ def _make_language_chips_widget(langs: List[str]) -> QWidget:
             flag = LANGUAGE_FLAGS.get(code, "🌐")
             lbl = QLabel(f"{flag} {code.upper()}")
             lbl.setStyleSheet(
-                "background: rgba(16, 185, 129, 0.15); color: #34d399; "
-                "border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px; "
+                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
+                f"border: 1px solid {theme.SUCCESS}; border-radius: 10px; "
                 "padding: 3px 8px; font-weight: 600; font-size: 11px;"
             )
             lbl.setToolTip(f"{code.upper()} — {language_name(code)}")

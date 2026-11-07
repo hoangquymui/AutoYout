@@ -79,13 +79,13 @@ class ConsoleWindow(QDialog):
         top_bar.setSpacing(8)
 
         title_lbl = QLabel("🖥️ CỬA SỔ CONSOLE & NHẬT KÝ HỆ THỐNG")
-        title_lbl.setStyleSheet("font-size: 13px; font-weight: bold; color: #0284C7;")
+        title_lbl.setStyleSheet(f"font-size: 13px; font-weight: bold; color: {theme.ACCENT};")
         top_bar.addWidget(title_lbl)
 
         self.live_indicator = QLabel("• Đang ghi nhận log")
         self.live_indicator.setStyleSheet(
-            "background: rgba(16, 185, 129, 0.15); color: #10B981; "
-            "border-radius: 9px; padding: 2px 8px; font-size: 10.5px; font-weight: bold;"
+            f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
+            "border-radius: 8px; padding: 2px 8px; font-size: 10.5px; font-weight: bold;"
         )
         top_bar.addWidget(self.live_indicator)
 

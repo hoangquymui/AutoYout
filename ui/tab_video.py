@@ -444,8 +444,6 @@ class VideoConfigTab(QWidget):
         self.subtitle_check.setChecked(True)
         self.srt_check = QCheckBox()
         self.srt_edit = QLineEdit()
-        self.srt_browse = QPushButton()
-        self.srt_clear = QPushButton()
         self.srt_check.toggled.connect(self._set_srt_enabled)
         self._set_srt_enabled(False)
 
@@ -876,8 +874,7 @@ class VideoConfigTab(QWidget):
         self._sync_visual_height()
 
     def _set_srt_enabled(self, enabled: bool) -> None:
-        for widget in (self.srt_edit, self.srt_browse, self.srt_clear):
-            widget.setEnabled(enabled)
+        self.srt_edit.setEnabled(enabled)
 
     def _sync_visual_height(self) -> None:
         page = self.visual_stack.currentWidget()
