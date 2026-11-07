@@ -786,4 +786,43 @@ def test_dubbing_tab_selection_preserved_on_reload(window, tmp_path: Path) -> No
     assert dub._base == "second_item"
 
 
+def test_newly_added_layer_always_at_top(window, tmp_path: Path) -> None:
+    from PySide6.QtCore import Qt
+    frame_tab = window.frame_tab
+    window.settings["frame"] = {}
+    frame_tab.load_from(window.settings)
+
+    # Initial order is [("subtitle", -1), ("wave", -1), ("video", -1)]
+    assert frame_tab._layout.ordered_layers() == [("subtitle", -1), ("wave", -1), ("video", -1)]
+
+    # Create dummy images
+    img1 = tmp_path / "sticker1.png"
+    img1.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82")
+    img2 = tmp_path / "sticker2.png"
+    img2.write_bytes(img1.read_bytes())
+
+    # Insert preset 1
+    frame_tab._insert_preset(str(img1))
+    layers = frame_tab._layout.ordered_layers()
+    assert layers[0] == ("image", 0)
+    assert frame_tab._image_list.currentRow() == 0
+    assert frame_tab._image_list.item(0).data(Qt.ItemDataRole.UserRole) == ("image", 0)
+
+    # Insert preset 2 -> must be on top of layers (index 0)
+    frame_tab._insert_preset(str(img2))
+    layers = frame_tab._layout.ordered_layers()
+    assert layers[0] == ("image", 1)
+    assert layers[1] == ("image", 0)
+    assert frame_tab._image_list.currentRow() == 0
+    assert frame_tab._image_list.item(0).data(Qt.ItemDataRole.UserRole) == ("image", 1)
+
+    # Duplicate selected layer (sticker 2 at image 1) -> clone must be at top (index 0)
+    frame_tab._duplicate_layer()
+    layers = frame_tab._layout.ordered_layers()
+    assert layers[0] == ("image", 2)
+    assert frame_tab._image_list.currentRow() == 0
+    assert frame_tab._image_list.item(0).data(Qt.ItemDataRole.UserRole) == ("image", 2)
+
+
+
 

@@ -213,17 +213,9 @@ class FrameCanvas(QWidget):
             visible=True,
             locked=False,
         ).clamp()
-        insert_at = src_idx + 1
-        self._layout.images.insert(insert_at, clone)
-        new_layers: List[Tuple[str, int]] = []
-        for k, idx in old_layers:
-            if k == "image":
-                shifted = idx + 1 if idx >= insert_at else idx
-                if idx == src_idx:
-                    new_layers.append(("image", insert_at))
-                new_layers.append(("image", shifted))
-            else:
-                new_layers.append((k, idx))
+        insert_at = len(self._layout.images)
+        self._layout.images.append(clone)
+        new_layers = [("image", insert_at)] + [layer for layer in old_layers if layer != ("image", insert_at)]
         self._layout.set_ordered_layers(new_layers)
         self.set_selection("image", insert_at)
         self.layout_changed.emit()
@@ -1219,6 +1211,7 @@ class FrameTab(QWidget):
         vbox.addWidget(title)
 
         tabs = QTabWidget()
+        self._library_tabs = tabs
         tabs.setDocumentMode(True)
         tabs.setUsesScrollButtons(False)
         vbox.addWidget(tabs, 1)
@@ -2422,13 +2415,8 @@ class FrameTab(QWidget):
         offset = 0.03 * (index % 5)
         self._layout.images.append(FrameImage(
             path=str(asset.resolve()), x=0.35 + offset, y=0.35 + offset, width=0.22))
-        if self._layout.layer_order:
-            new_layers = list(old_layers)
-            if new_layers and new_layers[-1] == ("video", -1):
-                new_layers.insert(len(new_layers) - 1, ("image", index))
-            else:
-                new_layers.append(("image", index))
-            self._layout.set_ordered_layers(new_layers)
+        new_layers = [("image", index)] + [layer for layer in old_layers if layer != ("image", index)]
+        self._layout.set_ordered_layers(new_layers)
         self._layout.enabled = True
         self._canvas.reload_assets()
         self._rebuild_list(index)
@@ -2445,13 +2433,8 @@ class FrameTab(QWidget):
         offset = 0.03 * (index % 5)
         self._layout.images.append(FrameImage(
             path=str(Path(path)), x=0.06 + offset, y=0.06 + offset, width=0.18))
-        if self._layout.layer_order:
-            new_layers = list(old_layers)
-            if new_layers and new_layers[-1] == ("video", -1):
-                new_layers.insert(len(new_layers) - 1, ("image", index))
-            else:
-                new_layers.append(("image", index))
-            self._layout.set_ordered_layers(new_layers)
+        new_layers = [("image", index)] + [layer for layer in old_layers if layer != ("image", index)]
+        self._layout.set_ordered_layers(new_layers)
         self._layout.enabled = True
         self._canvas.reload_assets()
         self._rebuild_list(index)
@@ -2480,6 +2463,7 @@ class FrameTab(QWidget):
     def _duplicate_layer(self) -> None:
         if self._canvas.duplicate_selected():
             self._rebuild_list(self._canvas.selection()[1])
+            self._commit_history()
 
     def _toggle_visibility(self) -> None:
         if self._canvas.toggle_selected_visibility():
