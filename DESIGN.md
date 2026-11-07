@@ -295,3 +295,4 @@ The design system enforces a calibrated radius scale that reflects structural hi
 - **Don't** use arbitrary corner radiuses; adhere strictly to the 16 / 14 / 12 / 10 / 8 / 6 / 4px scale.
 - **Don't** hide or obscure critical error messages; display descriptive fault details in `#F87171` accompanied by icon feedback.
 - **Don't** change component backgrounds on hover without simultaneously updating the border tone to provide tactile feedback.
+
