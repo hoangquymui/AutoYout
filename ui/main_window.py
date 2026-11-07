@@ -131,11 +131,20 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "badge_tts"):
             return
         width = self.width()
-        compact = width < 1240
-        self._brand_subtitle.setVisible(not compact)
-        self.btn_header_project.setText("Project" if compact else "Chọn Project")
+        compact_sub = width < 1360
+        compact_badges = width < 1200
+        compact_btn = width < 1200
+        tight_spacing = width < 1080
+
+        self._brand_subtitle.setVisible(not compact_sub)
+        self.btn_header_project.setText("" if compact_btn else "Chọn Project")
+        self.btn_header_project.setToolTip("Chọn thư mục Project (Ctrl+O)" if compact_btn else "")
+
+        if hasattr(self, "_header_layout"):
+            self._header_layout.setSpacing(8 if tight_spacing else 12)
+
         for badge in (self.badge_tts, self.badge_ffmpeg, self.badge_youtube):
-            badge.set_compact(width < 1180)
+            badge.set_compact(compact_badges)
 
     # ── UI construction ──────────────────────────────────────────────────────
     def _build_ui(self) -> None:
@@ -163,16 +172,22 @@ class MainWindow(QMainWindow):
         self.youtube_tab = YouTubeConfigTab()
         self.youtube_tab.thumbnail_panel = self.thumbnail_tab
         self.automation_tab = AutomationTab()
-        self.tabs.addTab(self.project_tab, icon("folder", theme.TEXT_DIM, 15), "Dự án")
-        self.tabs.addTab(self.settings_tab, icon("settings", theme.TEXT_DIM, 15), "Cài đặt")
-        self.tabs.addTab(self.script_tab, icon("file", theme.TEXT_DIM, 15), "Kịch bản")
-        self.tabs.addTab(self.tts_tab, icon("mic", theme.TEXT_DIM, 15), "Lồng tiếng")
-        self.tabs.addTab(self.video_tab, icon("film", theme.TEXT_DIM, 15), "Video")
-        self.tabs.addTab(self.thumbnail_tab, icon("image", theme.TEXT_DIM, 15), "Thumbnail")
-        self.tabs.addTab(self.youtube_tab, icon("youtube", theme.TEXT_DIM, 15), "YouTube")
-        self._automation_index = self.tabs.addTab(
-            self.automation_tab, icon("zap", theme.TEXT_DIM, 15), "Automation"
-        )
+
+        self._tab_meta = [
+            (self.project_tab, "folder", "Dự án"),
+            (self.settings_tab, "settings", "Cài đặt"),
+            (self.script_tab, "file", "Kịch bản"),
+            (self.tts_tab, "mic", "Lồng tiếng"),
+            (self.video_tab, "film", "Video"),
+            (self.thumbnail_tab, "image", "Thumbnail"),
+            (self.youtube_tab, "youtube", "YouTube"),
+            (self.automation_tab, "zap", "Automation"),
+        ]
+        for widget, icon_name, label in self._tab_meta:
+            idx = self.tabs.addTab(widget, icon(icon_name, theme.TEXT_DIM, 15), label)
+            if widget is self.automation_tab:
+                self._automation_index = idx
+
         self.tabs.currentChanged.connect(self._update_tab_icons)
         self._update_tab_icons()
         layout.addWidget(self.tabs, 1)
@@ -202,15 +217,16 @@ class MainWindow(QMainWindow):
     def _build_header(self) -> QWidget:
         header = QFrame()
         header.setObjectName("Header")
-        layout = QHBoxLayout(header)
-        layout.setContentsMargins(14, 8, 12, 8)
-        layout.setSpacing(12)
+        self._header_layout = QHBoxLayout(header)
+        self._header_layout.setContentsMargins(14, 8, 12, 8)
+        self._header_layout.setSpacing(12)
 
+        # 1. Brand Cluster
         logo = QLabel()
         logo.setPixmap(brand_pixmap(36))
         logo.setFixedSize(36, 36)
-        logo.setToolTip("AutoYout")
-        layout.addWidget(logo)
+        logo.setToolTip("AutoYout — Automated Video Production Pipeline")
+        self._header_layout.addWidget(logo)
 
         brand = QVBoxLayout()
         brand.setSpacing(0)
@@ -221,8 +237,9 @@ class MainWindow(QMainWindow):
         self._brand_subtitle = subtitle
         brand.addWidget(title)
         brand.addWidget(subtitle)
-        layout.addLayout(brand)
+        self._header_layout.addLayout(brand)
 
+        # 2. Central Project Anchor Card
         project_card = QFrame()
         project_card.setObjectName("ProjectCard")
         card_layout = QHBoxLayout(project_card)
@@ -259,14 +276,17 @@ class MainWindow(QMainWindow):
         )
         self.btn_header_open.clicked.connect(self._open_project_folder)
         card_layout.addWidget(self.btn_header_open)
-        layout.addWidget(project_card, 1)
+        self._header_layout.addWidget(project_card, 1)
 
+        # 3. System Diagnostics & Health Cluster
+        status_cluster = QHBoxLayout()
+        status_cluster.setSpacing(6)
         self.badge_tts = StatusBadge("H2MTTS")
         self.badge_ffmpeg = StatusBadge("FFmpeg")
         self.badge_youtube = StatusBadge("YouTube")
-        layout.addWidget(self.badge_tts)
-        layout.addWidget(self.badge_ffmpeg)
-        layout.addWidget(self.badge_youtube)
+        status_cluster.addWidget(self.badge_tts)
+        status_cluster.addWidget(self.badge_ffmpeg)
+        status_cluster.addWidget(self.badge_youtube)
 
         self.btn_refresh_status = icon_button(
             "refresh",
@@ -276,7 +296,12 @@ class MainWindow(QMainWindow):
             side=32,
         )
         self.btn_refresh_status.clicked.connect(self._refresh_statuses)
-        layout.addWidget(self.btn_refresh_status)
+        status_cluster.addWidget(self.btn_refresh_status)
+        self._header_layout.addLayout(status_cluster)
+
+        # 4. Global Utilities & Settings Cluster
+        utility_cluster = QHBoxLayout()
+        utility_cluster.setSpacing(6)
 
         self.btn_console = icon_button(
             "terminal",
@@ -286,7 +311,17 @@ class MainWindow(QMainWindow):
             side=32,
         )
         self.btn_console.clicked.connect(self._toggle_console_window)
-        layout.addWidget(self.btn_console)
+        utility_cluster.addWidget(self.btn_console)
+
+        self.btn_settings = icon_button(
+            "settings",
+            "Mở Cài đặt hệ thống (API, Model, Đường dẫn)",
+            role="muted",
+            size=16,
+            side=32,
+        )
+        self.btn_settings.clicked.connect(lambda: self.tabs.setCurrentWidget(self.settings_tab))
+        utility_cluster.addWidget(self.btn_settings)
 
         self.btn_theme = icon_button(
             "sun",
@@ -296,7 +331,9 @@ class MainWindow(QMainWindow):
             side=32,
         )
         self.btn_theme.clicked.connect(self._toggle_theme)
-        layout.addWidget(self.btn_theme)
+        utility_cluster.addWidget(self.btn_theme)
+        self._header_layout.addLayout(utility_cluster)
+
         return header
 
     # ── logging ──────────────────────────────────────────────────────────────
@@ -853,9 +890,10 @@ class MainWindow(QMainWindow):
 
     # ── theme ────────────────────────────────────────────────────────────────
     def _update_tab_icons(self, index: int | None = None) -> None:
-        names = ("folder", "settings", "file", "mic", "film", "image", "youtube", "zap")
+        if not hasattr(self, "_tab_meta"):
+            return
         current = self.tabs.currentIndex() if index is None else index
-        for position, name in enumerate(names):
+        for position, (_widget, name, _label) in enumerate(self._tab_meta):
             color = theme.ACCENT_SOFT if position == current else theme.TEXT_DIM
             self.tabs.setTabIcon(position, icon(name, color, 15))
 
