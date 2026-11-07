@@ -4,6 +4,7 @@ target_fingerprint: "sha256:37c65a33c323e67ac2a6884ffe8ffbb83da6775f5489dd44adca
 target_path: "D:\\mui\\f375\\AutoYout\\ui\\main_window.py"
 timestamp: 2026-11-07T04-10-34Z
 slug: ui-main-window-py
+closed: true
 ---
 Method: dual-agent (A: 670450d3-ebb1-48fc-93ae-e1341d04c317 · B: e6550ecb-f4c8-45e6-8db4-8774a49536e0)
 

@@ -7,8 +7,13 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from PySide6.QtCore import QSize, QUrl, Qt, QTimer
-from PySide6.QtGui import QDesktopServices, QFontMetrics
+from PySide6.QtCore import QSize, QUrl, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QDesktopServices,
+    QFontMetrics,
+    QKeySequence,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -17,6 +22,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QTabWidget,
@@ -92,6 +98,116 @@ class ElidedLabel(QLabel):
         )
 
 
+class PipelineDock(QFrame):
+    """Persistent header mini-dock showing global progress and controls during pipeline execution."""
+
+    jump_requested = Signal()
+    pause_requested = Signal()
+    stop_requested = Signal()
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("PipelineDock")
+        self.setVisible(False)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Pipeline đang chạy — Click để mở tab Automation")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 3, 6, 3)
+        layout.setSpacing(8)
+
+        self.lbl_stage = QLabel("⚡ Chuẩn bị…")
+        self.lbl_stage.setObjectName("DockStageLabel")
+        layout.addWidget(self.lbl_stage)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedHeight(6)
+        self.progress_bar.setFixedWidth(64)
+        layout.addWidget(self.progress_bar)
+
+        self.lbl_percent = QLabel("0%")
+        self.lbl_percent.setObjectName("DockPercentLabel")
+        layout.addWidget(self.lbl_percent)
+
+        self.btn_pause = icon_button("pause", "Tạm dừng pipeline", role="warning", size=13, side=26)
+        self.btn_pause.clicked.connect(self.pause_requested.emit)
+        self.btn_pause.setAccessibleName("Tạm dừng pipeline")
+
+        self.btn_stop = icon_button("stop", "Dừng hẳn pipeline", role="danger", size=13, side=26)
+        self.btn_stop.clicked.connect(self.stop_requested.emit)
+        self.btn_stop.setAccessibleName("Dừng hẳn pipeline")
+
+        layout.addWidget(self.btn_pause)
+        layout.addWidget(self.btn_stop)
+
+        self._apply_style()
+
+    def set_stage(self, text: str) -> None:
+        short = text.replace("BƯỚC ", "").strip()
+        self.lbl_stage.setText(f"⚡ {short}")
+        self.lbl_stage.setToolTip(f"Đang thực hiện: {text}")
+
+    def set_progress(self, value: int) -> None:
+        val = max(0, min(100, int(value)))
+        self.progress_bar.setValue(val)
+        self.lbl_percent.setText(f"{val}%")
+
+    def set_paused(self, paused: bool) -> None:
+        if paused:
+            self.lbl_stage.setText("⏸ Đã tạm dừng")
+            set_icon(self.btn_pause, "play", "success", 13)
+            self.btn_pause.setToolTip("Tiếp tục pipeline")
+        else:
+            set_icon(self.btn_pause, "pause", "warning", 13)
+            self.btn_pause.setToolTip("Tạm dừng pipeline")
+
+    def set_compact(self, compact: bool) -> None:
+        self.progress_bar.setVisible(not compact)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().mousePressEvent(event)
+        self.jump_requested.emit()
+
+    def apply_theme(self) -> None:
+        self._apply_style()
+        refresh_icons(self)
+
+    def _apply_style(self) -> None:
+        dark = theme.is_dark()
+        bg = "rgba(14, 165, 233, 0.12)" if dark else "rgba(2, 132, 199, 0.08)"
+        border = "rgba(14, 165, 233, 0.35)" if dark else "rgba(2, 132, 199, 0.25)"
+        stage_color = theme.ACCENT_SOFT if dark else theme.ACCENT
+        self.setStyleSheet(f"""
+            QFrame#PipelineDock {{
+                background-color: {bg};
+                border: 1px solid {border};
+                border-radius: 6px;
+            }}
+            QLabel#DockStageLabel {{
+                font-size: 11.5px;
+                font-weight: 700;
+                color: {stage_color};
+            }}
+            QLabel#DockPercentLabel {{
+                font-size: 11px;
+                font-weight: 700;
+                color: {theme.TEXT};
+            }}
+            QProgressBar {{
+                background-color: {theme.SURFACE_ALT};
+                border: 1px solid {theme.BORDER};
+                border-radius: 4px;
+            }}
+            QProgressBar::chunk {{
+                background-color: {theme.ACCENT};
+                border-radius: 4px;
+            }}
+        """)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, settings: Dict[str, Any]) -> None:
         super().__init__()
@@ -139,6 +255,9 @@ class MainWindow(QMainWindow):
         self._brand_subtitle.setVisible(not compact_sub)
         self.btn_header_project.setText("" if compact_btn else "Chọn Project")
         self.btn_header_project.setToolTip("Chọn thư mục Project (Ctrl+O)" if compact_btn else "")
+
+        if hasattr(self, "pipeline_dock"):
+            self.pipeline_dock.set_compact(width < 1260)
 
         if hasattr(self, "_header_layout"):
             self._header_layout.setSpacing(8 if tight_spacing else 12)
@@ -214,6 +333,22 @@ class MainWindow(QMainWindow):
         self.youtube_tab.thumbnail_saved.connect(self._on_thumbnail_saved)
         self.youtube_tab.upload_requested.connect(self._on_youtube_upload_requested)
 
+        self._setup_shortcuts()
+
+    def _setup_shortcuts(self) -> None:
+        """Register ergonomic keyboard shortcuts across workstation workflows."""
+        QShortcut(QKeySequence("Ctrl+O"), self, self._choose_project)
+        QShortcut(QKeySequence("Ctrl+Shift+O"), self, self._open_project_folder)
+        QShortcut(QKeySequence("F12"), self, self._toggle_console_window)
+        QShortcut(QKeySequence("Ctrl+`"), self, self._toggle_console_window)
+        QShortcut(QKeySequence("Ctrl+R"), self, self._refresh_statuses)
+        QShortcut(QKeySequence("Ctrl+T"), self, self._toggle_theme)
+
+        # Tab navigation: Ctrl+1 through Ctrl+8
+        for i in range(min(8, self.tabs.count())):
+            seq = QKeySequence(f"Ctrl+{i + 1}")
+            QShortcut(seq, self, lambda idx=i: self.tabs.setCurrentIndex(idx))
+
     def _build_header(self) -> QWidget:
         header = QFrame()
         header.setObjectName("Header")
@@ -264,19 +399,33 @@ class MainWindow(QMainWindow):
 
         self.btn_header_project = QPushButton("Chọn Project")
         set_icon(self.btn_header_project, "folder-open", "accent", 15)
+        self.btn_header_project.setToolTip("Chọn thư mục Project (Ctrl+O)")
+        self.btn_header_project.setAccessibleName("Chọn thư mục dự án")
+        self.btn_header_project.setAccessibleDescription("Mở hộp thoại chọn thư mục dự án AutoYout (Ctrl+O)")
         self.btn_header_project.clicked.connect(self._choose_project)
         card_layout.addWidget(self.btn_header_project)
 
         self.btn_header_open = icon_button(
             "external-link",
-            "Mở thư mục project trong Explorer",
+            "Mở thư mục project trong Explorer (Ctrl+Shift+O)",
             role="muted",
             size=15,
             side=30,
         )
+        self.btn_header_open.setAccessibleName("Mở thư mục dự án trong Explorer")
+        self.btn_header_open.setAccessibleDescription("Mở thư mục dự án trong Windows Explorer (Ctrl+Shift+O)")
         self.btn_header_open.clicked.connect(self._open_project_folder)
         card_layout.addWidget(self.btn_header_open)
         self._header_layout.addWidget(project_card, 1)
+
+        # 2b. Global Pipeline Monitor Mini-Dock (visible only during active runs)
+        self.pipeline_dock = PipelineDock()
+        self.pipeline_dock.jump_requested.connect(
+            lambda: self.tabs.setCurrentIndex(self._automation_index)
+        )
+        self.pipeline_dock.pause_requested.connect(self._toggle_pause)
+        self.pipeline_dock.stop_requested.connect(self._stop_pipeline)
+        self._header_layout.addWidget(self.pipeline_dock)
 
         # 3. System Diagnostics & Health Cluster
         status_cluster = QHBoxLayout()
@@ -290,11 +439,13 @@ class MainWindow(QMainWindow):
 
         self.btn_refresh_status = icon_button(
             "refresh",
-            "Kiểm tra lại H2MTTS / FFmpeg / YouTube",
+            "Kiểm tra lại H2MTTS / FFmpeg / YouTube (Ctrl+R)",
             role="muted",
             size=16,
             side=32,
         )
+        self.btn_refresh_status.setAccessibleName("Kiểm tra lại trạng thái dịch vụ")
+        self.btn_refresh_status.setAccessibleDescription("Kiểm tra lại kết nối H2MTTS, FFmpeg và YouTube (Ctrl+R)")
         self.btn_refresh_status.clicked.connect(self._refresh_statuses)
         status_cluster.addWidget(self.btn_refresh_status)
         self._header_layout.addLayout(status_cluster)
@@ -305,11 +456,13 @@ class MainWindow(QMainWindow):
 
         self.btn_console = icon_button(
             "terminal",
-            "Mở cửa sổ Console (Xem log)",
+            "Mở cửa sổ Console (F12 hoặc Ctrl+`)",
             role="muted",
             size=16,
             side=32,
         )
+        self.btn_console.setAccessibleName("Cửa sổ Console log")
+        self.btn_console.setAccessibleDescription("Mở hoặc ẩn cửa sổ xem nhật ký hoạt động (F12 hoặc Ctrl+`)")
         self.btn_console.clicked.connect(self._toggle_console_window)
         utility_cluster.addWidget(self.btn_console)
 
@@ -320,16 +473,20 @@ class MainWindow(QMainWindow):
             size=16,
             side=32,
         )
+        self.btn_settings.setAccessibleName("Mở Cài đặt hệ thống")
+        self.btn_settings.setAccessibleDescription("Chuyển sang tab Cài đặt API, model và đường dẫn hệ thống")
         self.btn_settings.clicked.connect(lambda: self.tabs.setCurrentWidget(self.settings_tab))
         utility_cluster.addWidget(self.btn_settings)
 
         self.btn_theme = icon_button(
             "sun",
-            "Chuyển sang giao diện sáng",
+            "Đổi giao diện Sáng / Tối (Ctrl+T)",
             role="muted",
             size=16,
             side=32,
         )
+        self.btn_theme.setAccessibleName("Chuyển đổi giao diện sáng tối")
+        self.btn_theme.setAccessibleDescription("Chuyển đổi giữa chế độ tối Obsidian và giao diện sáng (Ctrl+T)")
         self.btn_theme.clicked.connect(self._toggle_theme)
         utility_cluster.addWidget(self.btn_theme)
         self._header_layout.addLayout(utility_cluster)
@@ -694,6 +851,11 @@ class MainWindow(QMainWindow):
         self.automation_tab.set_stage("Đang chuẩn bị…")
         self.automation_tab.set_notes([])
         self._set_status("Pipeline đang khởi động…", error=False)
+        if hasattr(self, "pipeline_dock"):
+            self.pipeline_dock.setVisible(True)
+            self.pipeline_dock.set_progress(0)
+            self.pipeline_dock.set_stage("Đang chuẩn bị…")
+            self.pipeline_dock.set_paused(False)
         if hasattr(self.script_tab, "set_pipeline_busy"):
             self.script_tab.set_pipeline_busy(True)
         self.tts_tab.set_busy(True)
@@ -749,6 +911,8 @@ class MainWindow(QMainWindow):
 
     def _set_pause_ui(self, paused: bool) -> None:
         self.automation_tab.set_pause_ui(paused)
+        if hasattr(self, "pipeline_dock"):
+            self.pipeline_dock.set_paused(paused)
 
     def _stop_pipeline(self) -> None:
         if self.worker is None:
@@ -762,6 +926,8 @@ class MainWindow(QMainWindow):
     # ── worker signals ───────────────────────────────────────────────────────
     def _on_overall(self, value: int) -> None:
         self.automation_tab.set_overall(value)
+        if hasattr(self, "pipeline_dock"):
+            self.pipeline_dock.set_progress(value)
 
     def _on_task(self, value: int) -> None:
         self.automation_tab.set_task(value)
@@ -776,6 +942,8 @@ class MainWindow(QMainWindow):
 
     def _on_stage(self, label: str) -> None:
         self.automation_tab.set_stage(label)
+        if hasattr(self, "pipeline_dock"):
+            self.pipeline_dock.set_stage(label)
         from ui.components.page import paint_status
         if "KỊCH BẢN" in label:
             if hasattr(self.script_tab, "status_label"):
@@ -849,6 +1017,8 @@ class MainWindow(QMainWindow):
         self.worker = None
         if worker is not None:
             worker.deleteLater()
+        if hasattr(self, "pipeline_dock"):
+            self.pipeline_dock.setVisible(False)
         self.project_tab.refresh()
         if hasattr(self.script_tab, "set_pipeline_busy"):
             self.script_tab.set_pipeline_busy(False)
@@ -928,6 +1098,8 @@ class MainWindow(QMainWindow):
         self.frame_tab.apply_theme()
         self.thumbnail_tab.apply_theme()
         self.youtube_tab.apply_theme()
+        if hasattr(self, "pipeline_dock"):
+            self.pipeline_dock.apply_theme()
         if hasattr(self, "console_window"):
             self.console_window.apply_theme()
         self._sync_theme_button()
