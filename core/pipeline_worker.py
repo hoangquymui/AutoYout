@@ -335,6 +335,8 @@ class PipelineWorker(QThread):
                 DEFAULT_CLEAN_PROMPT,
                 DEFAULT_MODEL,
                 build_clean_prompt,
+                clean_transcript,
+                clean_transcript_heuristics,
                 gemini_generate,
                 translate_text,
             )
@@ -367,7 +369,10 @@ class PipelineWorker(QThread):
         raw_text = "\n\n".join(paragraphs).strip()
         if not raw_text:
             return ["Kịch bản: Transcript rỗng."]
-        self.script_updated.emit(yt_url, raw_text, {}, meta)
+
+        # 1. Luôn làm sạch cơ bản bằng heuristic (loại bỏ [âm nhạc], >>, tiếng ồn, định dạng lỗi)
+        heuristic_cleaned = clean_transcript_heuristics(raw_text) or raw_text
+        self.script_updated.emit(yt_url, heuristic_cleaned, {}, meta)
 
         api_key = (
             (self.settings.get("api") or {}).get("gemini_key")
@@ -377,23 +382,36 @@ class PipelineWorker(QThread):
             or ""
         ).strip()
         model = str((self.settings.get("script") or {}).get("model") or DEFAULT_MODEL)
-        clean_prompt = str((self.settings.get("script") or {}).get("transcript_clean_prompt") or DEFAULT_CLEAN_PROMPT)
+        saved_prompt = str((self.settings.get("script") or {}).get("transcript_clean_prompt") or "")
+        if not saved_prompt or "Som Tam" in saved_prompt or "DNSE" in saved_prompt:
+            clean_prompt = DEFAULT_CLEAN_PROMPT
+        else:
+            clean_prompt = saved_prompt
 
-        cleaned_text = raw_text
+        cleaned_text = heuristic_cleaned
         if api_key:
-            report(35, "Đang làm sạch transcript bằng AI…")
+            report(32, "Đang làm sạch transcript bằng AI…")
             try:
-                cleaned_text = gemini_generate(
-                    build_clean_prompt(raw_text, clean_prompt),
+                def _prog(pct: int, msg: str) -> None:
+                    report(32 + int(pct * 0.15), msg)
+
+                cleaned_text = clean_transcript(
+                    heuristic_cleaned,
                     api_key=api_key,
                     model=model,
-                    timeout=180.0,
-                    temperature=0.2,
+                    instruction=clean_prompt,
+                    progress_cb=_prog,
+                    cancel_cb=self.is_cancelled,
                 )
+                self.script_updated.emit(yt_url, cleaned_text, {}, meta)
             except Exception as exc:
-                logger.warning("Không thể làm sạch bằng AI (%s), dùng văn bản gốc.", exc)
-                cleaned_text = raw_text
-            self.script_updated.emit(yt_url, cleaned_text, {}, meta)
+                logger.warning("Không thể làm sạch bằng AI (%s), dùng bản làm sạch cơ bản.", exc)
+                self._add_note(f"Làm sạch transcript: AI gặp lỗi ({exc}), đã tự động lọc sạch âm thanh & tiếng ồn.")
+                cleaned_text = heuristic_cleaned
+                self.script_updated.emit(yt_url, cleaned_text, {}, meta)
+        else:
+            logger.info("Chưa có API key Gemini, sử dụng bản làm sạch cơ bản (heuristic).")
+            self._add_note("Làm sạch transcript: Chưa có API key AI, đã áp dụng bộ lọc regex tự động.")
 
         target_langs = (
             self.settings.get("automation", {}).get("target_languages")

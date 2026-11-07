@@ -40,6 +40,8 @@ from core.ai_client import (
     AICancelled,
     AIError,
     build_clean_prompt,
+    clean_transcript,
+    clean_transcript_heuristics,
     gemini_generate,
     normalize_model,
     translate_text,
@@ -450,11 +452,13 @@ class ScriptWorker(QThread):
                 self._emit(10, "Đang làm sạch transcript bằng AI…")
                 if self._cancelled():
                     raise InputCancelled("Đã huỷ làm sạch.")
-                cleaned = gemini_generate(
-                    build_clean_prompt(text, instruction),
-                    str(spec.get("api_key") or ""),
-                    str(spec.get("model") or DEFAULT_MODEL),
-                    timeout=180.0, temperature=0.2,
+                cleaned = clean_transcript(
+                    text,
+                    api_key=str(spec.get("api_key") or ""),
+                    model=str(spec.get("model") or DEFAULT_MODEL),
+                    instruction=instruction,
+                    progress_cb=lambda pct, msg: self._emit(10 + int(pct * 0.85), msg),
+                    cancel_cb=self._cancelled,
                 )
                 if self._cancelled():
                     raise InputCancelled("Đã huỷ làm sạch.")
@@ -752,7 +756,11 @@ class ScriptTab(QWidget):
         model = normalize_model(str(cfg.get("model") or (settings.get("api") or {}).get("gemini_model") or DEFAULT_MODEL))
         cfg["model"] = model
         self._set_model(model)
-        self._clean_prompt = str(cfg.get("transcript_clean_prompt") or DEFAULT_CLEAN_PROMPT)
+        loaded_prompt = str(cfg.get("transcript_clean_prompt") or "")
+        if not loaded_prompt or "Som Tam" in loaded_prompt or "DNSE" in loaded_prompt:
+            self._clean_prompt = DEFAULT_CLEAN_PROMPT
+        else:
+            self._clean_prompt = loaded_prompt
         self._profiles = load_profiles()
         self._ensure_profile_folders()
         self._reload_targets()
@@ -994,7 +1002,8 @@ class ScriptTab(QWidget):
             previous_end = float(cue.get("end") or 0.0)
         if buffer:
             paragraphs.append(" ".join(buffer))
-        return "\n\n".join(paragraphs)
+        joined = "\n\n".join(paragraphs)
+        return clean_transcript_heuristics(joined)
 
     def _on_translated(self, language: str, text: str, error: str) -> None:
         row = self._result_rows.get(language)
