@@ -653,8 +653,8 @@ def test_automation_quick_input_and_settings_roundtrip(window) -> None:
     assert tab.get_topic_name() == "Chủ đề AI 2026"
     assert window.script_tab.topic_edit.text() == "Chủ đề AI 2026"
 
-    assert tab.card_script.enable_toggle is None
-    assert tab.card_tts.enable_toggle is None
+    assert tab.card_script.enable_toggle is not None
+    assert tab.card_tts.enable_toggle is not None
     assert tab.card_video.enable_toggle is not None
     assert tab.card_thumbnail.enable_toggle is not None
     assert tab.card_upload.enable_toggle is not None
@@ -669,6 +669,8 @@ def test_automation_quick_input_and_settings_roundtrip(window) -> None:
     s2 = {}
     tab.apply_to(s2)
     assert s2["automation"]["topic_name"] == "Chủ đề AI 2026"
+    assert s2["automation"]["script_enabled"] is True
+    assert s2["automation"]["tts_enabled"] is True
     assert s2["automation"]["video_enabled"] is True
     assert s2["automation"]["thumbnail_enabled"] is False
     assert s2["automation"]["upload_enabled"] is False

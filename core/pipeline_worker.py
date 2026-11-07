@@ -268,13 +268,21 @@ class PipelineWorker(QThread):
                 auto_cfg.get("youtube_url")
                 or self.settings.get("script", {}).get("youtube_url")
             )
-            names = ["script", "tts"] if has_yt else ["tts"]
+            names: List[str] = []
+            if auto_cfg.get("script_enabled", True) and has_yt:
+                names.append("script")
+            if auto_cfg.get("tts_enabled", True):
+                names.append("tts")
             if auto_cfg.get("video_enabled", True):
                 names.append("video")
             if auto_cfg.get("thumbnail_enabled", True):
                 names.append("thumbnail")
             if auto_cfg.get("upload_enabled", True):
                 names.append("upload")
+            if not names:
+                raise PipelineError(
+                    "Tất cả các bước tự động hóa đều bị tắt hoặc không có bước nào khả dụng để chạy."
+                )
         else:
             names = [self.mode]
         total = sum(_STAGE_WEIGHTS[name] for name in names) or 1

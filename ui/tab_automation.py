@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QSizePolicy,
@@ -493,7 +494,7 @@ class AutomationTab(QWidget):
         self.btn_thumbnail.clicked.connect(lambda: self.run_requested.emit("thumbnail"))
         self.btn_upload.clicked.connect(lambda: self.run_requested.emit("upload"))
 
-        # Node cards with glowing ring (5 nodes)
+        # Node cards with glowing ring (5 nodes) - All 5 steps fully toggleable
         self.card_script = WorkflowNodeCard(
             "script",
             1,
@@ -502,6 +503,7 @@ class AutomationTab(QWidget):
             "file-text",
             self.btn_script,
             total_steps=5,
+            toggleable=True,
         )
         self.conn_1 = WorkflowConnector()
 
@@ -513,6 +515,7 @@ class AutomationTab(QWidget):
             "mic",
             self.btn_tts,
             total_steps=5,
+            toggleable=True,
         )
         self.conn_2 = WorkflowConnector()
 
@@ -558,6 +561,8 @@ class AutomationTab(QWidget):
             "thumbnail": self.card_thumbnail,
             "upload": self.card_upload,
         }
+        for node in self.nodes.values():
+            node.toggled_step.connect(self._on_step_toggled)
         self.connectors: List[WorkflowConnector] = [
             self.conn_1,
             self.conn_2,
@@ -793,15 +798,74 @@ class AutomationTab(QWidget):
         self.lang_checkboxes_layout.addWidget(cb, idx // cols_per_row, idx % cols_per_row)
         return cb
 
-    def _on_run_full_clicked(self) -> None:
-        url = self.get_youtube_url()
-        if url:
-            if self._settings is None:
-                self._settings = {}
+    def _any_step_enabled(self) -> bool:
+        return any(node.is_step_enabled() for node in self.nodes.values())
+
+    def _on_step_toggled(self, step_id: str, enabled: bool) -> None:
+        any_on = self._any_step_enabled()
+        self.btn_run_full.setEnabled(any_on)
+        self.btn_run_project.setEnabled(any_on)
+        if self._settings is not None:
             self.apply_to(self._settings)
+        if not any_on:
+            self.set_status(
+                "Tất cả các bước đều đã tắt. Vui lòng bật ít nhất 1 bước để chạy pipeline.",
+                error=True,
+            )
+        else:
+            if self._status_error and "Tất cả các bước đều đã tắt" in self.status_label.text():
+                self.set_status("Đã sẵn sàng thực hiện.", error=False)
+
+    def _on_run_full_clicked(self) -> None:
+        if not self._any_step_enabled():
+            QMessageBox.warning(
+                self,
+                "Không có bước nào được bật",
+                "Tất cả các bước tự động hóa đều đang bị tắt.\nVui lòng bật ít nhất một bước quy trình để tiếp tục.",
+            )
+            return
+
+        url = self.get_youtube_url()
+        if self.card_script.is_step_enabled() and not url:
+            res = QMessageBox.question(
+                self,
+                "Chưa nhập link YouTube",
+                "Bước 1 (Lấy kịch bản YouTube) đang được bật nhưng bạn chưa nhập link YouTube.\n\n"
+                "• Chọn 'Yes' để tiếp tục chạy (bỏ qua Bước 1 và dùng file kịch bản có sẵn trong project)\n"
+                "• Chọn 'No' để dừng lại và nhập link YouTube.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if res != QMessageBox.StandardButton.Yes:
+                self.url_input.setFocus()
+                return
+
+        if url:
+            if not (url.startswith("http://") or url.startswith("https://") or "youtu" in url):
+                QMessageBox.warning(
+                    self,
+                    "Link YouTube không hợp lệ",
+                    "Định dạng đường dẫn YouTube không đúng. Vui lòng nhập link hợp lệ (ví dụ: https://www.youtube.com/watch?v=...)",
+                )
+                self.url_input.setFocus()
+                return
+
+        if self._settings is None:
+            self._settings = {}
+        self.apply_to(self._settings)
         self.run_requested.emit("all")
 
     def _on_run_project_clicked(self) -> None:
+        if not self._any_step_enabled():
+            QMessageBox.warning(
+                self,
+                "Không có bước nào được bật",
+                "Tất cả các bước tự động hóa đều đang bị tắt.\nVui lòng bật ít nhất một bước quy trình để tiếp tục.",
+            )
+            return
+        if self._settings is None:
+            self._settings = {}
+        self.apply_to(self._settings)
         self.run_requested.emit("all")
 
     # ── Settings Load / Apply ────────────────────────────────────────────────
@@ -812,6 +876,8 @@ class AutomationTab(QWidget):
         self.set_youtube_url(url)
         self.set_topic_name(str(auto.get("topic_name") or ""))
 
+        self.card_script.set_step_enabled(bool(auto.get("script_enabled", True)))
+        self.card_tts.set_step_enabled(bool(auto.get("tts_enabled", True)))
         self.card_video.set_step_enabled(bool(auto.get("video_enabled", True)))
         self.card_thumbnail.set_step_enabled(bool(auto.get("thumbnail_enabled", True)))
         self.card_upload.set_step_enabled(bool(auto.get("upload_enabled", True)))
@@ -842,6 +908,8 @@ class AutomationTab(QWidget):
             for cb in self._lang_checkboxes.values():
                 cb.setChecked(True)
 
+        self._on_step_toggled("", True)
+
     def apply_to(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
         if "automation" not in settings or not isinstance(settings["automation"], dict):
@@ -849,6 +917,8 @@ class AutomationTab(QWidget):
         settings["automation"]["youtube_url"] = self.get_youtube_url()
         settings["automation"]["topic_name"] = self.get_topic_name()
         settings["automation"]["target_languages"] = self.get_target_languages()
+        settings["automation"]["script_enabled"] = self.card_script.is_step_enabled()
+        settings["automation"]["tts_enabled"] = self.card_tts.is_step_enabled()
         settings["automation"]["video_enabled"] = self.card_video.is_step_enabled()
         settings["automation"]["thumbnail_enabled"] = self.card_thumbnail.is_step_enabled()
         settings["automation"]["upload_enabled"] = self.card_upload.is_step_enabled()
@@ -967,10 +1037,11 @@ class AutomationTab(QWidget):
         self._paint_status_colors()
 
     def set_actions(self, idle: bool, running: bool) -> None:
+        can_run = idle and self._any_step_enabled()
         for button in (self.btn_run_full, self.btn_run_project):
-            button.setEnabled(idle)
+            button.setEnabled(can_run)
         if hasattr(self, "btn_all") and self.btn_all not in (self.btn_run_full, self.btn_run_project):
-            self.btn_all.setEnabled(idle)
+            self.btn_all.setEnabled(can_run)
         for node in self.nodes.values():
             node.set_pipeline_idle(idle)
 
