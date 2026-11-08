@@ -585,3 +585,24 @@ def test_has_audio_and_skip_missing_audio(tmp_path: Path) -> None:
     for err in errors:
         assert "tap_2" not in err
         assert "tap_3" not in err
+
+
+def test_write_ass_uses_frame_custom_font_size_and_clip(tmp_path: Path) -> None:
+    cfg = _config(tmp_path, resolution="1920x1080")
+    cfg.frame = FrameLayout(
+        enabled=True,
+        subtitle_x=0.5,
+        subtitle_y=0.85,
+        subtitle_w=0.6,
+        subtitle_h=0.1,
+        subtitle_font="Roboto",
+        subtitle_font_size=50,
+        subtitle_scale=1.0,
+    )
+    renderer = _renderer()
+    assert renderer._write_ass([(1.0, 3.0, "Thử nghiệm phụ đề")], 5.0, tmp_path, cfg)
+    ass = (tmp_path / "subs.ass").read_text(encoding="utf-8")
+    assert "\\pos(960,918)" in ass
+    assert "\\clip(384,864,1536,972)" in ass
+    style = next(line for line in ass.splitlines() if line.startswith("Style: Sub,"))
+    assert "Style: Sub,Roboto,50," in style

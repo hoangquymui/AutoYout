@@ -140,6 +140,10 @@ class FrameLayout:
     subtitle_x: float = 0.5
     subtitle_y: float = 0.9
     subtitle_scale: float = 1.0
+    subtitle_w: float = 0.8
+    subtitle_h: float = 0.14
+    subtitle_font: str = "Arial"
+    subtitle_font_size: int = 44
     waveform: bool = False
     wave_x: float = 0.06
     wave_y: float = 0.74
@@ -201,6 +205,12 @@ class FrameLayout:
         self.subtitle_y = round(_clamp(_as_float(self.subtitle_y, 0.9), 0.02, 0.98), 4)
         self.subtitle_scale = round(
             _clamp(_as_float(self.subtitle_scale, 1.0), 0.5, 2.0), 3)
+        self.subtitle_w = round(
+            _clamp(_as_float(self.subtitle_w, 0.8), 0.1, 1.0), 4)
+        self.subtitle_h = round(
+            _clamp(_as_float(self.subtitle_h, 0.14), 0.03, 0.8), 4)
+        self.subtitle_font = str(self.subtitle_font or "Arial").strip() or "Arial"
+        self.subtitle_font_size = max(14, min(120, int(_as_float(self.subtitle_font_size, 44))))
         self.wave_w = round(_clamp(_as_float(self.wave_w, 0.88),
                                    MIN_WAVE_WIDTH, 1.0), 4)
         self.wave_h = round(_clamp(_as_float(self.wave_h, 0.08),
@@ -234,6 +244,10 @@ class FrameLayout:
             subtitle_x=_as_float(raw.get("subtitle_x"), 0.5),
             subtitle_y=_as_float(raw.get("subtitle_y"), 0.9),
             subtitle_scale=_as_float(raw.get("subtitle_scale"), 1.0),
+            subtitle_w=_as_float(raw.get("subtitle_w"), 0.8),
+            subtitle_h=_as_float(raw.get("subtitle_h"), 0.14),
+            subtitle_font=str(raw.get("subtitle_font") or "Arial"),
+            subtitle_font_size=int(_as_float(raw.get("subtitle_font_size"), 44)),
             waveform=bool(raw.get("waveform", False)),
             wave_x=_as_float(raw.get("wave_x"), 0.06),
             wave_y=_as_float(raw.get("wave_y"), 0.74),
@@ -264,6 +278,10 @@ class FrameLayout:
             "subtitle_x": self.subtitle_x,
             "subtitle_y": self.subtitle_y,
             "subtitle_scale": self.subtitle_scale,
+            "subtitle_w": self.subtitle_w,
+            "subtitle_h": self.subtitle_h,
+            "subtitle_font": self.subtitle_font,
+            "subtitle_font_size": self.subtitle_font_size,
             "waveform": self.waveform,
             "wave_x": self.wave_x,
             "wave_y": self.wave_y,
@@ -308,8 +326,18 @@ class FrameLayout:
         y = max(0, min(max(0, height - h), int(round(self.video_y * max(1, height)))))
         return x, y, w, h
 
+    def subtitle_rect(self, width: int, height: int) -> Tuple[int, int, int, int]:
+        """Pixel (x, y, w, h) bounding textbox for subtitles."""
+        w = max(20, int(round(self.subtitle_w * max(1, width))))
+        h = max(10, int(round(self.subtitle_h * max(1, height))))
+        cx = int(round(self.subtitle_x * max(1, width)))
+        cy = int(round(self.subtitle_y * max(1, height)))
+        x = int(round(cx - w / 2.0))
+        y = int(round(cy - h / 2.0))
+        return x, y, w, h
+
     def subtitle_pos(self, width: int, height: int) -> Tuple[int, int]:
-        """Pixel centre anchor for ASS ``\\pos``."""
+        """Pixel centre anchor for ASS \\pos."""
         return (int(round(self.subtitle_x * max(1, width))),
                 int(round(self.subtitle_y * max(1, height))))
 

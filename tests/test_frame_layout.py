@@ -104,3 +104,30 @@ def test_image_visible_locked_and_aspect_ratio() -> None:
     assert again.aspect_ratio == "9:16"
     assert again.images[0].visible is False
     assert again.images[0].locked is True
+
+
+def test_subtitle_textbox_and_custom_font() -> None:
+    layout = FrameLayout(
+        subtitle_x=0.5,
+        subtitle_y=0.8,
+        subtitle_w=0.6,
+        subtitle_h=0.2,
+        subtitle_font="Roboto",
+        subtitle_font_size=48,
+    )
+    x, y, w, h = layout.subtitle_rect(1000, 500)
+    assert w == 600
+    assert h == 100
+    assert x == 200
+    assert y == 350
+    data = layout.to_dict()
+    assert data["subtitle_w"] == 0.6
+    assert data["subtitle_h"] == 0.2
+    assert data["subtitle_font"] == "Roboto"
+    assert data["subtitle_font_size"] == 48
+
+    restored = FrameLayout.from_dict(data)
+    assert restored.subtitle_w == 0.6
+    assert restored.subtitle_h == 0.2
+    assert restored.subtitle_font == "Roboto"
+    assert restored.subtitle_font_size == 48

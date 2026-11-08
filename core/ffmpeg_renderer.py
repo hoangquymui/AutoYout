@@ -1373,12 +1373,18 @@ class FFmpegRenderer:
         return True
 
     @staticmethod
-    def _copy_font(temp_dir: Path, language: str = DEFAULT_LANGUAGE) -> None:
+    def _copy_font(temp_dir: Path, language: str = DEFAULT_LANGUAGE,
+                   custom_font: str = "") -> None:
         if os.name != "nt":
             return
         fonts_dir = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
         names: List[str] = list(font_candidates(language))
         names += ["arial.ttf", "arialbd.ttf", "segoeui.ttf", "tahoma.ttf"]
+        if custom_font:
+            clean = "".join(c for c in custom_font.lower() if c.isalnum())
+            for ext in [".ttf", ".otf", ".ttc"]:
+                names.append(f"{clean}{ext}")
+                names.append(f"{custom_font.lower()}{ext}")
         seen: set[str] = set()
         for name in names:
             if name.casefold() in seen:
@@ -1466,9 +1472,26 @@ class FFmpegRenderer:
         width, height = cfg.dimensions
         frame = cfg.frame if cfg.frame.enabled else None
         pos_tag = ""
+        margin_l = 0
+        margin_r = 0
+        margin_v = max(40, int(round(70 * height / 1080)))
+        alignment = 2
+        font_name = subtitle_font(language)
+        scale = 1.0
+        base_size = 44
         if frame is not None:
             px, py = frame.subtitle_pos(width, height)
-            pos_tag = f"\\pos({px},{py})"
+            bx, by, bw, bh = frame.subtitle_rect(width, height)
+            pos_tag = f"\\pos({px},{py})\\clip({bx},{by},{bx + bw},{by + bh})"
+            margin_l = max(10, bx)
+            margin_r = max(10, width - (bx + bw))
+            margin_v = 0
+            alignment = 5
+            scale = frame.subtitle_scale
+            if getattr(frame, "subtitle_font", None):
+                font_name = str(frame.subtitle_font).strip() or font_name
+            if getattr(frame, "subtitle_font_size", None):
+                base_size = int(frame.subtitle_font_size)
         dialogues: List[str] = []
         for start, end, text in events:
             if total > 0 and start >= total:
@@ -1478,16 +1501,13 @@ class FFmpegRenderer:
                 continue
             dialogues.append(
                 f"Dialogue: 0,{self._ass_time(start)},{self._ass_time(end)},"
-                f"Sub,,0,0,0,,{{\\fad(120,180){pos_tag}}}{self._ass_text(text)}"
+                f"Sub,,{margin_l},{margin_r},0,,{{\\fad(120,180){pos_tag}}}{self._ass_text(text)}"
             )
         if not dialogues:
             return False
-        scale = frame.subtitle_scale if frame is not None else 1.0
-        font_size = max(24, int(round(44 * scale * height / 1080)))
-        margin_v = 0 if frame is not None else max(40, int(round(70 * height / 1080)))
-        alignment = 5 if frame is not None else 2
+        font_size = max(14, int(round(base_size * scale * height / 1080)))
         style = (
-            f"Style: Sub,{subtitle_font(language)},{font_size},"
+            f"Style: Sub,{font_name},{font_size},"
             f"&H00FFFFFF,&H000000FF,&H00000000,"
             f"&H96000000,0,0,0,0,100,100,0,0,1,{max(2, font_size // 14)},1,"
             f"{alignment},20,20,{margin_v},1"
@@ -1513,7 +1533,7 @@ class FFmpegRenderer:
             *dialogues,
         ]
         (temp_dir / "subs.ass").write_text("\n".join(lines) + "\n", encoding="utf-8")
-        self._copy_font(temp_dir, language)
+        self._copy_font(temp_dir, language, font_name)
         return True
 
     @staticmethod

@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QColorDialog,
     QComboBox,
     QFileDialog,
+    QFontComboBox,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -303,9 +304,11 @@ class FrameCanvas(QWidget):
 
     def _subtitle_font(self) -> QFont:
         frame = self._frame_rect()
-        base = max(10.0, 44.0 * frame.height() / 1080.0)
-        font = QFont(self.font())
-        font.setPixelSize(max(10, int(round(base * self._layout.subtitle_scale))))
+        family = getattr(self._layout, "subtitle_font", "Arial") or "Arial"
+        base_size = getattr(self._layout, "subtitle_font_size", 44) or 44
+        scaled_size = max(8, int(round(base_size * (self._layout.subtitle_scale or 1.0) * frame.height() / 1080.0)))
+        font = QFont(family)
+        font.setPixelSize(scaled_size)
         font.setBold(True)
         return font
 
@@ -313,13 +316,11 @@ class FrameCanvas(QWidget):
         frame = self._frame_rect()
         if frame.isEmpty():
             return QRectF()
-        text = self.sample_text or _DEFAULT_SAMPLE_TEXT
-        metrics = QFontMetricsF(self._subtitle_font())
-        width = min(frame.width() * 0.90, metrics.horizontalAdvance(text) + 28)
-        height = metrics.height() + 16
+        w = max(20.0, getattr(self._layout, "subtitle_w", 0.8) * frame.width())
+        h = max(10.0, getattr(self._layout, "subtitle_h", 0.14) * frame.height())
         cx = frame.left() + self._layout.subtitle_x * frame.width()
         cy = frame.top() + self._layout.subtitle_y * frame.height()
-        return QRectF(cx - width / 2, cy - height / 2, width, height)
+        return QRectF(cx - w / 2.0, cy - h / 2.0, w, h)
 
     def _wave_box(self) -> QRectF:
         frame = self._frame_rect()
@@ -361,8 +362,8 @@ class FrameCanvas(QWidget):
         kind, index = self.selection()
         if kind == "subtitle":
             box = self._subtitle_box()
-            return QRectF(box.center().x() - _HANDLE / 2,
-                          box.bottom() - _HANDLE / 2, _HANDLE, _HANDLE)
+            return QRectF(box.right() - _HANDLE / 2, box.bottom() - _HANDLE / 2,
+                          _HANDLE, _HANDLE)
         if kind == "wave":
             box = self._wave_box()
         elif kind == "video":
@@ -400,18 +401,20 @@ class FrameCanvas(QWidget):
                 image.y = max(0.0, round((1.0 - norm_h) / 2.0, 4))
             image.clamp()
         elif kind == "subtitle":
+            half_w = getattr(self._layout, "subtitle_w", 0.8) / 2.0
+            half_h = getattr(self._layout, "subtitle_h", 0.14) / 2.0
             if mode == "left":
-                self._layout.subtitle_x = 0.20
+                self._layout.subtitle_x = max(0.04 + half_w, half_w)
             elif mode in ("center_x", "center_both"):
                 self._layout.subtitle_x = 0.5
             elif mode == "right":
-                self._layout.subtitle_x = 0.80
+                self._layout.subtitle_x = min(0.96 - half_w, 1.0 - half_w)
             elif mode == "top":
-                self._layout.subtitle_y = 0.12
+                self._layout.subtitle_y = max(0.04 + half_h, half_h)
             elif mode in ("center_y", "center_both"):
                 self._layout.subtitle_y = 0.5
             elif mode == "bottom":
-                self._layout.subtitle_y = 0.88
+                self._layout.subtitle_y = min(0.96 - half_h, 1.0 - half_h)
             self._layout.clamp()
         elif kind == "wave":
             if mode == "left":
@@ -700,16 +703,18 @@ class FrameCanvas(QWidget):
             return
 
         painter.save()
+        painter.setClipRect(box)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(0, 0, 0, 150))
         painter.drawRoundedRect(box, 6, 6)
         painter.setFont(self._subtitle_font())
         painter.setPen(QColor("#FFFFFF"))
-        painter.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
+        inner_box = box.adjusted(8, 4, -8, -4)
+        painter.drawText(inner_box, Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, text)
         painter.restore()
 
         if self._selected_kind == "subtitle":
-            self._paint_selection(painter, box, "Phụ đề (Subtitle)")
+            self._paint_selection(painter, box, "Phụ đề (Textbox)")
         else:
             self._paint_caption(painter, box, "Phụ đề")
             pen = QPen(_qcolor(theme.ACCENT, 110), 1.0, Qt.PenStyle.DashLine)
@@ -848,6 +853,7 @@ class FrameCanvas(QWidget):
                             "w": layout.video_w}
         else:
             self._origin = {"x": layout.subtitle_x, "y": layout.subtitle_y,
+                            "w": layout.subtitle_w, "h": layout.subtitle_h,
                             "scale": layout.subtitle_scale}
         self.update()
 
@@ -887,7 +893,14 @@ class FrameCanvas(QWidget):
                 layout.subtitle_x = target_x
                 layout.subtitle_y = target_y
             else:
-                layout.subtitle_scale = min(2.0, max(0.5, self._origin["scale"] + dy * 2.5))
+                orig_left = self._origin["x"] - self._origin["w"] / 2.0
+                orig_top = self._origin["y"] - self._origin["h"] / 2.0
+                new_w = max(0.10, min(1.0, self._origin["w"] + dx))
+                new_h = max(0.03, min(0.80, self._origin["h"] + dy))
+                layout.subtitle_w = new_w
+                layout.subtitle_h = new_h
+                layout.subtitle_x = orig_left + new_w / 2.0
+                layout.subtitle_y = orig_top + new_h / 2.0
             layout.clamp()
         elif kind == "wave":
             if self._drag_mode == "move":
@@ -1119,10 +1132,12 @@ class FrameTab(QWidget):
         self._canvas.phase_changed.connect(self._on_phase)
 
         for slider in (self._width, self._pos_x, self._pos_y,
-                       self._rotate, self._opacity, self._scale, self._wave_h_slider):
+                       self._rotate, self._opacity, self._scale,
+                       self._sub_h_slider, self._wave_h_slider):
             slider.sliderReleased.connect(self._commit_history)
         for spin in (self._width_spin, self._pos_x_spin, self._pos_y_spin,
-                     self._rotate_spin, self._opacity_spin, self._scale_spin, self._wave_h_spin):
+                     self._rotate_spin, self._opacity_spin, self._scale_spin,
+                     self._sub_h_spin, self._sub_font_size_spin, self._wave_h_spin):
             spin.editingFinished.connect(self._commit_history)
 
         self._canvas.set_playing(False)
@@ -1636,8 +1651,8 @@ class FrameTab(QWidget):
         c_layout.setContentsMargins(6, 8, 6, 6)
         c_layout.setSpacing(6)
 
-        # Subtitle scale
-        self._scale_label = QLabel("Cỡ chữ phụ đề: 100%")
+        # Subtitle properties
+        self._scale_label = QLabel("Tỉ lệ cỡ chữ: 100%")
         self._scale_label.setObjectName("MutedLabel")
         c_layout.addWidget(self._scale_label)
         sc_row = QHBoxLayout()
@@ -1656,6 +1671,49 @@ class FrameTab(QWidget):
         self._scale_spin.valueChanged.connect(self._on_scale_spin)
         sc_row.addWidget(self._scale_spin)
         c_layout.addLayout(sc_row)
+
+        self._sub_h_label = QLabel("Chiều cao khung chữ: 14%")
+        self._sub_h_label.setObjectName("MutedLabel")
+        c_layout.addWidget(self._sub_h_label)
+        sh_row = QHBoxLayout()
+        sh_row.setSpacing(4)
+        self._sub_h_slider = QSlider(Qt.Orientation.Horizontal)
+        self._sub_h_slider.setRange(3, 80)
+        self._sub_h_slider.setValue(14)
+        self._sub_h_slider.valueChanged.connect(self._on_sub_h_slider)
+        sh_row.addWidget(self._sub_h_slider, 1)
+        self._sub_h_spin = QSpinBox()
+        self._sub_h_spin.setRange(3, 80)
+        self._sub_h_spin.setValue(14)
+        self._sub_h_spin.setSuffix("%")
+        self._sub_h_spin.setFixedWidth(52)
+        self._sub_h_spin.setFixedHeight(24)
+        self._sub_h_spin.valueChanged.connect(self._on_sub_h_spin)
+        sh_row.addWidget(self._sub_h_spin)
+        c_layout.addLayout(sh_row)
+
+        self._sub_font_label = QLabel("Phông chữ phụ đề:")
+        self._sub_font_label.setObjectName("MutedLabel")
+        c_layout.addWidget(self._sub_font_label)
+        self._sub_font_combo = QFontComboBox()
+        self._sub_font_combo.setFixedHeight(26)
+        self._sub_font_combo.currentFontChanged.connect(self._on_sub_font_changed)
+        c_layout.addWidget(self._sub_font_combo)
+
+        fs_row = QHBoxLayout()
+        fs_row.setSpacing(4)
+        self._sub_font_size_label = QLabel("Cỡ chữ chuẩn:")
+        self._sub_font_size_label.setObjectName("MutedLabel")
+        fs_row.addWidget(self._sub_font_size_label, 1)
+        self._sub_font_size_spin = QSpinBox()
+        self._sub_font_size_spin.setRange(14, 120)
+        self._sub_font_size_spin.setValue(44)
+        self._sub_font_size_spin.setSuffix(" px")
+        self._sub_font_size_spin.setFixedWidth(64)
+        self._sub_font_size_spin.setFixedHeight(24)
+        self._sub_font_size_spin.valueChanged.connect(self._on_sub_font_size_changed)
+        fs_row.addWidget(self._sub_font_size_spin)
+        c_layout.addLayout(fs_row)
 
         lbl_text = QLabel("Xem trước phụ đề mẫu:")
         lbl_text.setObjectName("MutedLabel")
@@ -1854,7 +1912,18 @@ class FrameTab(QWidget):
         scale_val = int(round(self._layout.subtitle_scale * 100))
         self._scale.setValue(scale_val)
         self._scale_spin.setValue(scale_val)
-        self._scale_label.setText(f"Cỡ chữ phụ đề: {scale_val}%")
+        self._scale_label.setText(f"Tỉ lệ cỡ chữ: {scale_val}%")
+
+        sub_h_val = int(round(getattr(self._layout, "subtitle_h", 0.14) * 100))
+        self._sub_h_slider.setValue(sub_h_val)
+        self._sub_h_spin.setValue(sub_h_val)
+        self._sub_h_label.setText(f"Chiều cao khung chữ: {sub_h_val}%")
+
+        font_fam = getattr(self._layout, "subtitle_font", "Arial") or "Arial"
+        self._sub_font_combo.setCurrentFont(QFont(font_fam))
+
+        font_sz = int(getattr(self._layout, "subtitle_font_size", 44) or 44)
+        self._sub_font_size_spin.setValue(font_sz)
 
         wave_h_val = int(round(self._layout.wave_h * 100))
         self._wave_h_slider.setValue(wave_h_val)
@@ -2033,6 +2102,10 @@ class FrameTab(QWidget):
 
             self._scale.setEnabled(False)
             self._scale_spin.setEnabled(False)
+            self._sub_h_slider.setEnabled(False)
+            self._sub_h_spin.setEnabled(False)
+            self._sub_font_combo.setEnabled(False)
+            self._sub_font_size_spin.setEnabled(False)
             self._sample_text_edit.setEnabled(False)
             self._wave_h_slider.setEnabled(False)
             self._wave_h_spin.setEnabled(False)
@@ -2040,8 +2113,12 @@ class FrameTab(QWidget):
             sub_vis = getattr(self._layout, "subtitle_visible", True)
             vis_tag = "" if sub_vis else " (Đang ẩn)"
             self._inspector_title.setText(f"Đang chọn: Phụ đề{vis_tag}")
-            self._width.setEnabled(False)
-            self._width_spin.setEnabled(False)
+            self._width.setEnabled(True)
+            self._width_spin.setEnabled(True)
+            sub_w_val = int(round(getattr(self._layout, "subtitle_w", 0.8) * 100))
+            self._width.setValue(sub_w_val)
+            self._width_spin.setValue(sub_w_val)
+            self._width_label.setText(f"Chiều rộng khung chữ: {sub_w_val}%")
 
             x_val = int(round(self._layout.subtitle_x * 100))
             self._pos_x.setEnabled(True)
@@ -2069,7 +2146,20 @@ class FrameTab(QWidget):
             sc_val = int(round(self._layout.subtitle_scale * 100))
             self._scale.setValue(sc_val)
             self._scale_spin.setValue(sc_val)
-            self._scale_label.setText(f"Cỡ chữ phụ đề: {sc_val}%")
+            self._scale_label.setText(f"Tỉ lệ cỡ chữ: {sc_val}%")
+
+            self._sub_h_slider.setEnabled(True)
+            self._sub_h_spin.setEnabled(True)
+            sub_h_val = int(round(getattr(self._layout, "subtitle_h", 0.14) * 100))
+            self._sub_h_slider.setValue(sub_h_val)
+            self._sub_h_spin.setValue(sub_h_val)
+            self._sub_h_label.setText(f"Chiều cao khung chữ: {sub_h_val}%")
+
+            self._sub_font_combo.setEnabled(True)
+            self._sub_font_combo.setCurrentFont(QFont(getattr(self._layout, "subtitle_font", "Arial") or "Arial"))
+
+            self._sub_font_size_spin.setEnabled(True)
+            self._sub_font_size_spin.setValue(int(getattr(self._layout, "subtitle_font_size", 44) or 44))
 
             self._sample_text_edit.setEnabled(True)
             self._wave_h_slider.setEnabled(False)
@@ -2107,6 +2197,10 @@ class FrameTab(QWidget):
             self._opacity_spin.setEnabled(False)
             self._scale.setEnabled(False)
             self._scale_spin.setEnabled(False)
+            self._sub_h_slider.setEnabled(False)
+            self._sub_h_spin.setEnabled(False)
+            self._sub_font_combo.setEnabled(False)
+            self._sub_font_size_spin.setEnabled(False)
             self._sample_text_edit.setEnabled(False)
 
             self._wave_h_slider.setEnabled(True)
@@ -2152,6 +2246,10 @@ class FrameTab(QWidget):
             self._opacity_spin.setEnabled(False)
             self._scale.setEnabled(False)
             self._scale_spin.setEnabled(False)
+            self._sub_h_slider.setEnabled(False)
+            self._sub_h_spin.setEnabled(False)
+            self._sub_font_combo.setEnabled(False)
+            self._sub_font_size_spin.setEnabled(False)
             self._sample_text_edit.setEnabled(False)
             self._wave_h_slider.setEnabled(False)
             self._wave_h_spin.setEnabled(False)
@@ -2169,6 +2267,10 @@ class FrameTab(QWidget):
             self._opacity_spin.setEnabled(False)
             self._scale.setEnabled(False)
             self._scale_spin.setEnabled(False)
+            self._sub_h_slider.setEnabled(False)
+            self._sub_h_spin.setEnabled(False)
+            self._sub_font_combo.setEnabled(False)
+            self._sub_font_size_spin.setEnabled(False)
             self._sample_text_edit.setEnabled(False)
             self._wave_h_slider.setEnabled(False)
             self._wave_h_spin.setEnabled(False)
@@ -2309,6 +2411,41 @@ class FrameTab(QWidget):
         self._opacity_label.setText(f"Độ đậm: {value}%")
         self._canvas.update()
 
+    def _on_sub_h_slider(self, value: int) -> None:
+        if self._block:
+            return
+        self._block = True
+        self._sub_h_spin.setValue(value)
+        self._block = False
+        self._layout.subtitle_h = value / 100.0
+        self._layout.clamp()
+        self._sub_h_label.setText(f"Chiều cao khung chữ: {value}%")
+        self._canvas.update()
+
+    def _on_sub_h_spin(self, value: int) -> None:
+        if self._block:
+            return
+        self._block = True
+        self._sub_h_slider.setValue(value)
+        self._block = False
+        self._layout.subtitle_h = value / 100.0
+        self._layout.clamp()
+        self._sub_h_label.setText(f"Chiều cao khung chữ: {value}%")
+        self._canvas.update()
+
+    def _on_sub_font_changed(self, font: QFont) -> None:
+        if self._block:
+            return
+        self._layout.subtitle_font = font.family()
+        self._canvas.update()
+        self._commit_history()
+
+    def _on_sub_font_size_changed(self, value: int) -> None:
+        if self._block:
+            return
+        self._layout.subtitle_font_size = value
+        self._canvas.update()
+
     def _on_width_slider(self, value: int) -> None:
         if self._block:
             return
@@ -2320,6 +2457,11 @@ class FrameTab(QWidget):
             self._layout.images[index].width = value / 100.0
             self._layout.images[index].clamp()
             self._width_label.setText(f"Kích thước (Scale): {value}%")
+            self._canvas.update()
+        elif kind == "subtitle":
+            self._layout.subtitle_w = value / 100.0
+            self._layout.clamp()
+            self._width_label.setText(f"Chiều rộng khung chữ: {value}%")
             self._canvas.update()
         elif kind == "wave":
             self._layout.wave_w = value / 100.0
@@ -2344,6 +2486,11 @@ class FrameTab(QWidget):
             self._layout.images[index].width = value / 100.0
             self._layout.images[index].clamp()
             self._width_label.setText(f"Kích thước (Scale): {value}%")
+            self._canvas.update()
+        elif kind == "subtitle":
+            self._layout.subtitle_w = value / 100.0
+            self._layout.clamp()
+            self._width_label.setText(f"Chiều rộng khung chữ: {value}%")
             self._canvas.update()
         elif kind == "wave":
             self._layout.wave_w = value / 100.0
