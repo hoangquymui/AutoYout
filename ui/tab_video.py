@@ -502,7 +502,7 @@ class VideoConfigTab(QWidget):
             "• Video nền và trình chiếu tự lặp đến khi hết audio.\n"
             "• Chương và timestamps tự sinh khi gộp nhiều file.\n"
             "• NVENC/QSV/AMF chỉ hiện khi ffmpeg và driver hỗ trợ.\n"
-            "• Bố cục phụ đề, sóng âm và sticker chỉnh ở tab “Khung mẫu”."
+            "• Bố cục phụ đề, sóng âm và ảnh chỉnh ở tab “Khung mẫu”."
         )
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
@@ -678,6 +678,8 @@ class VideoConfigTab(QWidget):
 
     def set_project(self, manager: Any) -> None:
         self._manager = manager
+        if hasattr(self, "frame_tab"):
+            self.frame_tab.set_project(manager)
         self.refresh_files()
 
     def refresh_files(self) -> None:

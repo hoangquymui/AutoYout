@@ -379,6 +379,84 @@ class ProjectManager:
             "assets": self.assets_dir,
         }
 
+    @property
+    def frame_dir(self) -> Path:
+        """Thư mục video/frame lưu bố cục khung và ảnh lớp phủ của dự án."""
+        return self.video_dir / "frame"
+
+    def load_frame_layout(self) -> Optional[Any]:
+        """Nạp FrameLayout từ video/frame/frame.json nếu tồn tại."""
+        target = self.frame_dir / "frame.json"
+        if not target.is_file():
+            return None
+        try:
+            import json
+            from core.frame_layout import FrameLayout
+            data = json.loads(target.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return FrameLayout.from_dict(data, base=str(self.frame_dir))
+        except Exception as exc:
+            logger.warning("Không thể đọc frame.json từ %s: %s", target, exc)
+        return None
+
+    def save_frame_layout(self, layout: Any) -> Path:
+        """Lưu FrameLayout vào video/frame/frame.json và sao chép toàn bộ ảnh vào video/frame."""
+        from core.frame_layout import FrameLayout
+        self.frame_dir.mkdir(parents=True, exist_ok=True)
+        # Sao chép các ảnh lớp phủ vào thư mục video/frame
+        for image in getattr(layout, "images", []):
+            if not getattr(image, "path", None):
+                continue
+            src = Path(image.path)
+            if not src.is_file():
+                # Thử tìm tương đối từ project hoặc thư mục assets
+                for candidate in (self.project_dir / image.path, self.assets_dir / image.path):
+                    if candidate.is_file():
+                        src = candidate
+                        break
+            if not src.is_file():
+                continue
+            try:
+                src_resolved = src.resolve()
+                frame_dir_resolved = self.frame_dir.resolve()
+                if frame_dir_resolved in src_resolved.parents or src_resolved == frame_dir_resolved:
+                    image.path = str(src_resolved)
+                    continue
+            except Exception:
+                pass
+            dest = self.frame_dir / src.name
+            if dest.exists():
+                try:
+                    if dest.resolve() != src.resolve() and dest.stat().st_size != src.stat().st_size:
+                        dest = self.frame_dir / f"{src.stem}_{abs(hash(str(src.resolve()))) % 10000}{src.suffix}"
+                except Exception:
+                    pass
+            try:
+                if not dest.exists() or dest.resolve() != src.resolve():
+                    shutil.copy2(str(src.resolve()), str(dest))
+                image.path = str(dest.resolve())
+            except Exception as exc:
+                logger.warning("Không thể sao chép ảnh %s vào %s: %s", src, dest, exc)
+
+        # Sao chép ảnh nền xem trước (preview) nếu có và nằm ngoài video/frame
+        preview_path = getattr(layout, "preview", None)
+        if preview_path and Path(preview_path).is_file():
+            p_src = Path(preview_path)
+            try:
+                p_src_res = p_src.resolve()
+                f_dir_res = self.frame_dir.resolve()
+                if f_dir_res not in p_src_res.parents and p_src_res != f_dir_res:
+                    p_dest = self.frame_dir / f"preview_{p_src.name}"
+                    shutil.copy2(str(p_src_res), str(p_dest))
+                    layout.preview = str(p_dest.resolve())
+            except Exception:
+                pass
+
+        target = self.frame_dir / "frame.json"
+        data = layout.to_dict() if hasattr(layout, "to_dict") else dict(layout)
+        write_json_atomic(target, data)
+        return target
+
     def lang_dir(self, kind: str, language: str, create: bool = True) -> Path:
         """Return (and optionally create) ``<kind>/<lang_code>`` inside the project."""
         base_map = {

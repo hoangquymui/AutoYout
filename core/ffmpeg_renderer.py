@@ -228,11 +228,28 @@ class VideoConfig:
     keep_temp: bool = False
 
     @classmethod
-    def from_settings(cls, settings: Dict[str, Any]) -> "VideoConfig":
+    def from_settings(cls, settings: Dict[str, Any], manager: Optional[Any] = None) -> "VideoConfig":
         raw = settings.get("video") or {}
         files = raw.get("video_files") or []
         if isinstance(files, str):
             files = [part.strip() for part in files.replace("\n", ",").split(",") if part.strip()]
+        frame: Optional[FrameLayout] = None
+        if manager is not None and hasattr(manager, "load_frame_layout"):
+            frame = manager.load_frame_layout()
+        if frame is None:
+            last_project = (settings.get("project") or {}).get("last_project")
+            if last_project:
+                p_frame = Path(last_project) / "video" / "frame" / "frame.json"
+                if p_frame.is_file():
+                    try:
+                        import json
+                        data = json.loads(p_frame.read_text(encoding="utf-8"))
+                        if isinstance(data, dict):
+                            frame = FrameLayout.from_dict(data, base=str(p_frame.parent))
+                    except Exception:
+                        pass
+        if frame is None:
+            frame = FrameLayout.from_settings(settings)
         return cls(
             grouping=str(raw.get("grouping") or "one").lower(),
             group_size=max(1, int(raw.get("group_size") or 10)),
@@ -269,7 +286,7 @@ class VideoConfig:
             subtitle_srt=bool(raw.get("subtitle_srt", False)),
             subtitle_file=str(raw.get("subtitle_file") or ""),
             write_srt=bool(raw.get("write_srt", False)),
-            frame=FrameLayout.from_settings(settings),
+            frame=frame,
             keep_temp=bool(raw.get("keep_temp", False)),
         )
 
@@ -347,7 +364,7 @@ def _resolve_user_path(value: str, manager: Optional[ProjectManager] = None) -> 
     if not path.is_absolute():
         bases: List[Path] = []
         if manager is not None:
-            bases += [manager.project_dir, manager.assets_dir]
+            bases += [manager.project_dir, manager.assets_dir, manager.video_dir / "frame"]
         bases.append(Path.cwd())
         for base in bases:
             candidate = base / path

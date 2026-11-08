@@ -726,6 +726,7 @@ class MainWindow(QMainWindow):
             self.script_tab.set_project(None)
             self.tts_tab.set_project(None)
             self.video_tab.set_project(None)
+            self.frame_tab.set_project(None)
             self.thumbnail_tab.set_project(None)
             self.youtube_tab.set_project(None)
             return
@@ -736,6 +737,7 @@ class MainWindow(QMainWindow):
             self.script_tab.set_project(None)
             self.tts_tab.set_project(None)
             self.video_tab.set_project(None)
+            self.frame_tab.set_project(None)
             self.thumbnail_tab.set_project(None)
             self.youtube_tab.set_project(None)
             if not silent:
@@ -768,6 +770,7 @@ class MainWindow(QMainWindow):
         self.script_tab.set_project(manager)
         self.tts_tab.set_project(manager)
         self.video_tab.set_project(manager)
+        self.frame_tab.set_project(manager)
         self.thumbnail_tab.set_project(manager)
         self.youtube_tab.set_project(manager)
         self.project_label.setText(str(path))

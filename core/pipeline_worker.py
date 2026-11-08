@@ -773,7 +773,7 @@ class PipelineWorker(QThread):
 
     # ── video ────────────────────────────────────────────────────────────────
     def _stage_video(self, start: float, end: float, is_retry: bool = False) -> List[str]:
-        cfg = VideoConfig.from_settings(self.settings)
+        cfg = VideoConfig.from_settings(self.settings, manager=self.manager)
         problems = cfg.errors()
         if problems:
             raise PipelineError("Cấu hình video không hợp lệ: " + "; ".join(problems))
@@ -935,7 +935,7 @@ class PipelineWorker(QThread):
         if problems:
             raise PipelineError("Cấu hình YouTube không hợp lệ: " + "; ".join(problems))
 
-        video_cfg = VideoConfig.from_settings(self.settings)
+        video_cfg = VideoConfig.from_settings(self.settings, manager=self.manager)
         try:
             FFmpegRenderer(self.settings).build_jobs(self.manager, video_cfg, force=False)
         except RenderError as exc:

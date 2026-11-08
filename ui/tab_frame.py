@@ -1070,6 +1070,8 @@ class FrameTab(QWidget):
         self._timeline_block = False
 
         self._canvas = FrameCanvas(self._layout)
+        self._manager: Optional[Any] = None
+        self._settings: Optional[Dict[str, Any]] = None
 
         page = QVBoxLayout(self)
         page.setContentsMargins(8, 6, 8, 6)
@@ -1077,7 +1079,7 @@ class FrameTab(QWidget):
 
         header = PageHeader(
             "Khung mẫu Video",
-            "Thiết kế bố cục trực quan: Phụ đề, sóng âm thanh, sticker và hình ảnh thương hiệu.",
+            "Thiết kế bố cục trực quan: Phụ đề, sóng âm thanh, ảnh và hình ảnh thương hiệu.",
         )
         page.addWidget(header)
 
@@ -1119,6 +1121,9 @@ class FrameTab(QWidget):
         for slider in (self._width, self._pos_x, self._pos_y,
                        self._rotate, self._opacity, self._scale, self._wave_h_slider):
             slider.sliderReleased.connect(self._commit_history)
+        for spin in (self._width_spin, self._pos_x_spin, self._pos_y_spin,
+                     self._rotate_spin, self._opacity_spin, self._scale_spin, self._wave_h_spin):
+            spin.editingFinished.connect(self._commit_history)
 
         self._canvas.set_playing(False)
         self._on_phase(0.0)
@@ -1317,7 +1322,7 @@ class FrameTab(QWidget):
         presets_layout.addWidget(p_scroll)
         tabs.addTab(presets_tab, "Mẫu")
 
-        # Tab 3: sticker library
+        # Tab 3: image library
         stickers_tab = QWidget()
         s_scroll = QScrollArea()
         s_scroll.setWidgetResizable(True)
@@ -1329,7 +1334,7 @@ class FrameTab(QWidget):
         s_box.setContentsMargins(0, 4, 0, 0)
         s_box.setSpacing(5)
 
-        s_hint = QLabel("Chèn nhanh sticker:")
+        s_hint = QLabel("Chèn nhanh ảnh:")
         s_hint.setObjectName("MutedLabel")
         s_box.addWidget(s_hint)
 
@@ -1360,7 +1365,7 @@ class FrameTab(QWidget):
 
         s_box.addLayout(stickers_grid)
 
-        btn_more = QPushButton("Thêm sticker từ file...")
+        btn_more = QPushButton("Thêm ảnh từ file...")
         set_icon(btn_more, "plus", "accent", 12)
         btn_more.clicked.connect(self._add_image)
         s_box.addWidget(btn_more)
@@ -1371,7 +1376,7 @@ class FrameTab(QWidget):
         stickers_layout = QVBoxLayout(stickers_tab)
         stickers_layout.setContentsMargins(0, 0, 0, 0)
         stickers_layout.addWidget(s_scroll)
-        tabs.addTab(stickers_tab, "Sticker")
+        tabs.addTab(stickers_tab, "Ảnh")
 
         return panel
 
@@ -1712,8 +1717,66 @@ class FrameTab(QWidget):
         vbox.addStretch(1)
         return panel
 
-    # ── settings API ────────────────────────────────────────────────────────
+    # ── settings & project API ──────────────────────────────────────────────
+    def set_project(self, manager: Any) -> None:
+        self._manager = manager
+        if manager is not None and hasattr(manager, "load_frame_layout"):
+            saved = manager.load_frame_layout()
+            if saved is not None:
+                self._layout = saved
+                self._canvas.set_layout(self._layout)
+                self._canvas.reload_assets()
+                self._undo_stack.clear()
+                self._redo_stack.clear()
+                self._snapshot = self._layout.to_dict()
+                self._sync_history_buttons()
+                self._sync_controls()
+                self._rebuild_list()
+                self._paint_color_button()
+                paint_status(self._status, "success")
+                proj_name = getattr(manager, "project_dir", Path(".")).name
+                self._status.setText(f"Đã nạp khung mẫu từ video/frame ({proj_name}).")
+                if self._settings is not None:
+                    self._settings["frame"] = self._layout.to_dict()
+                return
+        if manager is not None and getattr(self._layout, "enabled", False):
+            self._save_to_current_project()
+
+    def _save_to_current_project(self) -> None:
+        if not self._manager:
+            return
+        try:
+            if hasattr(self._manager, "save_frame_layout"):
+                self._manager.save_frame_layout(self._layout)
+                self._canvas.reload_assets()
+            if self._settings is not None:
+                self._settings["frame"] = self._layout.to_dict()
+            paint_status(self._status, "success")
+            proj_name = getattr(self._manager, "project_dir", Path(".")).name
+            self._status.setText(f"Đã lưu khung vào video/frame ({proj_name}).")
+        except Exception as exc:
+            logger.warning("Không thể lưu khung mẫu vào project: %s", exc)
+
     def load_from(self, settings: Dict[str, Any]) -> None:
+        self._settings = settings
+        if self._manager is not None and hasattr(self._manager, "load_frame_layout"):
+            saved = self._manager.load_frame_layout()
+            if saved is not None:
+                self._layout = saved
+                self._canvas.set_layout(self._layout)
+                self._canvas.reload_assets()
+                self._undo_stack.clear()
+                self._redo_stack.clear()
+                self._snapshot = self._layout.to_dict()
+                self._sync_history_buttons()
+                self._sync_controls()
+                self._rebuild_list()
+                self._paint_color_button()
+                paint_status(self._status, "success")
+                proj_name = getattr(self._manager, "project_dir", Path(".")).name
+                self._status.setText(f"Đã nạp khung mẫu từ video/frame ({proj_name}).")
+                return
+
         self._layout = FrameLayout.from_settings(settings)
         self._canvas.set_layout(self._layout)
         self._undo_stack.clear()
@@ -1750,6 +1813,7 @@ class FrameTab(QWidget):
         self._redo_stack.clear()
         self._snapshot = current
         self._sync_history_buttons()
+        self._save_to_current_project()
 
     def _sync_history_buttons(self) -> None:
         self._undo_btn.setEnabled(bool(self._undo_stack))
@@ -1780,6 +1844,7 @@ class FrameTab(QWidget):
         self._paint_color_button()
         self._sync_history_buttons()
         self._canvas.update()
+        self._save_to_current_project()
 
     # ── state sync ──────────────────────────────────────────────────────────
     def _sync_controls(self) -> None:
@@ -2556,6 +2621,7 @@ class FrameTab(QWidget):
         self._paint_color_button()
         paint_status(self._status, "muted")
         self._status.setText("Đã đặt lại khung mẫu.")
+        self._save_to_current_project()
 
 
 def _format_time(seconds: float) -> str:
