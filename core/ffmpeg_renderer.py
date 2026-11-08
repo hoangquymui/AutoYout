@@ -622,10 +622,20 @@ class FFmpegRenderer:
             self._check_cancel(cancel_cb)
             entries = self._chapter_entries(segments, total)
             srt_events: List[Tuple[float, float, str]] = []
-            if cfg.subtitle_srt:
-                srt_events = self._srt_events(manager, items, cfg, segments)
-                if not srt_events:
-                    raise RenderError("File phụ đề .srt không có dòng nào hợp lệ.")
+            need_subtitles = bool(
+                cfg.subtitle_srt
+                or cfg.subtitle_enabled
+                or (cfg.frame and cfg.frame.enabled and getattr(cfg.frame, "subtitle_visible", True))
+            )
+            if need_subtitles:
+                try:
+                    srt_events = self._srt_events(manager, items, cfg, segments)
+                except Exception as exc:
+                    if cfg.subtitle_srt:
+                        raise
+                    logger.warning("Không thể nạp phụ đề .srt: %s, dùng kịch bản dự phòng.", exc)
+            if cfg.subtitle_srt and not srt_events:
+                raise RenderError("File phụ đề .srt không có dòng nào hợp lệ.")
             visual = self._prepare_visual(
                 manager, items, cfg, temp_dir, report, cancel_cb,
                 segments=segments, total=total)
@@ -1402,11 +1412,16 @@ class FFmpegRenderer:
                 index * len(sentences) // max_events:
                 (index + 1) * len(sentences) // max_events])
                 for index in range(max_events)]
+        total_weight = float(sum(max(1, len(chunk)) for chunk in chunks))
         events: List[Tuple[float, float, str]] = []
-        for index, chunk in enumerate(chunks):
-            event_start = start + total * index / len(chunks)
-            event_end = min(end, start + total * (index + 1) / len(chunks))
+        cursor = start
+        for chunk in chunks:
+            weight = max(1, len(chunk))
+            chunk_dur = total * (weight / total_weight)
+            event_start = cursor
+            event_end = min(end, cursor + chunk_dur)
             events.append((event_start, event_end, chunk))
+            cursor += chunk_dur
         return events
 
     @staticmethod
@@ -1711,18 +1726,18 @@ class FFmpegRenderer:
                 parts.append(f"[{vlabel}]subtitles=chapters.ass:fontsdir=.[vsub]")
                 vlabel = "vsub"
 
-            if cfg.subtitle_srt and srt_events:
-                if self._write_ass(srt_events, total, temp_dir, cfg, language):
+            if (cfg.subtitle_srt or cfg.subtitle_enabled or (cfg.frame and cfg.frame.enabled and getattr(cfg.frame, "subtitle_visible", True))):
+                sub_rendered = False
+                if srt_events and self._write_ass(srt_events, total, temp_dir, cfg, language):
                     parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
                     vlabel = "vsub2"
-                else:
-                    logger.warning("Bật phụ đề .srt nhưng không có dòng nào hiển thị.")
-            elif (cfg.subtitle_enabled or (cfg.frame and cfg.frame.enabled and getattr(cfg.frame, "subtitle_visible", True))) and segments:
-                if self._write_subtitles(segments, total, temp_dir, cfg, language):
+                    sub_rendered = True
+                elif segments and self._write_subtitles(segments, total, temp_dir, cfg, language):
                     parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
                     vlabel = "vsub2"
-                else:
-                    logger.warning("Bật phụ đề nhưng không có nội dung để hiển thị.")
+                    sub_rendered = True
+                if not sub_rendered and (cfg.subtitle_srt or cfg.subtitle_enabled):
+                    logger.warning("Bật phụ đề nhưng không có nội dung nào hiển thị.")
 
             if wave_active:
                 if frame is not None:
@@ -1849,10 +1864,9 @@ class FFmpegRenderer:
                         )
                     vlabel = f"vframe{idx}"
                 elif kind == "subtitle":
-                    if cfg.subtitle_srt and srt_events:
-                        if self._write_ass(srt_events, total, temp_dir, cfg, language):
-                            parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
-                            vlabel = "vsub2"
+                    if srt_events and self._write_ass(srt_events, total, temp_dir, cfg, language):
+                        parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")
+                        vlabel = "vsub2"
                     elif (cfg.subtitle_enabled or getattr(frame, "subtitle_visible", True)) and segments:
                         if self._write_subtitles(segments, total, temp_dir, cfg, language):
                             parts.append(f"[{vlabel}]subtitles=subs.ass:fontsdir=.[vsub2]")

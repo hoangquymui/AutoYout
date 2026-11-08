@@ -647,8 +647,11 @@ class PipelineWorker(QThread):
                     )
                     # Luôn đảm bảo có file SRT khi dùng TTS toàn bài
                     if not srt_path.is_file():
-                        from core.subtitles import text_to_cues, write_srt
-                        sub_cues = text_to_cues(item.text, total_seconds=float(result.duration))
+                        from core.subtitles import Cue, text_to_cues, write_srt
+                        if getattr(result, "cues", None):
+                            sub_cues = [Cue(idx, s, e, t) for idx, (s, e, t) in enumerate(result.cues, 1)]
+                        else:
+                            sub_cues = text_to_cues(item.text, total_seconds=float(result.duration))
                         if sub_cues:
                             write_srt(sub_cues, srt_path)
                             logger.info("Đã tạo SRT %s sau khi TTS toàn bộ.", srt_path.name)
@@ -716,7 +719,13 @@ class PipelineWorker(QThread):
                 cue_cb=lambda _cue: (self.cues_updated.emit(item.base), self.items_updated.emit()),
             )
             dubbing = self.settings.get("dubbing") or {}
-            mode = str(dubbing.get("timing_mode") or "timeline")
+            user_mode = str(dubbing.get("timing_mode") or "").lower()
+            has_real_srt = (
+                getattr(item, "dub_mode", "text") == "srt"
+                and item.text_file is not None
+                and item.text_file.with_suffix(".srt").is_file()
+            )
+            mode = "timeline" if (user_mode == "timeline" and has_real_srt) else "natural"
             gap = float(dubbing.get("gap", 0.15) or 0.0)
             mp3, _srt, duration = engine.join_item(
                 self.manager, item, cues, mode=mode, gap=gap)

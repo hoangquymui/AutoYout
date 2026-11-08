@@ -107,6 +107,7 @@ class SynthResult:
     voice: str
     chunks: int
     characters: int
+    cues: Optional[List[Tuple[float, float, str]]] = None
 
     def public(self) -> Dict[str, Any]:
         return {
@@ -811,11 +812,21 @@ class TTSEngine:
 
             sample_rate = self._sample_rate
             pieces: List[np.ndarray] = []
+            cues_list: List[Tuple[float, float, str]] = []
+            cursor_time = 0.0
+            tempo = speed_value if engine == "turbo" else 1.0
+            effective_tempo = max(0.1, tempo)
             for index, wav in enumerate(wavs):
                 pieces.append(wav)
+                wav_dur = (len(wav) / sample_rate) / effective_tempo
+                chunk_txt = chunks[index].text.strip()
+                if chunk_txt and wav_dur > 0:
+                    cues_list.append((cursor_time, cursor_time + wav_dur, chunk_txt))
+                cursor_time += wav_dur
                 gap = chunks[index].gap_after if index < len(chunks) else 0.0
                 if gap > 0:
                     pieces.append(np.zeros(max(1, int(round(gap * sample_rate))), dtype=np.float32))
+                    cursor_time += gap
             audio = np.concatenate(pieces).astype(np.float32, copy=False)
             if audio.size < sample_rate // 10:
                 raise TTSError(f"Audio tạo ra quá ngắn ({audio.size} mẫu).")
@@ -834,7 +845,6 @@ class TTSEngine:
                 except Exception as exc:
                     raise TTSError(f"Không ghi được WAV tạm: {exc}") from exc
                 self._wait(pause_cb, cancel_cb)
-                tempo = speed_value if engine == "turbo" else 1.0
                 self._encode(temp_path, part_path, tempo=tempo, bitrate=bitrate)
                 if not part_path.is_file() or part_path.stat().st_size < 512:
                     raise TTSError("File âm thanh xuất ra không hợp lệ.")
@@ -850,7 +860,17 @@ class TTSEngine:
                 raise TTSError(f"File MP3 không hợp lệ: {out_path}")
             duration = probe_duration(out_path, self.ffprobe)
             if duration <= 0:
-                duration = len(audio) / float(sample_rate) / max(1e-3, tempo if engine == "turbo" else 1.0)
+                duration = len(audio) / float(sample_rate) / max(1e-3, effective_tempo)
+
+            if cues_list:
+                try:
+                    from core.subtitles import Cue, write_srt
+                    sub_cues = [Cue(idx, s, e, t) for idx, (s, e, t) in enumerate(cues_list, 1)]
+                    write_srt(sub_cues, out_path.with_suffix(".srt"))
+                    logger.info("Đã tự động tạo SRT đồng bộ theo waveform cho %s (%d câu)", out_path.name, len(sub_cues))
+                except Exception as exc:
+                    logger.warning("Không tạo được SRT tự động: %s", exc)
+
             if progress_cb:
                 try:
                     progress_cb(100)
@@ -866,6 +886,7 @@ class TTSEngine:
                 voice=voice_info.name,
                 chunks=total,
                 characters=len(normalize_text(text)),
+                cues=cues_list,
             )
 
     def synthesize_variants(

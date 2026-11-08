@@ -31,7 +31,7 @@
     "preview_text": "Xin chào, đây là bản nghe thử giọng đọc của AutoYout. Chúc bạn một ngày tốt lành."
   },
   "dubbing": {
-    "timing_mode": "timeline",
+    "timing_mode": "natural",
     "gap": 0.15,
     "auto_split": true,
     "min_words": 15,
