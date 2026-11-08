@@ -1,24 +1,73 @@
-# Python
+# =====================================================================
+# AutoYout .gitignore
+# =====================================================================
+
+# ── Byte-compiled / optimized / runtime files ──────────────────────
 __pycache__/
 *.py[cod]
-.pytest_cache/
+*$py.class
+*.so
+.Python
 
-#agents
-.agents/
-
-# Runtime output
-logs/
-preview/
-bin/
-H2MTTS/
-tts/
+# ── Distribution / packaging / builds ──────────────────────────────
 build/
 dist/
+*.egg-info/
+*.egg
+*.manifest
+*.spec.bak
 
-# Local secrets and per-user settings
+# ── Virtual Environments ───────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ── Testing & Code Quality ─────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ── IDEs, Editors & OS Files ───────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── Local Secrets, User Configuration & Credentials ────────────────
 config/user_settings.json
 config/language_prompt.json
 config/youtube_credentials/
+*.env
+.env.*
 
-# Belongs to an unrelated Electron project
+# ── Runtime Output, Caches & Logs ──────────────────────────────────
+logs/
+*.log
+preview/
+tmp/
+*.tmp
+*.bak
+
+# ── Heavy Local Binaries & Voice Model Packs (downloaded on demand) ─
+bin/
+H2MTTS/
+tts/
+
+# ── AI Agents / Assistant scratch directories ──────────────────────
+.agents/
+
+# ── Legacy / Node.js artifacts ─────────────────────────────────────
 package.json
+package-lock.json
+node_modules/
