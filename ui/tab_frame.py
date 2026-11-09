@@ -1331,20 +1331,27 @@ class FrameTab(QWidget):
         self._history_label.setObjectName("MutedLabel")
         row.addWidget(self._history_label)
 
-        self._save_btn = QPushButton("Lưu")
-        self._save_btn.setObjectName("primaryButton")
-        self._save_btn.setFixedHeight(26)
-        set_icon(self._save_btn, "save", "white", 12)
-        self._save_btn.setToolTip("Lưu lại thiết kế khung mẫu vào video/frame của project đang chọn.")
-        self._save_btn.clicked.connect(self._manual_save_project)
-        row.addWidget(self._save_btn)
-
         self._reset_btn = QPushButton("Đặt lại")
-        self._reset_btn.setFixedHeight(26)
-        set_icon(self._reset_btn, "refresh", "muted", 12)
+        self._reset_btn.setObjectName("smallButton")
+        self._reset_btn.setFixedHeight(28)
+        self._reset_btn.setStyleSheet(
+            "QPushButton#smallButton { padding: 4px 12px; font-size: 8.5pt; font-weight: 500; border-radius: 6px; }"
+        )
+        set_icon(self._reset_btn, "refresh", "muted", 13)
         self._reset_btn.setToolTip("Khôi phục toàn bộ khung mẫu về mặc định.")
         self._reset_btn.clicked.connect(self._reset)
         row.addWidget(self._reset_btn)
+
+        self._save_btn = QPushButton("Lưu")
+        self._save_btn.setObjectName("primaryButton")
+        self._save_btn.setFixedHeight(28)
+        self._save_btn.setStyleSheet(
+            "QPushButton#primaryButton { padding: 4px 14px; font-size: 8.5pt; font-weight: 600; border-radius: 6px; }"
+        )
+        set_icon(self._save_btn, "save", "white", 13)
+        self._save_btn.setToolTip("Lưu lại thiết kế khung mẫu vào video/frame của project đang chọn.")
+        self._save_btn.clicked.connect(self._manual_save_project)
+        row.addWidget(self._save_btn)
         return bar
 
     @staticmethod
@@ -1985,7 +1992,7 @@ class FrameTab(QWidget):
             paint_status(self._status, "success")
             self._status.setText(f"✓ Đã lưu thành công khung mẫu vào video/frame ({proj_name}).")
             self._save_btn.setText("Đã lưu ✓")
-            set_icon(self._save_btn, "check", "white", 12)
+            set_icon(self._save_btn, "check", "white", 13)
             QTimer.singleShot(1500, self._restore_save_btn)
         except Exception as exc:
             logger.warning("Không thể lưu khung mẫu vào project: %s", exc)
@@ -1994,7 +2001,7 @@ class FrameTab(QWidget):
 
     def _restore_save_btn(self) -> None:
         self._save_btn.setText("Lưu")
-        set_icon(self._save_btn, "save", "white", 12)
+        set_icon(self._save_btn, "save", "white", 13)
 
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
