@@ -55,10 +55,10 @@ _SRT_FILTER = "Phụ đề (*.srt *.vtt);;Tất cả (*)"
 _EXE_FILTER = "Chương trình (*.exe);;Tất cả (*)"
 
 _ENCODER_LABELS = {
-    "auto": "Tự động (GPU nếu có)",
-    "h264_nvenc": "NVIDIA NVENC (h264_nvenc)",
-    "h264_amf": "AMD AMF (h264_amf)",
-    "h264_qsv": "Intel QSV (h264_qsv)",
+    "auto": "Tự động (Ưu tiên GPU)",
+    "h264_nvenc": "GPU NVIDIA (h264_nvenc)",
+    "h264_amf": "GPU AMD (h264_amf)",
+    "h264_qsv": "GPU Intel (h264_qsv)",
     "libx264": "CPU (libx264)",
 }
 
@@ -575,7 +575,20 @@ class VideoConfigTab(QWidget):
     def _update_summary(self, *_args) -> None:
         resolution = self.resolution_combo.currentText().split(" (")[0]
         fps = self.fps_spin.value()
-        encoder = self.encoder_combo.currentText().split(" (")[0]
+        enc_data = str(self.encoder_combo.currentData() or "auto")
+        if enc_data == "auto":
+            avail = getattr(self, "_available_encoders", [])
+            gpu_tag = None
+            for enc, tag in [("h264_nvenc", "NVENC"), ("h264_amf", "AMF"), ("h264_qsv", "QSV")]:
+                if enc in avail:
+                    gpu_tag = tag
+                    break
+            encoder = f"GPU ({gpu_tag})" if gpu_tag else "CPU (libx264)"
+        elif enc_data in ("h264_nvenc", "h264_amf", "h264_qsv"):
+            tag = "NVENC" if "nvenc" in enc_data else ("AMF" if "amf" in enc_data else "QSV")
+            encoder = f"GPU ({tag})"
+        else:
+            encoder = "CPU (libx264)"
         mode = str(self.grouping_combo.currentData() or "one")
         if mode == "all":
             grouping = "Gộp 1 video"
@@ -941,24 +954,48 @@ class VideoConfigTab(QWidget):
             self.tools_status.setText("Không chạy được ffmpeg — kiểm tra lại đường dẫn.")
             paint_status(self.tools_status, "error")
             return
+        self._available_encoders = list(encoders)
         available = set(encoders) | {"auto"}
+
+        gpu_detected = None
+        gpu_name = ""
+        for enc, name in [
+            ("h264_nvenc", "NVIDIA NVENC"),
+            ("h264_amf", "AMD AMF"),
+            ("h264_qsv", "Intel QSV"),
+        ]:
+            if enc in encoders:
+                gpu_detected = enc
+                gpu_name = name
+                break
+
         model = self.encoder_combo.model()
         for index in range(self.encoder_combo.count()):
             data = str(self.encoder_combo.itemData(index))
             item = model.item(index)
             if item is not None:
                 item.setEnabled(data in available)
-            label = _ENCODER_LABELS.get(data, data)
-            if data not in available:
-                label += " (không có)"
+            if data == "auto":
+                if gpu_detected:
+                    label = f"Tự động (Ưu tiên GPU: {gpu_name})"
+                else:
+                    label = "Tự động (Không có GPU — dùng CPU libx264)"
+            else:
+                label = _ENCODER_LABELS.get(data, data)
+                if data not in available:
+                    label += " (không có)"
             self.encoder_combo.setItemText(index, label)
         current = self.encoder_combo.currentData()
         if current not in available:
             self._set_combo(self.encoder_combo, "auto")
-        self.tools_status.setText(
-            "ffmpeg sẵn sàng · encoder: " + ", ".join(sorted(set(encoders)))
-        )
+
+        if gpu_detected:
+            status_text = f"ffmpeg sẵn sàng · Đã phát hiện GPU: {gpu_name} (ưu tiên xuất bằng GPU)"
+        else:
+            status_text = "ffmpeg sẵn sàng · Không phát hiện GPU — xuất bằng CPU (libx264)"
+        self.tools_status.setText(status_text)
         paint_status(self.tools_status, "success")
+        self._update_summary()
 
     def set_pipeline_busy(self, busy: bool) -> None:
         self._pipeline_busy = bool(busy)

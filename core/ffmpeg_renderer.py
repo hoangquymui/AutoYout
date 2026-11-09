@@ -402,7 +402,7 @@ class FFmpegRenderer:
         self._encoders: Optional[set[str]] = None
         self._hwaccels: Optional[set[str]] = None
         self._filter_cache: Dict[str, bool] = {}
-        self._resolved_encoder: str = ""
+        self._encoder_support: Dict[str, bool] = {}
 
     # ── capability checks ────────────────────────────────────────────────────
     @property
@@ -418,6 +418,31 @@ class FFmpegRenderer:
             self._hwaccels = detect_hwaccels(self.ffmpeg)
         return self._hwaccels
 
+    def is_encoder_working(self, encoder: str) -> bool:
+        """Check if an encoder is compiled-in AND confirmed working on this hardware."""
+        if encoder not in self._encoder_support:
+            if encoder not in self.available_encoders:
+                self._encoder_support[encoder] = False
+            elif encoder == "libx264":
+                self._encoder_support[encoder] = True
+            else:
+                try:
+                    proc = _run_simple([
+                        self.ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                        "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.04",
+                        "-c:v", encoder, "-f", "null", "-",
+                    ], timeout=5)
+                    self._encoder_support[encoder] = (proc.returncode == 0)
+                except Exception:
+                    self._encoder_support[encoder] = False
+        return self._encoder_support[encoder]
+
+    @property
+    def working_gpu_encoders(self) -> List[str]:
+        """List of GPU hardware encoders confirmed functional on current hardware."""
+        gpu_order = ["h264_nvenc", "h264_amf", "h264_qsv"]
+        return [enc for enc in gpu_order if self.is_encoder_working(enc)]
+
     def has_filter(self, name: str) -> bool:
         if name not in self._filter_cache:
             proc = _run_simple([self.ffmpeg, "-hide_banner", "-filters"], timeout=30)
@@ -427,38 +452,42 @@ class FFmpegRenderer:
 
     def environment(self) -> Dict[str, Any]:
         ok = ffmpeg_available(self.ffmpeg)
+        working_encoders = [
+            name for name in self.available_encoders if self.is_encoder_working(name)
+        ] if ok else []
         return {
             "ffmpeg_ok": ok,
             "ffmpeg": self.ffmpeg,
-            "encoders": self.available_encoders if ok else [],
+            "encoders": working_encoders,
+            "gpu_encoders": self.working_gpu_encoders if ok else [],
             "hwaccels": sorted(self.hwaccels) if ok else [],
             "subtitles": self.has_filter("subtitles") if ok else False,
             "showwaves": self.has_filter("showwaves") if ok else False,
         }
 
     def preferred_encoder(self, cfg: VideoConfig) -> str:
+        """Return the best encoder to use: prioritize GPU when available, fallback to CPU."""
         encoders = set(self.available_encoders)
-        if cfg.encoder in ("libx264", "h264_nvenc", "h264_amf", "h264_qsv"):
+        if cfg.encoder in ("h264_nvenc", "h264_amf", "h264_qsv"):
+            if self.is_encoder_working(cfg.encoder):
+                return cfg.encoder
             if cfg.encoder not in encoders:
-                raise RenderError(
-                    f"Encoder {cfg.encoder} không có trong bản ffmpeg này. "
-                    f"Đang có: {', '.join(sorted(encoders)) or 'không có'}"
+                logger.warning(
+                    "Encoder %s không có trong bản ffmpeg này. Đang có: %s",
+                    cfg.encoder, ", ".join(sorted(encoders)) or "không có"
                 )
-            return cfg.encoder
-        if self._resolved_encoder and self._resolved_encoder in encoders:
-            return self._resolved_encoder
-        candidates: List[str] = []
-        hw = self.hwaccels
-        if "cuda" in hw:
-            candidates.append("h264_nvenc")
-        if "amf" in hw:
-            candidates.append("h264_amf")
-        if "qsv" in hw:
-            candidates.append("h264_qsv")
-        candidates.append("libx264")
-        for name in candidates:
-            if name in encoders:
-                return name
+            else:
+                logger.warning("Encoder GPU %s không chạy được trên card màn hình hiện tại.", cfg.encoder)
+            # Try any other working GPU first
+            for gpu in self.working_gpu_encoders:
+                return gpu
+            return "libx264"
+        elif cfg.encoder == "libx264":
+            return "libx264"
+
+        # Mode "auto": ALWAYS prioritize working GPU encoder if available
+        for gpu in self.working_gpu_encoders:
+            return gpu
         return "libx264"
 
     # ── planning ─────────────────────────────────────────────────────────────
@@ -1982,7 +2011,7 @@ class FFmpegRenderer:
                 except OSError:
                     pass
             if index > 0:
-                report(25, f"Thử lại bằng {encoder}...")
+                report(25, f"Thử lại bằng CPU ({encoder})...")
                 logger.warning("Encode %s bằng %s thất bại (%s), thử lại bằng %s",
                                job.id, candidates[index - 1], last_error, encoder)
             try:
@@ -1990,8 +2019,6 @@ class FFmpegRenderer:
                                  out_path, encoder, bgm, report, pause_cb, cancel_cb,
                                  segments=segments, srt_events=srt_events,
                                  frame_images=frame_images)
-                if encoder == "libx264" or encoder == preferred:
-                    self._resolved_encoder = encoder
                 return encoder
             except RenderCancelled:
                 raise
@@ -2031,25 +2058,27 @@ class FFmpegRenderer:
             frame_images=frame_inputs, bgm_index=bgm_index)
         cmd: List[str] = [
             self.ffmpeg, "-y", "-hide_banner", "-nostdin", "-loglevel", "error",
+            "-thread_queue_size", "512",
             "-i", str(combined),
         ]
         if visual["kind"] == "image":
-            cmd += ["-loop", "1", "-framerate", str(cfg.fps), "-i", str(visual["path"])]
+            cmd += ["-thread_queue_size", "512", "-loop", "1", "-framerate", str(cfg.fps), "-i", str(visual["path"])]
         elif visual["kind"] == "slideshow":
-            cmd += ["-stream_loop", "-1", "-f", "concat", "-safe", "0",
+            cmd += ["-thread_queue_size", "512", "-stream_loop", "-1", "-f", "concat", "-safe", "0",
                     "-i", os.path.basename(str(visual["path"]))]
         else:
             source = str(visual["path"])
             if not Path(source).is_absolute():
                 source = os.path.basename(source)
+            hw_args = ["-hwaccel", "auto"] if self.working_gpu_encoders else []
             if visual.get("loop", True):
-                cmd += ["-stream_loop", "-1", "-i", source]
+                cmd += hw_args + ["-thread_queue_size", "512", "-stream_loop", "-1", "-i", source]
             else:
-                cmd += ["-i", source]
+                cmd += hw_args + ["-thread_queue_size", "512", "-i", source]
         for _image, path in overlays:
-            cmd += ["-loop", "1", "-framerate", str(cfg.fps), "-i", str(path)]
+            cmd += ["-thread_queue_size", "512", "-i", str(path)]
         if bgm is not None:
-            cmd += ["-stream_loop", "-1", "-i", str(bgm)]
+            cmd += ["-thread_queue_size", "512", "-stream_loop", "-1", "-i", str(bgm)]
         cmd += [
             "-filter_complex", filter_graph,
             "-map", "[vout]", "-map", f"[{audio_label}]",
@@ -2061,7 +2090,15 @@ class FFmpegRenderer:
             "-progress", "pipe:1", "-nostats",
             os.path.basename(str(out_path)),
         ]
-        report(25, f"Đang encode bằng {encoder}...")
+        if encoder == "h264_nvenc":
+            enc_name = "GPU (NVIDIA NVENC)"
+        elif encoder == "h264_amf":
+            enc_name = "GPU (AMD AMF)"
+        elif encoder == "h264_qsv":
+            enc_name = "GPU (Intel QSV)"
+        else:
+            enc_name = f"CPU ({encoder})"
+        report(25, f"Đang encode bằng {enc_name}...")
         self._run_process(cmd, temp_dir, total, report, pause_cb, cancel_cb, 25, 74)
 
     # ── progress-aware process runner ────────────────────────────────────────
