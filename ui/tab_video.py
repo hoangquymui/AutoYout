@@ -37,6 +37,7 @@ from core.ai_images import (
     DEFAULT_MODEL as AI_DEFAULT_MODEL,
     DEFAULT_STYLE as AI_DEFAULT_STYLE,
 )
+from core.ffmpeg_renderer import resolve_dimensions
 from ui.tab_frame import FrameTab
 from ui import theme
 from ui.components.icons import pixmap, set_icon
@@ -407,11 +408,11 @@ class VideoConfigTab(QWidget):
         output_form.setVerticalSpacing(6)
 
         self.resolution_combo = QComboBox()
-        self.resolution_combo.addItem("1920×1080 (16:9 Full HD)", "1920x1080")
-        self.resolution_combo.addItem("1280×720 (16:9 HD)", "1280x720")
-        self.resolution_combo.addItem("1080×1920 (9:16 Shorts/TikTok)", "1080x1920")
-        self.resolution_combo.addItem("720×1280 (9:16 Shorts)", "720x1280")
-        self.resolution_combo.addItem("1080×1080 (1:1 Vuông)", "1080x1080")
+        self.resolution_combo.addItem("1080p (Full HD)", "1080p")
+        self.resolution_combo.addItem("720p (HD)", "720p")
+        self.resolution_combo.addItem("1440p (2K QHD)", "1440p")
+        self.resolution_combo.addItem("2160p (4K UHD)", "2160p")
+        self.resolution_combo.addItem("480p (SD)", "480p")
         self.fps_spin = QSpinBox()
         self.fps_spin.setRange(24, 60)
         res_row = QHBoxLayout()
@@ -529,6 +530,8 @@ class VideoConfigTab(QWidget):
         self.encoder_combo.currentIndexChanged.connect(self._update_summary)
         self.fps_spin.valueChanged.connect(self._update_summary)
         self.group_size_spin.valueChanged.connect(self._update_summary)
+        if hasattr(self, "frame_tab") and hasattr(self.frame_tab, "_ratio_combo"):
+            self.frame_tab._ratio_combo.currentIndexChanged.connect(self._update_summary)
         self._sync_visual_height()
         self._on_grouping_changed()
         self._update_summary()
@@ -573,7 +576,13 @@ class VideoConfigTab(QWidget):
         return bar
 
     def _update_summary(self, *_args) -> None:
-        resolution = self.resolution_combo.currentText().split(" (")[0]
+        tier = self.resolution_combo.currentText().split(" (")[0]
+        res_data = str(self.resolution_combo.currentData() or "1080p")
+        ratio = "16:9"
+        if hasattr(self, "frame_tab") and getattr(self.frame_tab, "_layout", None):
+            ratio = getattr(self.frame_tab._layout, "aspect_ratio", "16:9") or "16:9"
+        w, h = resolve_dimensions(res_data, ratio)
+        resolution = f"{tier} ({w}×{h})"
         fps = self.fps_spin.value()
         enc_data = str(self.encoder_combo.currentData() or "auto")
         if enc_data == "auto":
@@ -809,7 +818,19 @@ class VideoConfigTab(QWidget):
         self.bgm_edit.setText(str(video.get("bgm") or ""))
         self.bgm_volume.setValue(int(video.get("bgm_volume_db", -18) or -18))
         self.bgm_duck.setValue(int(round(float(video.get("bgm_duck", 0.25) or 0.25) * 100)))
-        self._set_combo(self.resolution_combo, video.get("resolution", "1920x1080"))
+        raw_res = str(video.get("resolution", "1080p") or "1080p").lower()
+        tier = "1080p"
+        if "2160" in raw_res or "4k" in raw_res:
+            tier = "2160p"
+        elif "1440" in raw_res or "2k" in raw_res:
+            tier = "1440p"
+        elif "720" in raw_res:
+            tier = "720p"
+        elif "480" in raw_res:
+            tier = "480p"
+        elif "1080" in raw_res:
+            tier = "1080p"
+        self._set_combo(self.resolution_combo, tier)
         self.fps_spin.setValue(int(video.get("fps", 30) or 30))
         self._set_combo(self.encoder_combo, video.get("encoder", "auto"))
         self.crf_spin.setValue(int(video.get("crf", 20) or 20))
@@ -855,7 +876,7 @@ class VideoConfigTab(QWidget):
         video["bgm"] = self.bgm_edit.text().strip()
         video["bgm_volume_db"] = int(self.bgm_volume.value())
         video["bgm_duck"] = round(self.bgm_duck.value() / 100.0, 2)
-        video["resolution"] = self.resolution_combo.currentData() or "1920x1080"
+        video["resolution"] = self.resolution_combo.currentData() or "1080p"
         video["fps"] = int(self.fps_spin.value())
         video["encoder"] = self.encoder_combo.currentData() or "auto"
         video["crf"] = int(self.crf_spin.value())

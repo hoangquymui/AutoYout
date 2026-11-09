@@ -643,3 +643,26 @@ def test_write_ass_auto_expands_box_for_overflow_text(tmp_path: Path) -> None:
     # Subtitle clip should use the expanded box height so text is not sliced
     assert f"\\clip(384,875,1536,{875 + cur_bh})" in ass or f"\\clip(384,874,1536,{874 + cur_bh})" in ass
 
+
+def test_resolve_dimensions_and_aspect_ratio_integration() -> None:
+    from core.ffmpeg_renderer import resolve_dimensions
+    assert resolve_dimensions("1080p", "16:9") == (1920, 1080)
+    assert resolve_dimensions("1080p", "9:16") == (1080, 1920)
+    assert resolve_dimensions("1080p", "1:1") == (1080, 1080)
+    assert resolve_dimensions("1080p", "4:5") == (1080, 1350)
+
+    assert resolve_dimensions("720p", "16:9") == (1280, 720)
+    assert resolve_dimensions("720p", "9:16") == (720, 1280)
+    assert resolve_dimensions("720p", "1:1") == (720, 720)
+
+    # VideoConfig takes aspect_ratio from frame layout
+    cfg = VideoConfig(resolution="1080p", frame=FrameLayout(aspect_ratio="9:16"))
+    assert cfg.dimensions == (1080, 1920)
+
+    cfg_sq = VideoConfig(resolution="1080p", frame=FrameLayout(aspect_ratio="1:1"))
+    assert cfg_sq.dimensions == (1080, 1080)
+
+    cfg_legacy = VideoConfig(resolution="1920x1080", frame=FrameLayout(aspect_ratio="9:16"))
+    assert cfg_legacy.dimensions == (1080, 1920)
+
+

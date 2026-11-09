@@ -297,12 +297,8 @@ class VideoConfig:
 
     @property
     def dimensions(self) -> Tuple[int, int]:
-        match = re.search(r"(\d+)\s*[xX×]\s*(\d+)", self.resolution or "")
-        if match:
-            width, height = int(match.group(1)), int(match.group(2))
-        else:
-            width, height = 1920, 1080
-        return _even(width), _even(height)
+        ratio = getattr(self.frame, "aspect_ratio", "16:9") if self.frame else "16:9"
+        return resolve_dimensions(self.resolution, ratio)
 
     @property
     def width(self) -> int:
@@ -334,10 +330,48 @@ class VideoConfig:
             problems.append(f"Encoder không hỗ trợ: {self.encoder}")
         if not (0.0 <= self.bgm_duck <= 1.0):
             problems.append("Độ giảm nhạc nền (bgm_duck) phải trong khoảng 0.0–1.0.")
-        match = re.search(r"(\d+)\s*[xX×]\s*(\d+)", self.resolution or "")
-        if not match or int(match.group(1)) < 64 or int(match.group(2)) < 64:
-            problems.append("Độ phân giải phải có dạng WxH và lớn hơn 64px.")
+        w, h = self.dimensions
+        if w < 64 or h < 64:
+            problems.append("Độ phân giải phải có kích thước lớn hơn 64px.")
         return problems
+
+
+def resolve_dimensions(res_str: str, ratio: str = "16:9") -> Tuple[int, int]:
+    """Resolve (width, height) from a resolution tier (e.g. '1080p') and frame aspect ratio."""
+    ratio = (ratio or "16:9").strip()
+    if ratio not in ("16:9", "9:16", "1:1", "4:5"):
+        ratio = "16:9"
+
+    presets = {
+        "2160p": {"16:9": (3840, 2160), "9:16": (2160, 3840), "1:1": (2160, 2160), "4:5": (2160, 2700)},
+        "1440p": {"16:9": (2560, 1440), "9:16": (1440, 2560), "1:1": (1440, 1440), "4:5": (1440, 1800)},
+        "1080p": {"16:9": (1920, 1080), "9:16": (1080, 1920), "1:1": (1080, 1080), "4:5": (1080, 1350)},
+        "720p":  {"16:9": (1280, 720),  "9:16": (720, 1280),  "1:1": (720, 720),   "4:5": (720, 900)},
+        "480p":  {"16:9": (854, 480),   "9:16": (480, 854),   "1:1": (480, 480),   "4:5": (480, 600)},
+    }
+    clean = str(res_str or "").strip().lower()
+    if clean in presets:
+        return presets[clean][ratio]
+    if f"{clean}p" in presets:
+        return presets[f"{clean}p"][ratio]
+
+    m = re.search(r"(\d+)\s*[xX×]\s*(\d+)", clean)
+    if m:
+        w, h = int(m.group(1)), int(m.group(2))
+        base = min(w, h)
+        if f"{base}p" in presets:
+            return presets[f"{base}p"][ratio]
+        if ratio == "16:9":
+            return (_even(max(w, h)), _even(min(w, h)))
+        elif ratio == "9:16":
+            return (_even(min(w, h)), _even(max(w, h)))
+        elif ratio == "1:1":
+            return (_even(base), _even(base))
+        elif ratio == "4:5":
+            bw = _even(base)
+            bh = _even(int(round(bw * 5 / 4)))
+            return (bw, bh)
+    return presets["1080p"][ratio]
 
 
 def _even(value: int) -> int:
