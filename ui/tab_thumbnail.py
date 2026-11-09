@@ -343,10 +343,9 @@ class ThumbnailPanel(QWidget):
         self.style_edit.setPlaceholderText("cinematic dramatic lighting, photo-realistic")
         form.addRow("Style", self.style_edit)
 
+        # Headless compat instance (no longer displayed in UI; shared Gemini key from Settings is used)
         self.api_key_edit = QLineEdit()
         self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_edit.setPlaceholderText("Để trống sẽ dùng key ở tab Video")
-        form.addRow("API key Gemini", self.api_key_edit)
 
         self.frame_spin = QDoubleSpinBox()
         self.frame_spin.setRange(0.0, 3600.0)
@@ -500,16 +499,22 @@ class ThumbnailPanel(QWidget):
     def apply_to(self, settings: Dict[str, Any]) -> None:
         thumb = settings.setdefault("thumbnail", {})
         thumb["provider"] = self.provider_combo.currentData() or "pollinations"
-        thumb["image_model"] = str(
-            (settings.get("thumbnail") or {}).get("image_model")
-            or (settings.get("video") or {}).get("ai_model")
-            or "imagen-4.0-generate-001")
+        api_cfg = settings.get("api") or {}
+        video_cfg = settings.get("video") or {}
+        raw_model = (
+            api_cfg.get("gemini_image_model")
+            or video_cfg.get("ai_image_model")
+            or thumb.get("image_model")
+            or video_cfg.get("ai_model")
+            or "imagen-3.0-generate-002"
+        )
+        from core.ai_images import normalize_image_model
+        thumb["image_model"] = normalize_image_model(str(raw_model))
         thumb["image_style"] = self.style_edit.text().strip()
         thumb["template"] = self._current_template_id()
         thumb["palette"] = self.palette_combo.currentData() or "default"
         thumb["font_size"] = int(self.font_spin.value())
         thumb["frame_seconds"] = round(float(self.frame_spin.value()), 2)
-        thumb["api_key"] = self.api_key_edit.text().strip()
         thumb["languages"] = self.get_selected_languages()
         thumb.setdefault("title_max_chars", 60)
         thumb.setdefault("color_primary", "#3BFF35")
@@ -696,7 +701,7 @@ class ThumbnailPanel(QWidget):
         key = self._api_key()
         if not key:
             self._set_status(
-                "Thiếu API key Gemini — nhập ô API key bên dưới hoặc key ở tab Video.",
+                "Thiếu API key Gemini — vui lòng cấu hình API key trong tab Cài đặt.",
                 "warning")
             return
         self._title_worker = TitleWorker(
@@ -764,8 +769,13 @@ class ThumbnailPanel(QWidget):
     # ── background ───────────────────────────────────────────────────────────
     def _on_provider_changed(self, _index: int = -1) -> None:
         provider = str(self.provider_combo.currentData() or "")
-        self.frame_spin.setEnabled(provider == "frame")
-        self.api_key_edit.setEnabled(provider in ("imagen", "pollinations"))
+        is_frame = provider == "frame"
+        self.frame_spin.setEnabled(is_frame)
+        self.style_edit.setEnabled(not is_frame)
+        self.prompt_edit.setEnabled(not is_frame)
+        if provider == "imagen":
+            paint_status(self.image_status, "muted")
+            self.image_status.setText("Sử dụng API key Gemini từ tab Cài đặt.")
 
     def _generate_background(self) -> None:
         if self._image_worker is not None:
@@ -797,12 +807,31 @@ class ThumbnailPanel(QWidget):
                     "warning")
                 return
             prompt = str(video)
+
+        key = self._api_key()
+        if provider == "imagen" and not key:
+            self._set_status(
+                "Chưa có API key Gemini — hãy cấu hình key trong tab Cài đặt.",
+                "warning")
+            paint_status(self.image_status, "warning")
+            self.image_status.setText("Chưa có API key Gemini. Hãy cấu hình ở tab Cài đặt.")
+            return
+
         thumb = self._settings.get("thumbnail") or {}
-        model = str(thumb.get("image_model") or (self._settings.get("video") or {}).get("ai_model")
-                    or "imagen-4.0-generate-001")
+        api_cfg = self._settings.get("api") or {}
+        video_cfg = self._settings.get("video") or {}
+        raw_model = (
+            thumb.get("image_model")
+            or api_cfg.get("gemini_image_model")
+            or video_cfg.get("ai_image_model")
+            or video_cfg.get("ai_model")
+            or "imagen-3.0-generate-002"
+        )
+        from core.ai_images import normalize_image_model
+        model = normalize_image_model(str(raw_model))
         ffmpeg = str((self._settings.get("paths") or {}).get("ffmpeg") or "")
         self._image_worker = ImageWorker(
-            provider, prompt, out, api_key=self._api_key(), model=model,
+            provider, prompt, out, api_key=key, model=model,
             seconds=seconds, ffmpeg=ffmpeg, parent=self)
         self._image_worker.done.connect(self._on_background_done)
         self._image_worker.failed.connect(self._on_background_failed)
@@ -1004,14 +1033,21 @@ class ThumbnailPanel(QWidget):
 
     # ── helpers ──────────────────────────────────────────────────────────────
     def _api_key(self) -> str:
-        key = self.api_key_edit.text().strip()
-        if key:
-            return key
         settings = self._settings or {}
-        return str(
-            (settings.get("thumbnail") or {}).get("api_key")
-            or (settings.get("video") or {}).get("ai_api_key")
-            or "").strip()
+        api = settings.get("api") or {}
+        script = settings.get("script") or {}
+        video = settings.get("video") or {}
+        thumb = settings.get("thumbnail") or {}
+        key = (
+            api.get("gemini_key")
+            or script.get("api_key")
+            or video.get("ai_api_key")
+            or thumb.get("api_key")
+            or self.api_key_edit.text().strip()
+            or os.environ.get("GEMINI_API_KEY", "")
+            or ""
+        )
+        return str(key).strip()
 
     def _refresh_buttons(self) -> None:
         busy = self._image_worker is not None or self._title_worker is not None

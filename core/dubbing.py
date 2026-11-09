@@ -32,7 +32,7 @@ from core.subtitles import (
     parse_vtt,
     write_srt,
 )
-from core.text_processor import count_words, split_by_words
+from core.text_processor import count_words, split_by_sentences, split_by_words
 from core.tts_engine import SynthesisCancelled, TTSEngine
 from utils.files import load_json, read_text_smart, safe_filename, write_json_atomic
 from utils.logger import get_logger
@@ -255,13 +255,17 @@ def _cues_from_pieces(pieces: Iterable[str]) -> List[CueJob]:
 
 
 def import_txt(manager, txt_path: str | os.PathLike,
-               min_words: int = 15, max_words: int = 30) -> str:
-    """Import plain text as cues, splitting into a word range at sentence ends."""
+               min_words: int = 15, max_words: int = 30,
+               split_mode: str = "words") -> str:
+    """Import plain text as cues, splitting by word range or each sentence (cứ 1 câu là 1 đoạn)."""
     source = Path(txt_path)
     if not source.is_file():
         raise DubbingError(f"Không tìm thấy file văn bản: {source}")
     text = clean_transcript_heuristics(read_text_smart(source))
-    pieces = split_by_words(text, min_words, max_words)
+    if split_mode == "sentence":
+        pieces = split_by_sentences(text)
+    else:
+        pieces = split_by_words(text, min_words, max_words)
     if not pieces:
         raise DubbingError(f"{source.name} không có nội dung để lồng tiếng.")
     base = safe_filename(source.stem, "script")
@@ -270,20 +274,52 @@ def import_txt(manager, txt_path: str | os.PathLike,
     jobs = _cues_from_pieces(pieces)
     save_cues(manager, base, jobs)
     _mark_dubbing(manager, base)
-    logger.info("Import TXT %s → %d cue.", source.name, len(jobs))
+    logger.info("Import TXT %s → %d cue (mode=%s).", source.name, len(jobs), split_mode)
     return base
 
 
 def apply_import_options(cues: List[CueJob], auto_split: bool = True,
                          min_words: int = 15, max_words: int = 30,
-                         merge_short: bool = False) -> List[CueJob]:
+                         merge_short: bool = False,
+                         split_mode: str = "words") -> List[CueJob]:
     """Run the optional split/merge import passes in a predictable order."""
     result = list(cues)
     if merge_short:
         result = merge_short_cues(result)
     if auto_split:
-        result = split_cues_by_words(result, min_words, max_words)
+        if split_mode == "sentence":
+            result = split_cues_by_sentences(result)
+        else:
+            result = split_cues_by_words(result, min_words, max_words)
     return reindex(result)
+
+
+def split_cues_by_sentences(cues: Iterable[CueJob]) -> List[CueJob]:
+    """Split cues where each cue contains exactly one sentence, keeping the total duration."""
+    out: List[CueJob] = []
+    for cue in cues:
+        raw_text = str(cue.text or "").strip()
+        text = clean_transcript_heuristics(raw_text) if ("[" in raw_text or ">>" in raw_text) else raw_text
+        cue.text = text
+        if not text:
+            out.append(cue)
+            continue
+        pieces = [piece for piece in split_by_sentences(text) if piece.strip()]
+        if len(pieces) <= 1:
+            out.append(cue)
+            continue
+        weights = [max(1, len(piece)) for piece in pieces]
+        total_weight = float(sum(weights))
+        span = cue.duration
+        cursor = float(cue.start)
+        for position, (piece, weight) in enumerate(zip(pieces, weights)):
+            length = span * weight / total_weight
+            end = cursor + length
+            if position == len(pieces) - 1:
+                end = cue.end
+            out.append(CueJob(0, cursor, end, piece, voice=cue.voice))
+            cursor = end
+    return reindex(out)
 
 
 def split_cues_by_words(cues: Iterable[CueJob], min_words: int = 15,

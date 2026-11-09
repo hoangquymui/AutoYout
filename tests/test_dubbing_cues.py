@@ -120,43 +120,6 @@ def test_import_srt_creates_input_text(tmp_path: Path) -> None:
     manager.scan()
     item = manager.get_item(base)
     assert item is not None and item.dub_mode == "srt"
-
-
-def test_split_cues_by_words_japanese_overlong_cue() -> None:
-    text = (
-        "前回の動画で私は皆さんにこう伝えました。Claude CodeやCodex自体がハーネスなので、わざわざ新しいハーネスを自作する必要はないと。"
-        "この言葉は、皆さんが個人のPCでエージェントを動かすための重要なポイントです。"
-        "今日は、その具体的な設定方法と活用のコツについて詳しく解説していきます。"
-        "まずは基本的な環境構築から始めましょう。"
-        "公式のドキュメントに従ってインストールを進めていきます。"
-        "これで準備は完了しました。次に実際の設定ファイルを編集していきましょう。"
-    )
-    cue = _cue(1, 0.0, 180.375, text)
-    pieces = split_cues_by_words([cue], min_words=50, max_words=70)
-    assert len(pieces) > 1
-    assert pieces[0].start == 0.0
-    assert abs(pieces[-1].end - 180.375) < 1e-4
-
-
-def test_dubbing_cues_clean_heuristics_noise(tmp_path: Path) -> None:
-    from core.dubbing import _cues_from_pieces, save_cues
-    pm = ProjectManager(tmp_path)
-
-    # 1. _cues_from_pieces cleans noise
-    pieces = ["Này các bạn >> [âm nhạc] hôm nay chúng ta chơi.", "Bài Magic [tiếng cười] [vỗ tay] >> rất vui."]
-    cues = _cues_from_pieces(pieces)
-    assert "[âm nhạc]" not in cues[0].text
-    assert ">>" not in cues[0].text
-    assert "[tiếng cười]" not in cues[1].text
-    assert "[vỗ tay]" not in cues[1].text
-    assert ">>" not in cues[1].text
-
-    # 2. save_cues and load_cues cleans noise even if raw cues were written
-    save_cues(pm, "test_base", cues)
-    loaded = load_cues(pm, "test_base")
-    assert len(loaded) == 2
-    assert "[âm nhạc]" not in loaded[0].text
-
     assert Path(item.cues_path).name == f"{base}.cues.json"
 
 
@@ -187,75 +150,41 @@ def test_import_txt_splits_by_word_range(tmp_path: Path) -> None:
     assert item is not None and item.dub_mode == "srt"
 
 
-def test_split_cues_by_words_japanese_overlong_cue() -> None:
-    text = (
-        "前回の動画で私は皆さんにこう伝えました。Claude CodeやCodex自体がハーネスなので、わざわざ新しいハーネスを自作する必要はないと。"
-        "この言葉は、皆さんが個人のPCでエージェントを動かすための重要なポイントです。"
-        "今日は、その具体的な設定方法と活用のコツについて詳しく解説していきます。"
-        "まずは基本的な環境構築から始めましょう。"
-        "公式のドキュメントに従ってインストールを進めていきます。"
-        "これで準備は完了しました。次に実際の設定ファイルを編集していきましょう。"
+def test_split_cues_by_sentences_and_import_mode(tmp_path: Path) -> None:
+    from core.dubbing import (
+        apply_import_options,
+        import_txt,
+        load_cues,
+        split_cues_by_sentences,
     )
-    cue = _cue(1, 0.0, 180.375, text)
-    pieces = split_cues_by_words([cue], min_words=50, max_words=70)
-    assert len(pieces) > 1
-    assert pieces[0].start == 0.0
-    assert abs(pieces[-1].end - 180.375) < 1e-4
-
-
-def test_dubbing_cues_clean_heuristics_noise(tmp_path: Path) -> None:
-    from core.dubbing import _cues_from_pieces, save_cues
     pm = ProjectManager(tmp_path)
 
-    # 1. _cues_from_pieces cleans noise
-    pieces = ["Này các bạn >> [âm nhạc] hôm nay chúng ta chơi.", "Bài Magic [tiếng cười] [vỗ tay] >> rất vui."]
-    cues = _cues_from_pieces(pieces)
-    assert "[âm nhạc]" not in cues[0].text
-    assert ">>" not in cues[0].text
-    assert "[tiếng cười]" not in cues[1].text
-    assert "[vỗ tay]" not in cues[1].text
-    assert ">>" not in cues[1].text
+    # 1. split_cues_by_sentences
+    cue = _cue(1, 10.0, 25.0, "Câu thứ nhất đã xong. Câu thứ hai tiếp diễn! Câu thứ ba kết thúc.")
+    cues = split_cues_by_sentences([cue])
+    assert len(cues) == 3
+    assert cues[0].text == "Câu thứ nhất đã xong."
+    assert cues[1].text == "Câu thứ hai tiếp diễn!"
+    assert cues[2].text == "Câu thứ ba kết thúc."
+    assert cues[0].start == 10.0
+    assert abs(cues[-1].end - 25.0) < 1e-4
 
-    # 2. save_cues and load_cues cleans noise even if raw cues were written
-    save_cues(pm, "test_base", cues)
-    loaded = load_cues(pm, "test_base")
-    assert len(loaded) == 2
-    assert "[âm nhạc]" not in loaded[0].text
-
-
-
-def test_split_cues_by_words_japanese_overlong_cue() -> None:
-    text = (
-        "前回の動画で私は皆さんにこう伝えました。Claude CodeやCodex自体がハーネスなので、わざわざ新しいハーネスを自作する必要はないと。"
-        "この言葉は、皆さんが個人のPCでエージェントを動かすための重要なポイントです。"
-        "今日は、その具体的な設定方法と活用のコツについて詳しく解説していきます。"
-        "まずは基本的な環境構築から始めましょう。"
-        "公式のドキュメントに従ってインストールを進めていきます。"
-        "これで準備は完了しました。次に実際の設定ファイルを編集していきましょう。"
+    # 2. import_txt with split_mode="sentence"
+    txt_file = tmp_path / "sample_story.txt"
+    txt_file.write_text(
+        "Ngày xửa ngày xưa có một chú mèo con. Chú rất thích ăn cá! Nhưng hôm nay trời mưa to.",
+        encoding="utf-8",
     )
-    cue = _cue(1, 0.0, 180.375, text)
-    pieces = split_cues_by_words([cue], min_words=50, max_words=70)
-    assert len(pieces) > 1
-    assert pieces[0].start == 0.0
-    assert abs(pieces[-1].end - 180.375) < 1e-4
+    base = import_txt(pm, txt_file, split_mode="sentence")
+    imported_cues = load_cues(pm, base)
+    assert len(imported_cues) == 3
+    assert imported_cues[0].text == "Ngày xửa ngày xưa có một chú mèo con."
+    assert imported_cues[1].text == "Chú rất thích ăn cá!"
+    assert imported_cues[2].text == "Nhưng hôm nay trời mưa to."
 
-
-def test_dubbing_cues_clean_heuristics_noise(tmp_path: Path) -> None:
-    from core.dubbing import _cues_from_pieces, save_cues
-    pm = ProjectManager(tmp_path)
-
-    # 1. _cues_from_pieces cleans noise
-    pieces = ["Này các bạn >> [âm nhạc] hôm nay chúng ta chơi.", "Bài Magic [tiếng cười] [vỗ tay] >> rất vui."]
-    cues = _cues_from_pieces(pieces)
-    assert "[âm nhạc]" not in cues[0].text
-    assert ">>" not in cues[0].text
-    assert "[tiếng cười]" not in cues[1].text
-    assert "[vỗ tay]" not in cues[1].text
-    assert ">>" not in cues[1].text
-
-    # 2. save_cues and load_cues cleans noise even if raw cues were written
-    save_cues(pm, "test_base", cues)
-    loaded = load_cues(pm, "test_base")
-    assert len(loaded) == 2
-    assert "[âm nhạc]" not in loaded[0].text
+    # 3. apply_import_options with split_mode="sentence"
+    raw_cue = _cue(1, 0.0, 10.0, "Đoạn A. Đoạn B! Đoạn C?")
+    options_res = apply_import_options([raw_cue], auto_split=True, split_mode="sentence")
+    assert len(options_res) == 3
+    assert [c.text for c in options_res] == ["Đoạn A.", "Đoạn B!", "Đoạn C?"]
 

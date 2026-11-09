@@ -693,15 +693,20 @@ class PipelineWorker(QThread):
             if not getattr(item, "text", "").strip():
                 return False
             dub_cfg = self.settings.get("dubbing") or {}
+            split_mode = str(dub_cfg.get("split_mode") or "words").lower()
             min_w = int(dub_cfg.get("min_words", 15) or 15)
             max_w = int(dub_cfg.get("max_words", 30) or 30)
-            from core.dubbing import _cues_from_pieces, split_by_words, save_cues
-            pieces = split_by_words(item.text, min_w, max_w)
+            from core.dubbing import _cues_from_pieces, split_by_sentences, split_by_words, save_cues
+            if split_mode == "sentence":
+                pieces = split_by_sentences(item.text)
+            else:
+                pieces = split_by_words(item.text, min_w, max_w)
             if pieces:
                 cues = _cues_from_pieces(pieces)
                 save_cues(self.manager, item.base, cues)
                 self.manager.update_item(item.base, dub_mode="srt")
-                logger.info("Tự động chia đoạn %s: %d đoạn (%d-%d từ).", item.base, len(cues), min_w, max_w)
+                mode_desc = "theo câu" if split_mode == "sentence" else f"{min_w}-{max_w} từ"
+                logger.info("Tự động chia đoạn %s: %d đoạn (%s).", item.base, len(cues), mode_desc)
             else:
                 return False
         else:

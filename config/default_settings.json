@@ -34,6 +34,7 @@
     "timing_mode": "natural",
     "gap": 0.15,
     "auto_split": true,
+    "split_mode": "words",
     "min_words": 15,
     "max_words": 30,
     "merge_short": false,

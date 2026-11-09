@@ -124,3 +124,23 @@ def test_split_by_words_cjk_japanese_splits_multiple_chunks() -> None:
     assert all(count_words(p) <= 75 for p in pieces)
     for p in pieces[:-1]:
         assert p.strip().endswith("。")
+
+
+def test_split_by_sentences_every_sentence_is_one_chunk() -> None:
+    from core.text_processor import split_by_sentences
+
+    assert split_by_sentences("") == []
+    assert split_by_sentences("Chỉ có một câu duy nhất.") == ["Chỉ có một câu duy nhất."]
+
+    text = "Câu thứ nhất. Câu thứ hai! Câu thứ ba? Câu thứ tư..."
+    pieces = split_by_sentences(text)
+    assert pieces == ["Câu thứ nhất.", "Câu thứ hai!", "Câu thứ ba?", "Câu thứ tư..."]
+
+    # Line breaks without punctuation
+    lines = "Dòng mở đầu\nDòng tiếp theo\nDòng kết thúc"
+    assert split_by_sentences(lines) == ["Dòng mở đầu", "Dòng tiếp theo", "Dòng kết thúc"]
+
+    # CJK sentences
+    ja = "吾輩は猫である。名前はまだ無い。どこで生れたか頓と見当がつかぬ。"
+    assert split_by_sentences(ja) == ["吾輩は猫である。", "名前はまだ無い。", "どこで生れたか頓と見当がつかぬ。"]
+

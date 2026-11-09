@@ -318,6 +318,34 @@ def split_by_words(text: str, min_words: int = 15, max_words: int = 30) -> List[
     return chunks
 
 
+def split_by_sentences(text: str) -> List[str]:
+    """Split text into segments where each segment is exactly one sentence.
+
+    Supports Latin/Vietnamese punctuation ([.!?]), line breaks, and CJK sentence
+    delimiters ([。！？]). Multiple sentences on the same line are split, while
+    each distinct line/sentence becomes an individual segment (cứ 1 câu là 1 đoạn).
+    """
+    text = normalize_text(text)
+    if not text:
+        return []
+
+    chunks: List[str] = []
+    for paragraph in re.split(r"\n\s*\n", text):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        for line in paragraph.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = _SENTENCE_BREAK.split(line)
+            for part in parts:
+                clean_p = re.sub(r"\s+", " ", part).strip()
+                if clean_p:
+                    chunks.append(clean_p)
+    return chunks
+
+
 def text_preview(text: str, limit: int = 140) -> str:
     clean = re.sub(r"\s+", " ", normalize_text(text)).strip()
     return clean if len(clean) <= limit else clean[: limit - 1].rstrip() + "…"

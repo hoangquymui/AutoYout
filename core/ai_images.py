@@ -27,8 +27,24 @@ logger = get_logger("ai")
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 DEFAULT_STYLE = "cinematic lighting, highly detailed, 16:9 composition, no text, no watermark"
-DEFAULT_MODEL = "imagen-4.0-generate-001"
+DEFAULT_MODEL = "imagen-3.0-generate-002"
+FALLBACK_MODEL = "imagen-3.0-generate-002"
 _API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
+
+IMAGE_MODEL_ALIASES = {
+    "imagen-4.0-generate-001": "imagen-3.0-generate-002",
+    "nano-banana": "imagen-3.0-generate-002",
+    "nano-banana-2": "imagen-3.0-generate-002",
+    "nano-banana-2-lite": "imagen-3.0-generate-002",
+    "nano-banana-pro": "imagen-3.0-generate-002",
+    "gemini-nano-banana-2.1": "imagen-3.0-generate-002",
+}
+
+
+def normalize_image_model(model: str) -> str:
+    """Normalize any image model alias or retired model to a valid Google Imagen model."""
+    name = str(model or "").strip()
+    return IMAGE_MODEL_ALIASES.get(name, name or DEFAULT_MODEL)
 
 Report = Optional[Callable[[int, str], None]]
 CancelCb = Optional[Callable[[], bool]]
@@ -111,46 +127,63 @@ class ImagenProvider:
 
     def __init__(self, api_key: str, model: str = DEFAULT_MODEL,
                  timeout: float = 120.0) -> None:
-        if not api_key.strip():
+        key = (api_key or os.environ.get("GEMINI_API_KEY", "")).strip()
+        if not key:
             raise AIImageError(
-                "Chưa có API key Google Imagen. Nhập key trong tab Video "
+                "Chưa có API key Google Imagen / Gemini. Hãy cấu hình key trong tab Cài đặt "
                 "(hoặc đặt biến môi trường GEMINI_API_KEY)."
             )
-        self._api_key = api_key.strip()
-        self._model = (model or DEFAULT_MODEL).strip()
+        self._api_key = key
+        self._model = normalize_image_model(model or DEFAULT_MODEL)
         self._timeout = timeout
 
     def generate(self, prompt: str, stem: Path, width: int, height: int) -> Path:
-        url = f"{_API_ROOT}/{self._model}:predict"
-        payload = {
-            "instances": [{"prompt": prompt}],
-            "parameters": {
-                "sampleCount": 1,
-                "aspectRatio": _aspect_ratio(width, height),
-            },
-        }
-        data = _post_json(url, payload, self._timeout, self._api_key)
-        predictions = data.get("predictions") or []
-        if not predictions:
-            reason = data.get("raiFilteredReason") or data.get("filteredReason") or ""
-            raise AIImageError(
-                "Imagen không trả về ảnh" + (f": {reason}" if reason else ".")
-            )
-        first = predictions[0]
-        encoded = first.get("bytesBase64Encoded")
-        if not encoded:
-            reason = first.get("raiFilteredReason") or "phản hồi không có dữ liệu ảnh"
-            raise AIImageError(f"Imagen từ chối tạo ảnh: {reason}.")
-        mime = str(first.get("mimeType") or "image/png").lower()
-        suffix = ".jpg" if "jpeg" in mime else ".png"
-        target = stem.with_suffix(suffix)
-        try:
-            target.write_bytes(base64.b64decode(encoded))
-        except (OSError, ValueError) as exc:
-            raise AIImageError(f"Không ghi được ảnh Imagen: {exc}") from exc
-        if not target.is_file() or target.stat().st_size == 0:
-            raise AIImageError("File ảnh Imagen rỗng.")
-        return target
+        models_to_try = [self._model]
+        if FALLBACK_MODEL not in models_to_try:
+            models_to_try.append(FALLBACK_MODEL)
+
+        last_error: Optional[Exception] = None
+        for m in models_to_try:
+            url = f"{_API_ROOT}/{m}:predict"
+            payload = {
+                "instances": [{"prompt": prompt}],
+                "parameters": {
+                    "sampleCount": 1,
+                    "aspectRatio": _aspect_ratio(width, height),
+                },
+            }
+            try:
+                data = _post_json(url, payload, self._timeout, self._api_key)
+                predictions = data.get("predictions") or []
+                if not predictions:
+                    reason = data.get("raiFilteredReason") or data.get("filteredReason") or ""
+                    raise AIImageError(
+                        "Imagen không trả về ảnh" + (f": {reason}" if reason else ".")
+                    )
+                first = predictions[0]
+                encoded = first.get("bytesBase64Encoded")
+                if not encoded:
+                    reason = first.get("raiFilteredReason") or "phản hồi không có dữ liệu ảnh"
+                    raise AIImageError(f"Imagen từ chối tạo ảnh: {reason}.")
+                mime = str(first.get("mimeType") or "image/png").lower()
+                suffix = ".jpg" if "jpeg" in mime else ".png"
+                target = stem.with_suffix(suffix)
+                try:
+                    target.write_bytes(base64.b64decode(encoded))
+                except (OSError, ValueError) as exc:
+                    raise AIImageError(f"Không ghi được ảnh Imagen: {exc}") from exc
+                if not target.is_file() or target.stat().st_size == 0:
+                    raise AIImageError("File ảnh Imagen rỗng.")
+                return target
+            except AIImageError as exc:
+                last_error = exc
+                if ("404" in str(exc) or "not found" in str(exc).lower()) and m != FALLBACK_MODEL:
+                    logger.warning("Model Imagen %s lỗi 404, thử lại với %s: %s", m, FALLBACK_MODEL, exc)
+                    continue
+                raise
+        if last_error:
+            raise last_error
+        raise AIImageError("Không thể tạo ảnh từ Google Imagen.")
 
 
 def _post_json(url: str, payload: dict, timeout: float, api_key: str) -> dict:

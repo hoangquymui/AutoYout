@@ -297,7 +297,15 @@ class DubbingTab(QWidget):
 
         row2.addWidget(QLabel("Chia đoạn:"))
 
-        row2.addWidget(QLabel("Từ:"))
+        self.split_mode_combo = QComboBox()
+        self.split_mode_combo.addItem("Theo câu", "sentence")
+        self.split_mode_combo.addItem("Theo từ", "words")
+        self.split_mode_combo.setToolTip("Cách chia đoạn:\n• Theo câu: Cứ 1 câu là 1 đoạn (không cần cấu hình số từ)\n• Theo từ: Tự động gom câu theo khoảng số từ tối thiểu – tối đa")
+        self.split_mode_combo.currentIndexChanged.connect(self._on_split_mode_changed)
+        row2.addWidget(self.split_mode_combo)
+
+        self.from_label = QLabel("Từ:")
+        row2.addWidget(self.from_label)
         self.min_words_spin = QSpinBox()
         self.min_words_spin.setRange(1, 400)
         self.min_words_spin.setSuffix(" từ")
@@ -305,7 +313,8 @@ class DubbingTab(QWidget):
         self.min_words_spin.setToolTip("Số từ tối thiểu cho mỗi đoạn.")
         row2.addWidget(self.min_words_spin)
 
-        row2.addWidget(QLabel("–"))
+        self.dash_label = QLabel("–")
+        row2.addWidget(self.dash_label)
         self.max_words_spin = QSpinBox()
         self.max_words_spin.setRange(2, 500)
         self.max_words_spin.setSuffix(" từ")
@@ -316,9 +325,12 @@ class DubbingTab(QWidget):
 
         self.reload_btn = QPushButton("Tải lại")
         set_icon(self.reload_btn, "refresh", "accent", 13)
-        self.reload_btn.setToolTip("Chia lại đoạn theo số từ hiện tại hoặc tải lại từ file.")
+        self.reload_btn.setToolTip("Chia lại đoạn hoặc tải lại từ file.")
         self.reload_btn.clicked.connect(self._resplit_or_reload)
         row2.addWidget(self.reload_btn)
+
+        # Ban đầu cập nhật ẩn/hiện theo split_mode
+        self._on_split_mode_changed()
 
         row2.addStretch(1)
 
@@ -368,19 +380,41 @@ class DubbingTab(QWidget):
         self._refresh_buttons()
         return page
 
+    def _on_split_mode_changed(self) -> None:
+        is_words = (self.split_mode_combo.currentData() == "words")
+        self.from_label.setVisible(is_words)
+        self.min_words_spin.setVisible(is_words)
+        self.dash_label.setVisible(is_words)
+        self.max_words_spin.setVisible(is_words)
+        if is_words:
+            self.reload_btn.setToolTip("Chia lại đoạn theo số từ hiện tại hoặc tải lại từ file.")
+        else:
+            self.reload_btn.setToolTip("Chia lại đoạn theo từng câu (cứ 1 câu là 1 đoạn) hoặc tải lại từ file.")
+        if not getattr(self, "_loading_settings", False) and self._manager and self._base and not self._worker:
+            self._resplit_or_reload()
+
     # ── settings ─────────────────────────────────────────────────────────────
     def load_from(self, settings: Dict[str, Any]) -> None:
-        self._settings = settings
-        self.tts_page.load_from(settings)
-        dub = settings.get("dubbing") or {}
-        self.auto_split_chk.setChecked(bool(dub.get("auto_split", True)))
-        self.min_words_spin.setValue(int(dub.get("min_words", 15) or 15))
-        self.max_words_spin.setValue(int(dub.get("max_words", 30) or 30))
-        self.merge_chk.setChecked(bool(dub.get("merge_short", False)))
-        index = self.mode_combo.findData(str(dub.get("timing_mode") or "timeline"))
-        if index >= 0:
-            self.mode_combo.setCurrentIndex(index)
-        self.gap_spin.setValue(float(dub.get("gap", 0.15) or 0.0))
+        self._loading_settings = True
+        try:
+            self._settings = settings
+            self.tts_page.load_from(settings)
+            dub = settings.get("dubbing") or {}
+            self.auto_split_chk.setChecked(bool(dub.get("auto_split", True)))
+            split_mode = str(dub.get("split_mode") or "words").lower()
+            idx = self.split_mode_combo.findData(split_mode)
+            if idx >= 0:
+                self.split_mode_combo.setCurrentIndex(idx)
+            self.min_words_spin.setValue(int(dub.get("min_words", 15) or 15))
+            self.max_words_spin.setValue(int(dub.get("max_words", 30) or 30))
+            self.merge_chk.setChecked(bool(dub.get("merge_short", False)))
+            index = self.mode_combo.findData(str(dub.get("timing_mode") or "timeline"))
+            if index >= 0:
+                self.mode_combo.setCurrentIndex(index)
+            self.gap_spin.setValue(float(dub.get("gap", 0.15) or 0.0))
+            self._on_split_mode_changed()
+        finally:
+            self._loading_settings = False
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         self.tts_page.apply_to(settings)
@@ -388,6 +422,7 @@ class DubbingTab(QWidget):
         dub["timing_mode"] = self.mode_combo.currentData() or "timeline"
         dub["gap"] = round(float(self.gap_spin.value()), 2)
         dub["auto_split"] = self.auto_split_chk.isChecked()
+        dub["split_mode"] = str(self.split_mode_combo.currentData() or "words")
         dub["min_words"] = int(self.min_words_spin.value())
         dub["max_words"] = int(self.max_words_spin.value())
         dub["merge_short"] = self.merge_chk.isChecked()
@@ -508,10 +543,14 @@ class DubbingTab(QWidget):
         if not self._cues and self._manager and self._base:
             item = self._manager.get_item(self._base)
             if item and item.text.strip():
+                split_mode = str(self.split_mode_combo.currentData() or "words")
                 min_words = int(self.min_words_spin.value())
                 max_words = int(self.max_words_spin.value())
-                from core.dubbing import split_by_words, _cues_from_pieces, save_cues
-                pieces = split_by_words(item.text, min_words, max_words)
+                from core.dubbing import split_by_sentences, split_by_words, _cues_from_pieces, save_cues
+                if split_mode == "sentence":
+                    pieces = split_by_sentences(item.text)
+                else:
+                    pieces = split_by_words(item.text, min_words, max_words)
                 if pieces:
                     self._cues = _cues_from_pieces(pieces)
                     save_cues(self._manager, self._base, self._cues)
@@ -532,6 +571,7 @@ class DubbingTab(QWidget):
             if item is not None and item.text_file is not None
             else Path(self._manager.script_dir) / f"{self._base}.txt"
         )
+        split_mode = str(self.split_mode_combo.currentData() or "words")
         min_words = int(self.min_words_spin.value())
         max_words = int(self.max_words_spin.value())
 
@@ -540,12 +580,16 @@ class DubbingTab(QWidget):
             try:
                 from core.ai_client import clean_transcript_heuristics
                 text = clean_transcript_heuristics(read_text_smart(txt_path))
-                pieces = dubbing.split_by_words(text, min_words, max_words)
+                if split_mode == "sentence":
+                    pieces = dubbing.split_by_sentences(text)
+                else:
+                    pieces = dubbing.split_by_words(text, min_words, max_words)
                 if pieces:
                     jobs = dubbing._cues_from_pieces(pieces)
                     save_cues(self._manager, self._base, jobs)
                     self._reload_from_disk()
-                    self._set_status(f"Đã tải lại từ kịch bản và chia thành {len(self._cues)} đoạn.", "success")
+                    mode_desc = "theo câu" if split_mode == "sentence" else f"{min_words}-{max_words} từ"
+                    self._set_status(f"Đã tải lại từ kịch bản và chia thành {len(self._cues)} đoạn ({mode_desc}).", "success")
                     self.reload_requested.emit()
                     return
             except Exception as exc:
@@ -553,10 +597,14 @@ class DubbingTab(QWidget):
 
         # Nếu không có file txt nhưng có cues hiện tại, chia lại các cue hiện tại
         if self._cues:
-            jobs = dubbing.split_cues_by_words(self._cues, min_words, max_words)
+            if split_mode == "sentence":
+                jobs = dubbing.split_cues_by_sentences(self._cues)
+            else:
+                jobs = dubbing.split_cues_by_words(self._cues, min_words, max_words)
             save_cues(self._manager, self._base, jobs)
             self._reload_from_disk()
-            self._set_status(f"Đã chia lại thành {len(self._cues)} đoạn.", "success")
+            mode_desc = "theo câu" if split_mode == "sentence" else f"{min_words}-{max_words} từ"
+            self._set_status(f"Đã chia lại thành {len(self._cues)} đoạn ({mode_desc}).", "success")
             self.reload_requested.emit()
             return
 
@@ -564,12 +612,16 @@ class DubbingTab(QWidget):
         if self._cues:
             full_text = " ".join(c.text for c in self._cues if c.text)
             if full_text.strip():
-                total_dur = max(c.end for c in self._cues)
-                fake_cue = dubbing.CueJob(1, 0.0, total_dur, full_text)
-                jobs = dubbing.split_cues_by_words([fake_cue], min_words, max_words)
-                if not jobs or len(jobs) <= 1:
-                    pieces = dubbing.split_by_words(full_text, min_words, max_words)
+                if split_mode == "sentence":
+                    pieces = dubbing.split_by_sentences(full_text)
                     jobs = dubbing._cues_from_pieces(pieces)
+                else:
+                    total_dur = max(c.end for c in self._cues)
+                    fake_cue = dubbing.CueJob(1, 0.0, total_dur, full_text)
+                    jobs = dubbing.split_cues_by_words([fake_cue], min_words, max_words)
+                    if not jobs or len(jobs) <= 1:
+                        pieces = dubbing.split_by_words(full_text, min_words, max_words)
+                        jobs = dubbing._cues_from_pieces(pieces)
                 if jobs:
                     save_cues(self._manager, self._base, jobs)
                     self._reload_from_disk()
@@ -955,12 +1007,16 @@ class DubbingTab(QWidget):
             return
         imported: List[str] = []
         errors: List[str] = []
+        split_mode = str(self.split_mode_combo.currentData() or "words")
+        min_words = int(self.min_words_spin.value())
+        max_words = int(self.max_words_spin.value())
         for path in paths:
             try:
                 base = dubbing.import_txt(
                     self._manager, path,
-                    min_words=int(self.min_words_spin.value()),
-                    max_words=int(self.max_words_spin.value()))
+                    min_words=min_words,
+                    max_words=max_words,
+                    split_mode=split_mode)
                 self._apply_import_options(base)
                 imported.append(base)
             except DubbingError as exc:
@@ -983,12 +1039,14 @@ class DubbingTab(QWidget):
         cues = load_cues(self._manager, base)
         if not cues:
             return
+        split_mode = str(self.split_mode_combo.currentData() or "words")
         cues = dubbing.apply_import_options(
             cues,
             auto_split=self.auto_split_chk.isChecked(),
             min_words=int(self.min_words_spin.value()),
             max_words=int(self.max_words_spin.value()),
             merge_short=self.merge_chk.isChecked(),
+            split_mode=split_mode,
         )
         save_cues(self._manager, base, cues)
 

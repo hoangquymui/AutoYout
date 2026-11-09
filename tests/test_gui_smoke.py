@@ -826,5 +826,42 @@ def test_newly_added_layer_always_at_top(window, tmp_path: Path) -> None:
     assert frame_tab._image_list.item(0).data(Qt.ItemDataRole.UserRole) == ("image", 2)
 
 
+def test_dubbing_tab_split_mode_ui_and_behavior(window, tmp_path: Path) -> None:
+    dub = window.tts_tab
+    assert hasattr(dub, "split_mode_combo")
+    assert hasattr(dub, "from_label")
+    assert hasattr(dub, "dash_label")
+
+    # 1. Switch to 'Theo câu'
+    idx_sentence = dub.split_mode_combo.findData("sentence")
+    assert idx_sentence >= 0
+    dub.split_mode_combo.setCurrentIndex(idx_sentence)
+    assert dub.from_label.isHidden()
+    assert dub.min_words_spin.isHidden()
+    assert dub.dash_label.isHidden()
+    assert dub.max_words_spin.isHidden()
+
+    # 2. Switch to 'Theo từ'
+    idx_words = dub.split_mode_combo.findData("words")
+    assert idx_words >= 0
+    dub.split_mode_combo.setCurrentIndex(idx_words)
+    assert not dub.from_label.isHidden()
+    assert not dub.min_words_spin.isHidden()
+    assert not dub.dash_label.isHidden()
+    assert not dub.max_words_spin.isHidden()
+
+    # 3. Settings roundtrip
+    settings = {}
+    dub.split_mode_combo.setCurrentIndex(idx_sentence)
+    dub.apply_to(settings)
+    assert settings["dubbing"]["split_mode"] == "sentence"
+
+    settings_words = {"dubbing": {"split_mode": "words"}}
+    dub.load_from(settings_words)
+    assert dub.split_mode_combo.currentData() == "words"
+    assert not dub.min_words_spin.isHidden()
+
+
+
 
 
