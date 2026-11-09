@@ -374,6 +374,14 @@ QPushButton#iconButton {
 }
 QPushButton#iconButton:hover { background: $ICONBTN_HOVER; border-color: $BUTTON_HOVER_BORDER; }
 QPushButton#iconButton:pressed { background: $ICONBTN_PRESSED; }
+QPushButton#iconButton:checked {
+    background: $ACCENT;
+    border: 1.5px solid $ACCENT_BORDER;
+}
+QPushButton#iconButton:checked:hover {
+    background: $ACCENT_STRONG;
+    border: 1.5px solid $ACCENT_BORDER;
+}
 QPushButton#iconButton:disabled {
     background: $BUTTON_DISABLED_BG;
     border-color: $BUTTON_DISABLED_BORDER;

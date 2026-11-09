@@ -1323,6 +1323,8 @@ class FrameTab(QWidget):
         self._btn_center.clicked.connect(self._toggle_center_guides)
         row.addWidget(self._btn_center)
 
+        self._update_view_btn_styles()
+
         row.addStretch(1)
 
         self._history_label = QLabel("Chưa có thay đổi")
@@ -1385,7 +1387,6 @@ class FrameTab(QWidget):
         set_icon(self._add_button, "plus", "accent", 12)
         self._add_button.clicked.connect(self._add_image)
         self._add_button.hide()
-        layer_actions.addStretch(1)
 
         self._up_button = icon_button("chevron-up", "Lên 1 lớp", size=12, side=26)
         self._up_button.clicked.connect(lambda: self._move_layer(-1))
@@ -1410,6 +1411,8 @@ class FrameTab(QWidget):
         self._remove_button = icon_button("trash", "Xoá lớp", role="danger", size=12, side=26)
         self._remove_button.clicked.connect(self._remove_image)
         layer_actions.addWidget(self._remove_button)
+
+        layer_actions.addStretch(1)
 
         l_box.addLayout(layer_actions)
 
@@ -2480,16 +2483,37 @@ class FrameTab(QWidget):
         seconds = fraction * PREVIEW_SECONDS
         self._time_label.setText(f"{_format_time(seconds)} / {_format_time(PREVIEW_SECONDS)}")
 
+    def _update_view_btn_styles(self) -> None:
+        for btn, name in [
+            (getattr(self, "_btn_grid", None), "grid"),
+            (getattr(self, "_btn_safe", None), "maximize"),
+            (getattr(self, "_btn_center", None), "crosshair"),
+        ]:
+            if btn is None:
+                continue
+            if btn.isChecked():
+                set_icon(btn, name, "white", 13)
+                btn.setStyleSheet(
+                    f"QPushButton#iconButton {{ background: {theme.ACCENT}; border: 1.5px solid {theme.ACCENT_BORDER}; border-radius: 8px; }}"
+                    f"QPushButton#iconButton:hover {{ background: {theme.ACCENT_STRONG}; border-color: {theme.ACCENT_BORDER}; }}"
+                )
+            else:
+                set_icon(btn, name, "muted", 13)
+                btn.setStyleSheet("")
+
     def _toggle_grid(self) -> None:
         self._canvas.show_grid = self._btn_grid.isChecked()
+        self._update_view_btn_styles()
         self._canvas.update()
 
     def _toggle_safe(self) -> None:
         self._canvas.show_safe_area = self._btn_safe.isChecked()
+        self._update_view_btn_styles()
         self._canvas.update()
 
     def _toggle_center_guides(self) -> None:
         self._canvas.show_center_guides = self._btn_center.isChecked()
+        self._update_view_btn_styles()
         self._canvas.update()
 
     def _on_ratio_changed(self) -> None:
