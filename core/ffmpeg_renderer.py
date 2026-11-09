@@ -1662,12 +1662,30 @@ class FFmpegRenderer:
                 t_start = self._ass_time(start)
                 t_end = self._ass_time(end)
 
-                # Layer 0: Semi-transparent background box matching preview QColor(0, 0, 0, 150)
-                box_shape = f"m 0 0 l {bw} 0 l {bw} {cur_bh} l 0 {cur_bh}"
-                dialogues.append(
-                    f"Dialogue: 0,{t_start},{t_end},Box,,0,0,0,,"
-                    f"{{\\fad(120,180)\\pos({bx},{by})\\p1\\1c&H000000&\\1a&H6A&\\bord0\\shad0}}{box_shape}{{\\p0}}"
-                )
+                # Layer 0: Semi-transparent background box matching preview
+                sub_box = getattr(frame, "subtitle_box", True)
+                sub_opacity = float(getattr(frame, "subtitle_box_opacity", 0.59))
+                sub_color = str(getattr(frame, "subtitle_box_color", "#000000") or "#000000").strip()
+
+                if sub_box and sub_opacity > 0.0:
+                    match_col = re.match(r"^#?([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$", sub_color)
+                    if match_col:
+                        r_hex, g_hex, b_hex = match_col.group(1), match_col.group(2), match_col.group(3)
+                        ass_color = f"&H{b_hex}{g_hex}{r_hex}&"
+                    else:
+                        ass_color = "&H000000&"
+                    if abs(sub_opacity - 0.59) < 0.005:
+                        ass_alpha = "&H6A&"
+                    else:
+                        alpha_255 = max(0, min(255, int(round(sub_opacity * 255))))
+                        ass_alpha_val = 255 - alpha_255
+                        ass_alpha = f"&H{ass_alpha_val:02X}&"
+
+                    box_shape = f"m 0 0 l {bw} 0 l {bw} {cur_bh} l 0 {cur_bh}"
+                    dialogues.append(
+                        f"Dialogue: 0,{t_start},{t_end},Box,,0,0,0,,"
+                        f"{{\\fad(120,180)\\pos({bx},{by})\\p1\\1c{ass_color}\\1a{ass_alpha}\\bord0\\shad0}}{box_shape}{{\\p0}}"
+                    )
 
                 # Layer 1: Subtitle text with clip to box (top-aligned, clips bottom if ever overflow)
                 pos_clip = f"\\pos({px},{text_top})\\clip({bx},{by},{bx + bw},{by + cur_bh})"
@@ -1976,16 +1994,35 @@ class FFmpegRenderer:
                 if frame is not None:
                     wave_x, wave_y, wave_w, wave_h = frame.wave_rect(width, height)
                     wave_color = color_ffmpeg(frame.wave_color)
+                    wave_style = getattr(frame, "wave_style", "bars")
                 else:
                     wave_w = width
                     wave_h = max(90, min(height // 4, int(round(180 * height / 1080))))
                     wave_x, wave_y = 0, height - wave_h
                     wave_color = "0x4FC3F7"
+                    wave_style = "bars"
+
+                if wave_style == "line":
+                    wave_mode = "line"
+                    wave_scale = "sqrt"
+                elif wave_style == "mirror":
+                    wave_mode = "p2p"
+                    wave_scale = "sqrt"
+                elif wave_style == "dots":
+                    wave_mode = "point"
+                    wave_scale = "sqrt"
+                elif wave_style == "curve":
+                    wave_mode = "line"
+                    wave_scale = "cbrt"
+                else:  # "bars"
+                    wave_mode = "cline"
+                    wave_scale = "sqrt"
+
                 audio_head = "[0:a]asplit=2[a_main][a_wave]"
                 parts.append(audio_head)
                 parts.append(
-                    f"[a_wave]showwaves=s={_even(wave_w)}x{_even(wave_h)}:mode=cline:"
-                    f"rate={cfg.fps}:colors={wave_color}:scale=sqrt:draw=full[waves]"
+                    f"[a_wave]showwaves=s={_even(wave_w)}x{_even(wave_h)}:mode={wave_mode}:"
+                    f"rate={cfg.fps}:colors={wave_color}:scale={wave_scale}:draw=full[waves]"
                 )
                 parts.append(f"[{vlabel}][waves]overlay={wave_x}:{wave_y}:format=auto[vwave]")
                 vlabel = "vwave"

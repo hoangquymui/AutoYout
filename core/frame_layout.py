@@ -21,6 +21,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 DEFAULT_WAVE_COLOR = "#4FC3F7"
+DEFAULT_WAVE_STYLE = "bars"
+WAVE_STYLES = ("bars", "line", "mirror", "dots", "curve")
+DEFAULT_SUBTITLE_BOX_COLOR = "#000000"
+DEFAULT_SUBTITLE_BOX_OPACITY = 0.59
 MIN_IMAGE_WIDTH = 0.02
 MAX_IMAGE_WIDTH = 5.0
 MIN_COORD = -3.0
@@ -138,6 +142,9 @@ class FrameLayout:
 
     enabled: bool = False
     subtitle_visible: bool = True
+    subtitle_box: bool = True
+    subtitle_box_color: str = DEFAULT_SUBTITLE_BOX_COLOR
+    subtitle_box_opacity: float = DEFAULT_SUBTITLE_BOX_OPACITY
     aspect_ratio: str = "16:9"
     subtitle_x: float = 0.5
     subtitle_y: float = 0.9
@@ -152,6 +159,7 @@ class FrameLayout:
     wave_w: float = 0.88
     wave_h: float = 0.08
     wave_color: str = DEFAULT_WAVE_COLOR
+    wave_style: str = DEFAULT_WAVE_STYLE
     video_x: float = 0.0
     video_y: float = 0.0
     video_w: float = 1.0
@@ -203,6 +211,10 @@ class FrameLayout:
     def clamp(self) -> "FrameLayout":
         if self.aspect_ratio not in ("16:9", "9:16", "1:1", "4:5"):
             self.aspect_ratio = "16:9"
+        self.subtitle_visible = bool(getattr(self, "subtitle_visible", True))
+        self.subtitle_box = bool(getattr(self, "subtitle_box", True))
+        self.subtitle_box_color = normalize_color(getattr(self, "subtitle_box_color", DEFAULT_SUBTITLE_BOX_COLOR) or DEFAULT_SUBTITLE_BOX_COLOR)
+        self.subtitle_box_opacity = round(_clamp(_as_float(getattr(self, "subtitle_box_opacity", DEFAULT_SUBTITLE_BOX_OPACITY), DEFAULT_SUBTITLE_BOX_OPACITY), 0.0, 1.0), 2)
         self.subtitle_x = round(_clamp(_as_float(self.subtitle_x, 0.5), -2.0, 2.0), 4)
         self.subtitle_y = round(_clamp(_as_float(self.subtitle_y, 0.9), -2.0, 2.0), 4)
         self.subtitle_scale = round(
@@ -220,6 +232,8 @@ class FrameLayout:
         self.wave_x = round(_clamp(_as_float(self.wave_x, 0.06), -2.0, 2.0), 4)
         self.wave_y = round(_clamp(_as_float(self.wave_y, 0.74), -2.0, 2.0), 4)
         self.wave_color = normalize_color(self.wave_color)
+        w_style = str(getattr(self, "wave_style", DEFAULT_WAVE_STYLE) or DEFAULT_WAVE_STYLE).strip().lower()
+        self.wave_style = w_style if w_style in WAVE_STYLES else DEFAULT_WAVE_STYLE
         self.video_w = round(_clamp(_as_float(self.video_w, 1.0), 0.05, 3.0), 4)
         self.video_x = round(_clamp(_as_float(self.video_x, 0.0), -2.0, 2.0), 4)
         self.video_y = round(_clamp(_as_float(self.video_y, 0.0), -2.0, 2.0), 4)
@@ -240,6 +254,9 @@ class FrameLayout:
         return cls(
             enabled=bool(raw.get("enabled", False)),
             subtitle_visible=bool(raw.get("subtitle_visible", True)),
+            subtitle_box=bool(raw.get("subtitle_box", True)),
+            subtitle_box_color=str(raw.get("subtitle_box_color") or DEFAULT_SUBTITLE_BOX_COLOR),
+            subtitle_box_opacity=_as_float(raw.get("subtitle_box_opacity"), DEFAULT_SUBTITLE_BOX_OPACITY),
             aspect_ratio=str(raw.get("aspect_ratio") or "16:9"),
             subtitle_x=_as_float(raw.get("subtitle_x"), 0.5),
             subtitle_y=_as_float(raw.get("subtitle_y"), 0.9),
@@ -254,6 +271,7 @@ class FrameLayout:
             wave_w=_as_float(raw.get("wave_w"), 0.88),
             wave_h=_as_float(raw.get("wave_h"), 0.08),
             wave_color=raw.get("wave_color") or DEFAULT_WAVE_COLOR,
+            wave_style=str(raw.get("wave_style") or DEFAULT_WAVE_STYLE),
             video_x=_as_float(raw.get("video_x"), 0.0),
             video_y=_as_float(raw.get("video_y"), 0.0),
             video_w=_as_float(raw.get("video_w"), 1.0),
@@ -282,12 +300,16 @@ class FrameLayout:
             "subtitle_h": self.subtitle_h,
             "subtitle_font": self.subtitle_font,
             "subtitle_font_size": self.subtitle_font_size,
+            "subtitle_box": self.subtitle_box,
+            "subtitle_box_color": self.subtitle_box_color,
+            "subtitle_box_opacity": self.subtitle_box_opacity,
             "waveform": self.waveform,
             "wave_x": self.wave_x,
             "wave_y": self.wave_y,
             "wave_w": self.wave_w,
             "wave_h": self.wave_h,
             "wave_color": self.wave_color,
+            "wave_style": self.wave_style,
             "preview": self.preview,
             "images": [image.to_dict() for image in self.images],
         }

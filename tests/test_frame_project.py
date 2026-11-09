@@ -135,3 +135,29 @@ def test_fullscreen_preview_dialog(app):
 
     dlg.close()
 
+
+def test_frame_custom_image_library_and_action_icons(tmp_path: Path, app):
+    from PySide6.QtGui import QAction
+    from ui.components.icons import set_icon
+    from ui.tab_frame import FrameTab
+
+    # 1. Test set_icon on QAction does not crash with setIconSize error
+    action = QAction("Sao chép layer")
+    set_icon(action, "copy", "text", 12)
+    assert not action.icon().isNull()
+
+    # 2. Test adding images to custom library in FrameTab
+    tab = FrameTab()
+    test_img = tmp_path / "custom_stamp.png"
+    test_img.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDRfake")
+
+    clean_p = str(test_img.resolve())
+    tab._custom_images.append(clean_p)
+    tab._rebuild_library_tab()
+    assert clean_p in tab._custom_images
+
+    # 3. Test inserting from library to canvas
+    tab._insert_preset(clean_p)
+    assert any(img.path == clean_p for img in tab._layout.images)
+
+

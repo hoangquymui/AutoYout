@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QByteArray, QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import (
@@ -287,13 +288,14 @@ def clear_cache() -> None:
     brand_icon.cache_clear()
 
 
-def set_icon(widget: QAbstractButton, name: str, role: str = "muted", size: int = 15) -> None:
+def set_icon(widget: Any, name: str, role: str = "muted", size: int = 15) -> None:
     """Assign an icon and remember its role so a theme switch can repaint it."""
     widget.setProperty("ayIconName", name)
     widget.setProperty("ayIconRole", role)
     widget.setProperty("ayIconSize", int(size))
     widget.setIcon(icon(name, theme.icon_color(role), size))
-    widget.setIconSize(QSize(size, size))
+    if hasattr(widget, "setIconSize"):
+        widget.setIconSize(QSize(size, size))
 
 
 def set_pixmap(widget: QLabel, name: str, role: str = "accent", size: int = 17) -> None:

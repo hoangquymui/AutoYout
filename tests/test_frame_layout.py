@@ -131,3 +131,28 @@ def test_subtitle_textbox_and_custom_font() -> None:
     assert restored.subtitle_h == 0.2
     assert restored.subtitle_font == "Roboto"
     assert restored.subtitle_font_size == 48
+
+
+def test_subtitle_box_and_wave_style() -> None:
+    layout = FrameLayout(
+        subtitle_box=False,
+        subtitle_box_color="#FF5500",
+        subtitle_box_opacity=0.8,
+        wave_style="mirror",
+    ).clamp()
+    data = layout.to_dict()
+    assert data["subtitle_box"] is False
+    assert data["subtitle_box_color"] == "#FF5500"
+    assert data["subtitle_box_opacity"] == 0.8
+    assert data["wave_style"] == "mirror"
+
+    restored = FrameLayout.from_dict(data)
+    assert restored.subtitle_box is False
+    assert restored.subtitle_box_color == "#FF5500"
+    assert restored.subtitle_box_opacity == 0.8
+    assert restored.wave_style == "mirror"
+
+    # Clamping invalid wave style defaults to bars
+    invalid = FrameLayout(wave_style="unknown_wave_style", subtitle_box_opacity=2.5).clamp()
+    assert invalid.wave_style == "bars"
+    assert invalid.subtitle_box_opacity == 1.0

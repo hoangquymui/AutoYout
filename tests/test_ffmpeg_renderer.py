@@ -666,3 +666,75 @@ def test_resolve_dimensions_and_aspect_ratio_integration() -> None:
     assert cfg_legacy.dimensions == (1080, 1920)
 
 
+def test_subtitle_box_and_wave_styles_in_renderer(tmp_path: Path) -> None:
+    # 1. Test subtitle_box disabled
+    cfg_nobox = VideoConfig(
+        resolution="1080p",
+        frame=FrameLayout(
+            enabled=True,
+            subtitle_box=False,
+            waveform=True,
+            wave_style="mirror",
+        ),
+    )
+    dir_nobox = tmp_path / "nobox"
+    dir_nobox.mkdir()
+    ok_nobox = _renderer()._write_ass(
+        [(0.0, 3.0, "Dòng chữ không có nền")],
+        3.0,
+        dir_nobox,
+        cfg_nobox,
+    )
+    assert ok_nobox is True
+    ass_nobox = (dir_nobox / "subs.ass").read_text(encoding="utf-8")
+    assert "\\p1" not in ass_nobox
+    assert "Dòng chữ không có nền" in ass_nobox
+
+    # 2. Test custom box color & opacity
+    dir_custom = tmp_path / "custom"
+    dir_custom.mkdir()
+    cfg_custom_box = VideoConfig(
+        resolution="1080p",
+        frame=FrameLayout(
+            enabled=True,
+            subtitle_box=True,
+            subtitle_box_color="#FF3300",
+            subtitle_box_opacity=0.8,
+        ),
+    )
+    ok_custom = _renderer()._write_ass(
+        [(0.0, 3.0, "Hộp màu cam")],
+        3.0,
+        dir_custom,
+        cfg_custom_box,
+    )
+    assert ok_custom is True
+    ass_custom = (dir_custom / "subs.ass").read_text(encoding="utf-8")
+    # Color #FF3300 in ASS format is &H0033FF& (BBGGRR)
+    assert "\\1c&H0033FF&" in ass_custom
+    # Opacity 0.8 -> alpha int(round(255 * 0.2)) = 51 -> 33
+    assert "\\1a&H33&" in ass_custom
+
+    # 3. Test wave styles in ffmpeg filter graph
+    styles_expected = {
+        "bars": ("mode=cline", "scale=sqrt"),
+        "line": ("mode=line", "scale=sqrt"),
+        "mirror": ("mode=p2p", "scale=sqrt"),
+        "dots": ("mode=point", "scale=sqrt"),
+        "curve": ("mode=line", "scale=cbrt"),
+    }
+    for style, (expected_mode, expected_scale) in styles_expected.items():
+        cfg_wave = VideoConfig(
+            frame=FrameLayout(enabled=True, waveform=True, wave_style=style)
+        )
+        graph, _, _ = _renderer()._build_filter(
+            cfg_wave,
+            {"kind": "image", "path": str(tmp_path / "bg.png")},
+            [], 5.0, tmp_path, has_bgm=False, segments=[],
+        )
+        assert expected_mode in graph
+        assert expected_scale in graph
+        assert "colors=0x4FC3F7" in graph
+
+
+

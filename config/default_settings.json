@@ -58,7 +58,7 @@
     "ai_dir": "",
     "ai_count": 1,
     "ai_style": "cinematic lighting, highly detailed, 16:9 composition, no text, no watermark",
-    "ai_model": "imagen-4.0-generate-001",
+    "ai_model": "imagen-3.0-generate-002",
     "ai_api_key": "",
     "ai_xfade": 0.5,
     "ai_motion": true,
@@ -114,7 +114,7 @@
   },
   "thumbnail": {
     "provider": "pollinations",
-    "image_model": "imagen-4.0-generate-001",
+    "image_model": "imagen-3.0-generate-002",
     "image_style": "cinematic dramatic lighting, photo-realistic",
     "template": "drama_left",
     "palette": "default",

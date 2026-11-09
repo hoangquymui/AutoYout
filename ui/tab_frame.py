@@ -88,6 +88,15 @@ _QUICK_COLORS = [
     ("#FFFFFF", "Trắng"),
 ]
 
+_SUB_BG_COLORS = [
+    ("#000000", "Đen"),
+    ("#1F2937", "Xám đậm"),
+    ("#0F172A", "Navy"),
+    ("#3B0764", "Tím đậm"),
+    ("#450A0A", "Đỏ đô"),
+    ("#FFFFFF", "Trắng"),
+]
+
 
 def _qcolor(value: str, alpha: int = 255) -> QColor:
     color = QColor(value)
@@ -105,6 +114,9 @@ class FrameCanvas(QWidget):
     layer_structure_changed = Signal()
     edit_committed = Signal()
     phase_changed = Signal(float)
+    request_replace_image = Signal()
+    request_fullscreen = Signal()
+    request_add_image = Signal()
 
     def __init__(self, layout: FrameLayout, parent=None) -> None:
         super().__init__(parent)
@@ -499,6 +511,46 @@ class FrameCanvas(QWidget):
             self.layout_changed.emit()
             self.update()
 
+    def move_selected_layer(self, delta: int) -> bool:
+        kind, index = self.selection()
+        if not kind:
+            return False
+        layers = self._layout.ordered_layers()
+        cur_pair = (kind, index if kind == "image" else -1)
+        if cur_pair not in layers:
+            return False
+        cur_pos = layers.index(cur_pair)
+        target_pos = cur_pos + delta
+        if not (0 <= target_pos < len(layers)):
+            return False
+        layers[cur_pos], layers[target_pos] = layers[target_pos], layers[cur_pos]
+        self._layout.set_ordered_layers(layers)
+        self.layer_structure_changed.emit()
+        self.layout_changed.emit()
+        self.edit_committed.emit()
+        self.update()
+        return True
+
+    def move_selected_to_extreme(self, to_top: bool = True) -> bool:
+        kind, index = self.selection()
+        if not kind:
+            return False
+        layers = self._layout.ordered_layers()
+        cur_pair = (kind, index if kind == "image" else -1)
+        if cur_pair not in layers:
+            return False
+        layers.remove(cur_pair)
+        if to_top:
+            layers.insert(0, cur_pair)
+        else:
+            layers.append(cur_pair)
+        self._layout.set_ordered_layers(layers)
+        self.layer_structure_changed.emit()
+        self.layout_changed.emit()
+        self.edit_committed.emit()
+        self.update()
+        return True
+
     # ── painting ─────────────────────────────────────────────────────────────
     def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
         painter = QPainter(self)
@@ -644,28 +696,98 @@ class FrameCanvas(QWidget):
         painter.setBrush(bg)
         painter.drawRect(box)
 
-        bars = max(8, int(box.width() / 11))
-        bar_w = box.width() / bars
+        style = getattr(self._layout, "wave_style", "bars")
         mid = box.center().y()
-        painter.setPen(Qt.PenStyle.NoPen)
-        for i in range(bars):
-            phase = self._phase + i * 0.35
-            norm = (math.sin(phase) + 1.0) * 0.5
-            amp = (0.15 + 0.85 * norm) * (box.height() * 0.42)
-            top = mid - amp
-            h = amp * 2.0
-            x = box.left() + i * bar_w + bar_w * 0.2
-            w = max(2.0, bar_w * 0.6)
-            bar = QRectF(x, top, w, h)
-            bar_color = QColor(color)
-            bar_color.setAlpha(int(140 + 115 * norm))
-            painter.setBrush(bar_color)
-            painter.drawRoundedRect(bar, 1.5, 1.5)
+
+        if style == "line":
+            path = QPainterPath()
+            points = max(30, int(box.width() / 4))
+            step = box.width() / max(1, points)
+            for i in range(points + 1):
+                phase = self._phase + i * 0.28
+                envelope = math.sin(i / points * math.pi)
+                y = mid + math.sin(phase) * (box.height() * 0.42) * envelope
+                x = box.left() + i * step
+                if i == 0:
+                    path.moveTo(x, y)
+                else:
+                    path.lineTo(x, y)
+            pen = QPen(color, 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(path)
+        elif style == "mirror":
+            bars = max(12, int(box.width() / 7))
+            bar_w = box.width() / bars
+            painter.setPen(Qt.PenStyle.NoPen)
+            for i in range(bars):
+                phase = self._phase + i * 0.38
+                norm = (math.sin(phase) + 1.0) * 0.5
+                amp = (0.15 + 0.85 * norm) * (box.height() * 0.45)
+                x = box.left() + i * bar_w + bar_w * 0.15
+                w = max(1.5, bar_w * 0.7)
+                bar = QRectF(x, mid - amp, w, amp * 2.0)
+                bar_color = QColor(color)
+                bar_color.setAlpha(int(150 + 105 * norm))
+                painter.setBrush(bar_color)
+                painter.drawRoundedRect(bar, 1.5, 1.5)
+        elif style == "dots":
+            dots = max(10, int(box.width() / 14))
+            dot_step = box.width() / dots
+            painter.setPen(Qt.PenStyle.NoPen)
+            for i in range(dots):
+                phase = self._phase + i * 0.35
+                norm = (math.sin(phase) + 1.0) * 0.5
+                cx = box.left() + i * dot_step + dot_step * 0.5
+                cy = mid + math.sin(phase) * (box.height() * 0.36)
+                radius = max(2.0, 2.0 + 3.5 * norm)
+                dot_color = QColor(color)
+                dot_color.setAlpha(int(160 + 95 * norm))
+                painter.setBrush(dot_color)
+                painter.drawEllipse(QPointF(cx, cy), radius, radius)
+        elif style == "curve":
+            points = max(30, int(box.width() / 4))
+            step = box.width() / max(1, points)
+            for p_offset, alpha, thick in ((0.0, 220, 2.5), (math.pi * 0.5, 130, 1.8)):
+                path = QPainterPath()
+                for i in range(points + 1):
+                    phase = self._phase + i * 0.22 + p_offset
+                    envelope = math.sin(i / points * math.pi)
+                    y = mid + math.sin(phase) * (box.height() * 0.40) * envelope
+                    x = box.left() + i * step
+                    if i == 0:
+                        path.moveTo(x, y)
+                    else:
+                        path.lineTo(x, y)
+                c = QColor(color)
+                c.setAlpha(alpha)
+                pen = QPen(c, thick, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(pen)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawPath(path)
+        else:  # "bars"
+            bars = max(8, int(box.width() / 11))
+            bar_w = box.width() / bars
+            painter.setPen(Qt.PenStyle.NoPen)
+            for i in range(bars):
+                phase = self._phase + i * 0.35
+                norm = (math.sin(phase) + 1.0) * 0.5
+                amp = (0.15 + 0.85 * norm) * (box.height() * 0.42)
+                top = mid - amp
+                h = amp * 2.0
+                x = box.left() + i * bar_w + bar_w * 0.2
+                w = max(2.0, bar_w * 0.6)
+                bar = QRectF(x, top, w, h)
+                bar_color = QColor(color)
+                bar_color.setAlpha(int(140 + 115 * norm))
+                painter.setBrush(bar_color)
+                painter.drawRoundedRect(bar, 1.5, 1.5)
 
         if self._selected_kind != "wave":
             painter.setPen(QPen(color, 1.0, Qt.PenStyle.DashLine))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(box)
+            self._paint_caption(painter, box, "Sóng âm")
             self._paint_caption(painter, box, "Sóng âm")
 
     def _paint_image(self, painter: QPainter, index: int) -> None:
@@ -743,17 +865,32 @@ class FrameCanvas(QWidget):
 
         painter.save()
         painter.setClipRect(draw_box)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(0, 0, 0, 150))
-        painter.drawRect(draw_box)
+
+        sub_box_on = getattr(self._layout, "subtitle_box", True)
+        sub_box_op = float(getattr(self._layout, "subtitle_box_opacity", 0.59))
+        sub_box_col = str(getattr(self._layout, "subtitle_box_color", "#000000") or "#000000")
+
+        if sub_box_on and sub_box_op > 0.0:
+            bg_col = QColor(sub_box_col)
+            if not bg_col.isValid():
+                bg_col = QColor(0, 0, 0)
+            bg_col.setAlpha(int(round(sub_box_op * 255)))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(bg_col)
+            painter.drawRect(draw_box)
+
         painter.setFont(font)
-        painter.setPen(QColor("#FFFFFF"))
         inner_box = draw_box.adjusted(8, 4, -8, -4)
         align_flag = (
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap
             if is_overflow
             else Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap
         )
+        if not (sub_box_on and sub_box_op > 0.0):
+            painter.setPen(QColor(0, 0, 0, 200))
+            for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1), (0, 1), (0, 2)):
+                painter.drawText(inner_box.translated(dx, dy), align_flag, text)
+        painter.setPen(QColor("#FFFFFF"))
         painter.drawText(inner_box, align_flag, text)
         painter.restore()
 
@@ -1041,9 +1178,8 @@ class FrameCanvas(QWidget):
         if kind:
             self.set_selection(kind, index)
         cur_kind, cur_idx = self.selection()
-        if not cur_kind:
-            return
         menu = QMenu(self)
+
         if cur_kind == "image" and 0 <= cur_idx < len(self._layout.images):
             img = self._layout.images[cur_idx]
             act_del = menu.addAction(f"Xoá ảnh “{img.name}” (Delete)")
@@ -1051,6 +1187,7 @@ class FrameCanvas(QWidget):
             act_dup = menu.addAction("Nhân bản (Duplicate)")
             set_icon(act_dup, "copy", "accent", 12)
             menu.addSeparator()
+
             vis_text = "Hiện ảnh" if not getattr(img, "visible", True) else "Ẩn ảnh"
             act_vis = menu.addAction(vis_text)
             set_icon(act_vis, "eye", "muted", 12)
@@ -1058,8 +1195,34 @@ class FrameCanvas(QWidget):
             act_lock = menu.addAction(lock_text)
             set_icon(act_lock, "lock", "muted", 12)
             menu.addSeparator()
-            act_center = menu.addAction("Căn chính giữa")
-            set_icon(act_center, "crosshair", "accent", 12)
+
+            align_menu = menu.addMenu("Căn lề nhanh")
+            set_icon(align_menu, "crosshair", "accent", 12)
+            act_c_both = align_menu.addAction("Chính giữa khung")
+            act_c_x = align_menu.addAction("Chính giữa ngang (X)")
+            act_c_y = align_menu.addAction("Chính giữa dọc (Y)")
+            act_l = align_menu.addAction("Căn lề trái")
+            act_r = align_menu.addAction("Căn lề phải")
+            act_t = align_menu.addAction("Căn lên trên")
+            act_b = align_menu.addAction("Căn xuống dưới")
+
+            flip_menu = menu.addMenu("Lật & Xoay")
+            set_icon(flip_menu, "refresh", "muted", 12)
+            act_flip_h = flip_menu.addAction("Lật ngang (Horizontal)")
+            act_flip_v = flip_menu.addAction("Lật dọc (Vertical)")
+            act_rot_0 = flip_menu.addAction("Đặt lại góc xoay (0°)")
+
+            order_menu = menu.addMenu("Thứ tự lớp ảnh")
+            set_icon(order_menu, "layers", "muted", 12)
+            act_up = order_menu.addAction("Đưa lên 1 lớp")
+            act_down = order_menu.addAction("Đưa xuống 1 lớp")
+            act_top = order_menu.addAction("Đưa lên trên cùng")
+            act_bottom = order_menu.addAction("Đưa xuống dưới cùng")
+
+            menu.addSeparator()
+            act_replace = menu.addAction("Đổi file ảnh...")
+            set_icon(act_replace, "image", "accent", 12)
+
             chosen = menu.exec(event.globalPos())
             if chosen == act_del:
                 self.delete_selected()
@@ -1069,14 +1232,178 @@ class FrameCanvas(QWidget):
                 self.toggle_selected_visibility()
             elif chosen == act_lock:
                 self.toggle_selected_lock()
-            elif chosen == act_center:
+            elif chosen == act_c_both:
                 self.align_selected("center_both")
-        elif cur_kind in ("wave", "subtitle", "video"):
-            act_center = menu.addAction("Căn chính giữa")
-            set_icon(act_center, "crosshair", "accent", 12)
+            elif chosen == act_c_x:
+                self.align_selected("center_x")
+            elif chosen == act_c_y:
+                self.align_selected("center_y")
+            elif chosen == act_l:
+                self.align_selected("left")
+            elif chosen == act_r:
+                self.align_selected("right")
+            elif chosen == act_t:
+                self.align_selected("top")
+            elif chosen == act_b:
+                self.align_selected("bottom")
+            elif chosen == act_flip_h:
+                self.flip_selected(True)
+            elif chosen == act_flip_v:
+                self.flip_selected(False)
+            elif chosen == act_rot_0:
+                self.rotate_selected(0.0)
+            elif chosen == act_up:
+                self.move_selected_layer(-1)
+            elif chosen == act_down:
+                self.move_selected_layer(1)
+            elif chosen == act_top:
+                self.move_selected_to_extreme(True)
+            elif chosen == act_bottom:
+                self.move_selected_to_extreme(False)
+            elif chosen == act_replace:
+                self.request_replace_image.emit()
+        elif cur_kind == "subtitle":
+            sub_vis = getattr(self._layout, "subtitle_visible", True)
+            act_vis = menu.addAction("Ẩn phụ đề" if sub_vis else "Hiện phụ đề")
+            set_icon(act_vis, "eye", "muted", 12)
+            sub_box_on = getattr(self._layout, "subtitle_box", True)
+            act_box = menu.addAction("Tắt khung nền phụ đề" if sub_box_on else "Bật khung nền phụ đề")
+            set_icon(act_box, "square", "muted", 12)
+            menu.addSeparator()
+            act_c_both = menu.addAction("Căn chính giữa")
+            set_icon(act_c_both, "crosshair", "accent", 12)
+            act_c_x = menu.addAction("Căn giữa ngang (X)")
+            act_reset = menu.addAction("Đặt lại vị trí mặc định")
+            set_icon(act_reset, "refresh", "muted", 12)
+
             chosen = menu.exec(event.globalPos())
-            if chosen == act_center:
+            if chosen == act_vis:
+                self.toggle_selected_visibility()
+            elif chosen == act_box:
+                self._layout.subtitle_box = not sub_box_on
+                self.layout_changed.emit()
+                self.edit_committed.emit()
+                self.update()
+            elif chosen == act_c_both:
                 self.align_selected("center_both")
+            elif chosen == act_c_x:
+                self.align_selected("center_x")
+            elif chosen == act_reset:
+                self._layout.subtitle_x = 0.5
+                self._layout.subtitle_y = 0.9
+                self._layout.subtitle_w = 0.8
+                self._layout.subtitle_h = 0.14
+                self.layout_changed.emit()
+                self.edit_committed.emit()
+                self.update()
+        elif cur_kind == "wave":
+            wave_on = self._layout.waveform
+            act_wave = menu.addAction("Tắt dải sóng" if wave_on else "Bật dải sóng")
+            set_icon(act_wave, "waveform", "muted", 12)
+
+            style_menu = menu.addMenu("Đổi kiểu sóng")
+            set_icon(style_menu, "sliders", "accent", 12)
+            act_s_bars = style_menu.addAction("Cột sóng (Bars)")
+            act_s_line = style_menu.addAction("Đường sóng (Line)")
+            act_s_mirror = style_menu.addAction("Đối xứng (Mirror)")
+            act_s_dots = style_menu.addAction("Điểm sóng (Dots)")
+            act_s_curve = style_menu.addAction("Sóng uốn lượn (Curve)")
+
+            menu.addSeparator()
+            act_c_both = menu.addAction("Căn chính giữa")
+            set_icon(act_c_both, "crosshair", "accent", 12)
+            act_c_x = menu.addAction("Căn giữa ngang (X)")
+            act_reset = menu.addAction("Đặt lại vị trí mặc định")
+            set_icon(act_reset, "refresh", "muted", 12)
+
+            chosen = menu.exec(event.globalPos())
+            if chosen == act_wave:
+                self._layout.waveform = not wave_on
+                self.layout_changed.emit()
+                self.edit_committed.emit()
+                self.update()
+            elif chosen in (act_s_bars, act_s_line, act_s_mirror, act_s_dots, act_s_curve):
+                style_map = {
+                    act_s_bars: "bars",
+                    act_s_line: "line",
+                    act_s_mirror: "mirror",
+                    act_s_dots: "dots",
+                    act_s_curve: "curve",
+                }
+                self._layout.wave_style = style_map[chosen]
+                self.layout_changed.emit()
+                self.edit_committed.emit()
+                self.update()
+            elif chosen == act_c_both:
+                self.align_selected("center_both")
+            elif chosen == act_c_x:
+                self.align_selected("center_x")
+            elif chosen == act_reset:
+                self._layout.wave_x = 0.06
+                self._layout.wave_y = 0.74
+                self._layout.wave_w = 0.88
+                self._layout.wave_h = 0.08
+                self.layout_changed.emit()
+                self.edit_committed.emit()
+                self.update()
+        elif cur_kind == "video":
+            vid_vis = getattr(self._layout, "video_visible", True)
+            act_vis = menu.addAction("Ẩn video" if vid_vis else "Hiện video")
+            set_icon(act_vis, "eye", "muted", 12)
+            vid_lock = getattr(self._layout, "video_locked", False)
+            act_lock = menu.addAction("Mở khóa video" if vid_lock else "Khóa video")
+            set_icon(act_lock, "lock", "muted", 12)
+            menu.addSeparator()
+            act_c_both = menu.addAction("Căn chính giữa")
+            set_icon(act_c_both, "crosshair", "accent", 12)
+            act_reset = menu.addAction("Đặt lại video toàn khung (100%)")
+            set_icon(act_reset, "refresh", "muted", 12)
+            menu.addSeparator()
+            act_fs = menu.addAction("Xem toàn màn hình (F11)")
+            set_icon(act_fs, "maximize", "accent", 12)
+
+            chosen = menu.exec(event.globalPos())
+            if chosen == act_vis:
+                self.toggle_selected_visibility()
+            elif chosen == act_lock:
+                self.toggle_selected_lock()
+            elif chosen == act_c_both:
+                self.align_selected("center_both")
+            elif chosen == act_reset:
+                self._layout.video_x = 0.0
+                self._layout.video_y = 0.0
+                self._layout.video_w = 1.0
+                self.layout_changed.emit()
+                self.edit_committed.emit()
+                self.update()
+            elif chosen == act_fs:
+                self.request_fullscreen.emit()
+        else:
+            # Background / empty canvas
+            act_fs = menu.addAction("Xem toàn màn hình (F11)")
+            set_icon(act_fs, "maximize", "accent", 12)
+            menu.addSeparator()
+            grid_text = "Tắt lưới căn chỉnh" if self.show_grid else "Bật lưới căn chỉnh"
+            act_grid = menu.addAction(grid_text)
+            set_icon(act_grid, "grid", "muted", 12)
+            safe_text = "Tắt vùng an toàn" if self.show_safe_area else "Bật vùng an toàn"
+            act_safe = menu.addAction(safe_text)
+            set_icon(act_safe, "crosshair", "muted", 12)
+            menu.addSeparator()
+            act_add = menu.addAction("Thêm ảnh từ file...")
+            set_icon(act_add, "plus", "accent", 12)
+
+            chosen = menu.exec(event.globalPos())
+            if chosen == act_fs:
+                self.request_fullscreen.emit()
+            elif chosen == act_grid:
+                self.show_grid = not self.show_grid
+                self.update()
+            elif chosen == act_safe:
+                self.show_safe_area = not self.show_safe_area
+                self.update()
+            elif chosen == act_add:
+                self.request_add_image.emit()
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
         if self._playing:
@@ -1394,6 +1721,7 @@ class FrameTab(QWidget):
         self._canvas = FrameCanvas(self._layout)
         self._manager: Optional[Any] = None
         self._settings: Optional[Dict[str, Any]] = None
+        self._custom_images: List[str] = []
 
         page = QVBoxLayout(self)
         page.setContentsMargins(8, 6, 8, 6)
@@ -1449,6 +1777,9 @@ class FrameTab(QWidget):
         self._canvas.selection_changed.connect(self._on_selection)
         self._canvas.edit_committed.connect(self._commit_history)
         self._canvas.phase_changed.connect(self._on_phase)
+        self._canvas.request_replace_image.connect(self._replace_image)
+        self._canvas.request_fullscreen.connect(self.show_fullscreen)
+        self._canvas.request_add_image.connect(self._add_image)
 
         for slider in (self._width, self._pos_x, self._pos_y,
                        self._rotate, self._opacity, self._scale,
@@ -1698,9 +2029,32 @@ class FrameTab(QWidget):
         s_inner = QWidget()
         s_box = QVBoxLayout(s_inner)
         s_box.setContentsMargins(0, 4, 0, 0)
-        s_box.setSpacing(5)
+        s_box.setSpacing(6)
 
-        s_hint = QLabel("Chèn nhanh ảnh:")
+        btn_more = QPushButton("+ Thêm ảnh từ file...")
+        btn_more.setMinimumHeight(32)
+        btn_more.setCursor(Qt.CursorShape.PointingHandCursor)
+        set_icon(btn_more, "plus", "accent", 12)
+        btn_more.clicked.connect(self._add_image)
+        s_box.addWidget(btn_more)
+
+        lib_hint = QLabel("Chèn nhanh ảnh (Thư viện):")
+        lib_hint.setObjectName("MutedLabel")
+        s_box.addWidget(lib_hint)
+
+        self._user_images_box = QWidget()
+        self._user_images_layout = QVBoxLayout(self._user_images_box)
+        self._user_images_layout.setContentsMargins(0, 0, 0, 0)
+        self._user_images_layout.setSpacing(4)
+        s_box.addWidget(self._user_images_box)
+        self._rebuild_library_tab()
+
+        sep_stickers = QFrame()
+        sep_stickers.setFrameShape(QFrame.Shape.HLine)
+        sep_stickers.setStyleSheet(f"background: {theme.BORDER_SOFT}; max-height: 1px;")
+        s_box.addWidget(sep_stickers)
+
+        s_hint = QLabel("Sticker & Biểu tượng mẫu:")
         s_hint.setObjectName("MutedLabel")
         s_box.addWidget(s_hint)
 
@@ -1730,12 +2084,6 @@ class FrameTab(QWidget):
             stickers_grid.addWidget(btn, r, c)
 
         s_box.addLayout(stickers_grid)
-
-        btn_more = QPushButton("Thêm ảnh từ file...")
-        set_icon(btn_more, "plus", "accent", 12)
-        btn_more.clicked.connect(self._add_image)
-        s_box.addWidget(btn_more)
-
         s_box.addStretch(1)
         s_scroll.setWidget(s_inner)
 
@@ -2008,18 +2356,18 @@ class FrameTab(QWidget):
         self._opacity_spin.valueChanged.connect(self._on_opacity_spin)
         op_row.addWidget(self._opacity_spin)
         b_layout.addLayout(op_row)
+        self._blend_box = blend_box
         vbox.addWidget(blend_box)
 
-        # Group 3: Context properties
-        custom_box = QGroupBox("Thuộc tính riêng")
-        c_layout = QVBoxLayout(custom_box)
-        c_layout.setContentsMargins(6, 8, 6, 6)
-        c_layout.setSpacing(6)
+        # Group 3: Subtitle properties
+        self._sub_group = QGroupBox("Thuộc tính phụ đề")
+        sub_layout = QVBoxLayout(self._sub_group)
+        sub_layout.setContentsMargins(6, 8, 6, 6)
+        sub_layout.setSpacing(6)
 
-        # Subtitle properties
         self._scale_label = QLabel("Tỉ lệ cỡ chữ: 100%")
         self._scale_label.setObjectName("MutedLabel")
-        c_layout.addWidget(self._scale_label)
+        sub_layout.addWidget(self._scale_label)
         sc_row = QHBoxLayout()
         sc_row.setSpacing(4)
         self._scale = QSlider(Qt.Orientation.Horizontal)
@@ -2035,11 +2383,11 @@ class FrameTab(QWidget):
         self._scale_spin.setFixedHeight(24)
         self._scale_spin.valueChanged.connect(self._on_scale_spin)
         sc_row.addWidget(self._scale_spin)
-        c_layout.addLayout(sc_row)
+        sub_layout.addLayout(sc_row)
 
         self._sub_h_label = QLabel("Chiều cao khung chữ: 14%")
         self._sub_h_label.setObjectName("MutedLabel")
-        c_layout.addWidget(self._sub_h_label)
+        sub_layout.addWidget(self._sub_h_label)
         sh_row = QHBoxLayout()
         sh_row.setSpacing(4)
         self._sub_h_slider = QSlider(Qt.Orientation.Horizontal)
@@ -2055,15 +2403,15 @@ class FrameTab(QWidget):
         self._sub_h_spin.setFixedHeight(24)
         self._sub_h_spin.valueChanged.connect(self._on_sub_h_spin)
         sh_row.addWidget(self._sub_h_spin)
-        c_layout.addLayout(sh_row)
+        sub_layout.addLayout(sh_row)
 
         self._sub_font_label = QLabel("Phông chữ phụ đề:")
         self._sub_font_label.setObjectName("MutedLabel")
-        c_layout.addWidget(self._sub_font_label)
+        sub_layout.addWidget(self._sub_font_label)
         self._sub_font_combo = QFontComboBox()
         self._sub_font_combo.setFixedHeight(28)
         self._sub_font_combo.currentFontChanged.connect(self._on_sub_font_changed)
-        c_layout.addWidget(self._sub_font_combo)
+        sub_layout.addWidget(self._sub_font_combo)
 
         fs_row = QHBoxLayout()
         fs_row.setSpacing(4)
@@ -2078,25 +2426,87 @@ class FrameTab(QWidget):
         self._sub_font_size_spin.setFixedHeight(24)
         self._sub_font_size_spin.valueChanged.connect(self._on_sub_font_size_changed)
         fs_row.addWidget(self._sub_font_size_spin)
-        c_layout.addLayout(fs_row)
+        sub_layout.addLayout(fs_row)
+
+        # Subtitle background box
+        self._sub_box_check = QCheckBox("Hiện nền khung chữ")
+        self._sub_box_check.setChecked(True)
+        self._sub_box_check.toggled.connect(self._on_sub_box_toggled)
+        sub_layout.addWidget(self._sub_box_check)
+
+        self._sub_box_color_btn = QPushButton("Chọn màu nền khung...")
+        self._sub_box_color_btn.setFixedHeight(26)
+        self._sub_box_color_btn.clicked.connect(self._pick_sub_box_color)
+        sub_layout.addWidget(self._sub_box_color_btn)
+
+        sub_pal_row = QHBoxLayout()
+        sub_pal_row.setSpacing(4)
+        for hex_code, color_name in _SUB_BG_COLORS:
+            btn_col = QPushButton()
+            btn_col.setToolTip(f"Màu nền {color_name} ({hex_code})")
+            btn_col.setFixedSize(20, 20)
+            btn_col.setStyleSheet(f"background:{hex_code}; border-radius:4px; border:1px solid {theme.BORDER_STRONG};")
+            btn_col.clicked.connect(lambda _c=False, h=hex_code: self._set_sub_box_color(h))
+            sub_pal_row.addWidget(btn_col)
+        sub_pal_row.addStretch(1)
+        sub_layout.addLayout(sub_pal_row)
+
+        self._sub_box_opacity_label = QLabel("Độ mờ nền: 59%")
+        self._sub_box_opacity_label.setObjectName("MutedLabel")
+        sub_layout.addWidget(self._sub_box_opacity_label)
+        sbo_row = QHBoxLayout()
+        sbo_row.setSpacing(4)
+        self._sub_box_opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self._sub_box_opacity_slider.setRange(0, 100)
+        self._sub_box_opacity_slider.setValue(59)
+        self._sub_box_opacity_slider.valueChanged.connect(self._on_sub_box_opacity_slider)
+        sbo_row.addWidget(self._sub_box_opacity_slider, 1)
+        self._sub_box_opacity_spin = QSpinBox()
+        self._sub_box_opacity_spin.setRange(0, 100)
+        self._sub_box_opacity_spin.setValue(59)
+        self._sub_box_opacity_spin.setSuffix("%")
+        self._sub_box_opacity_spin.setFixedWidth(68)
+        self._sub_box_opacity_spin.setFixedHeight(24)
+        self._sub_box_opacity_spin.valueChanged.connect(self._on_sub_box_opacity_spin)
+        sbo_row.addWidget(self._sub_box_opacity_spin)
+        sub_layout.addLayout(sbo_row)
 
         lbl_text = QLabel("Xem trước phụ đề mẫu:")
         lbl_text.setObjectName("MutedLabel")
-        c_layout.addWidget(lbl_text)
+        sub_layout.addWidget(lbl_text)
         self._sample_text_edit = QLineEdit(_DEFAULT_SAMPLE_TEXT)
         self._sample_text_edit.setFixedHeight(28)
         self._sample_text_edit.setPlaceholderText("Gõ văn bản mẫu...")
         self._sample_text_edit.textChanged.connect(self._on_sample_text_changed)
-        c_layout.addWidget(self._sample_text_edit)
+        sub_layout.addWidget(self._sample_text_edit)
+        vbox.addWidget(self._sub_group)
 
-        # Waveform controls
+        # Group 4: Waveform properties (separated!)
+        self._wave_group = QGroupBox("Thuộc tính sóng âm")
+        wave_layout = QVBoxLayout(self._wave_group)
+        wave_layout.setContentsMargins(6, 8, 6, 6)
+        wave_layout.setSpacing(6)
+
         self._wave = QCheckBox("Hiện dải sóng âm thanh")
         self._wave.toggled.connect(self._on_wave_toggled)
-        c_layout.addWidget(self._wave)
+        wave_layout.addWidget(self._wave)
+
+        lbl_wave_style = QLabel("Kiểu dáng sóng:")
+        lbl_wave_style.setObjectName("MutedLabel")
+        wave_layout.addWidget(lbl_wave_style)
+        self._wave_style_combo = QComboBox()
+        self._wave_style_combo.setFixedHeight(28)
+        self._wave_style_combo.addItem("Cột sóng (Bars)", "bars")
+        self._wave_style_combo.addItem("Đường sóng (Line)", "line")
+        self._wave_style_combo.addItem("Đối xứng (Mirror)", "mirror")
+        self._wave_style_combo.addItem("Điểm sóng (Dots)", "dots")
+        self._wave_style_combo.addItem("Sóng uốn lượn (Curve)", "curve")
+        self._wave_style_combo.currentIndexChanged.connect(self._on_wave_style_changed)
+        wave_layout.addWidget(self._wave_style_combo)
 
         self._wave_h_label = QLabel("Chiều cao sóng: 8%")
         self._wave_h_label.setObjectName("MutedLabel")
-        c_layout.addWidget(self._wave_h_label)
+        wave_layout.addWidget(self._wave_h_label)
         wh_row = QHBoxLayout()
         wh_row.setSpacing(4)
         self._wave_h_slider = QSlider(Qt.Orientation.Horizontal)
@@ -2112,12 +2522,12 @@ class FrameTab(QWidget):
         self._wave_h_spin.setFixedHeight(24)
         self._wave_h_spin.valueChanged.connect(self._on_wave_h_spin)
         wh_row.addWidget(self._wave_h_spin)
-        c_layout.addLayout(wh_row)
+        wave_layout.addLayout(wh_row)
 
         self._color_button = QPushButton("Chọn màu sóng âm")
         self._color_button.setFixedHeight(28)
         self._color_button.clicked.connect(self._pick_color)
-        c_layout.addWidget(self._color_button)
+        wave_layout.addWidget(self._color_button)
 
         palette_row = QHBoxLayout()
         palette_row.setSpacing(4)
@@ -2129,15 +2539,27 @@ class FrameTab(QWidget):
             btn_col.clicked.connect(lambda _c=False, h=hex_code: self._set_wave_color(h))
             palette_row.addWidget(btn_col)
         palette_row.addStretch(1)
-        c_layout.addLayout(palette_row)
+        wave_layout.addLayout(palette_row)
+        vbox.addWidget(self._wave_group)
+
+        # Group 5: Image properties (separated!)
+        self._image_group = QGroupBox("Thuộc tính hình ảnh")
+        img_layout = QVBoxLayout(self._image_group)
+        img_layout.setContentsMargins(6, 8, 6, 6)
+        img_layout.setSpacing(6)
 
         self._replace_img_btn = QPushButton("Đổi file ảnh...")
         self._replace_img_btn.setFixedHeight(28)
         set_icon(self._replace_img_btn, "image", "accent", 12)
         self._replace_img_btn.clicked.connect(self._replace_image)
-        c_layout.addWidget(self._replace_img_btn)
+        img_layout.addWidget(self._replace_img_btn)
 
-        vbox.addWidget(custom_box)
+        self._del_img_btn = QPushButton("Xoá ảnh này khỏi khung")
+        self._del_img_btn.setFixedHeight(28)
+        set_icon(self._del_img_btn, "trash", "danger", 12)
+        self._del_img_btn.clicked.connect(self._remove_image)
+        img_layout.addWidget(self._del_img_btn)
+        vbox.addWidget(self._image_group)
         vbox.addStretch(1)
         return panel
 
@@ -2207,6 +2629,8 @@ class FrameTab(QWidget):
 
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
+        self._custom_images = [str(x) for x in (settings or {}).get("frame_library_images") or [] if Path(str(x)).is_file()]
+        self._rebuild_library_tab()
         if self._manager is not None and hasattr(self._manager, "load_frame_layout"):
             saved = self._manager.load_frame_layout()
             if saved is not None:
@@ -2220,6 +2644,7 @@ class FrameTab(QWidget):
                 self._sync_controls()
                 self._rebuild_list()
                 self._paint_color_button()
+                self._paint_sub_box_color_button()
                 paint_status(self._status, "success")
                 proj_name = getattr(self._manager, "project_dir", Path(".")).name
                 self._status.setText(f"Đã nạp khung mẫu từ video/frame ({proj_name}).")
@@ -2234,16 +2659,20 @@ class FrameTab(QWidget):
         self._sync_controls()
         self._rebuild_list()
         self._paint_color_button()
+        self._paint_sub_box_color_button()
         paint_status(self._status, "success")
         self._status.setText("Khung mẫu đang hoạt động — áp dụng cho toàn bộ video khi kết xuất.")
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         settings["frame"] = self._layout.to_dict()
+        settings["frame_library_images"] = list(self._custom_images)
 
     def apply_theme(self) -> None:
         self._paint_color_button()
+        self._paint_sub_box_color_button()
         self._paint_inspector_title()
         self._rebuild_list()
+        self._rebuild_library_tab()
         self._canvas.update()
         paint_status(self._status, "success")
 
@@ -2314,6 +2743,22 @@ class FrameTab(QWidget):
 
         font_sz = int(getattr(self._layout, "subtitle_font_size", 44) or 44)
         self._sub_font_size_spin.setValue(font_sz)
+
+        sub_box_val = getattr(self._layout, "subtitle_box", True)
+        self._sub_box_check.setChecked(sub_box_val)
+        self._sub_box_color_btn.setEnabled(sub_box_val)
+        self._sub_box_opacity_slider.setEnabled(sub_box_val)
+        self._sub_box_opacity_spin.setEnabled(sub_box_val)
+        sub_box_op = int(round(getattr(self._layout, "subtitle_box_opacity", 0.59) * 100))
+        self._sub_box_opacity_slider.setValue(sub_box_op)
+        self._sub_box_opacity_spin.setValue(sub_box_op)
+        self._sub_box_opacity_label.setText(f"Độ mờ nền: {sub_box_op}%")
+        self._paint_sub_box_color_button()
+
+        w_style = getattr(self._layout, "wave_style", "bars")
+        s_idx = self._wave_style_combo.findData(w_style)
+        if s_idx >= 0:
+            self._wave_style_combo.setCurrentIndex(s_idx)
 
         wave_h_val = int(round(self._layout.wave_h * 100))
         self._wave_h_slider.setValue(wave_h_val)
@@ -2455,6 +2900,10 @@ class FrameTab(QWidget):
 
         self._block = True
         if valid_img:
+            self._sub_group.setVisible(False)
+            self._wave_group.setVisible(False)
+            self._image_group.setVisible(True)
+            self._blend_box.setVisible(True)
             image = self._layout.images[index]
             locked_tag = " (Đã khóa)" if getattr(image, "locked", False) else ""
             self._inspector_title.setText(f"Đang chọn: {image.name}{locked_tag}")
@@ -2502,6 +2951,10 @@ class FrameTab(QWidget):
             self._wave_h_slider.setEnabled(False)
             self._wave_h_spin.setEnabled(False)
         elif kind == "subtitle":
+            self._sub_group.setVisible(True)
+            self._wave_group.setVisible(False)
+            self._image_group.setVisible(False)
+            self._blend_box.setVisible(False)
             sub_vis = getattr(self._layout, "subtitle_visible", True)
             vis_tag = "" if sub_vis else " (Đang ẩn)"
             self._inspector_title.setText(f"Đang chọn: Phụ đề{vis_tag}")
@@ -2553,12 +3006,33 @@ class FrameTab(QWidget):
             self._sub_font_size_spin.setEnabled(True)
             self._sub_font_size_spin.setValue(int(getattr(self._layout, "subtitle_font_size", 44) or 44))
 
+            sub_box_val = getattr(self._layout, "subtitle_box", True)
+            self._sub_box_check.setChecked(sub_box_val)
+            self._sub_box_color_btn.setEnabled(sub_box_val)
+            self._sub_box_opacity_slider.setEnabled(sub_box_val)
+            self._sub_box_opacity_spin.setEnabled(sub_box_val)
+            sub_box_op = int(round(getattr(self._layout, "subtitle_box_opacity", 0.59) * 100))
+            self._sub_box_opacity_slider.setValue(sub_box_op)
+            self._sub_box_opacity_spin.setValue(sub_box_op)
+            self._sub_box_opacity_label.setText(f"Độ mờ nền: {sub_box_op}%")
+            self._paint_sub_box_color_button()
+
             self._sample_text_edit.setEnabled(True)
             self._wave_h_slider.setEnabled(False)
             self._wave_h_spin.setEnabled(False)
         elif kind == "wave":
+            self._sub_group.setVisible(False)
+            self._wave_group.setVisible(True)
+            self._image_group.setVisible(False)
+            self._blend_box.setVisible(False)
             wave_tag = "" if self._layout.waveform else " (Đang ẩn)"
             self._inspector_title.setText(f"Đang chọn: Sóng âm thanh{wave_tag}")
+
+            self._wave.setChecked(self._layout.waveform)
+            style_idx = self._wave_style_combo.findData(getattr(self._layout, "wave_style", "bars"))
+            if style_idx >= 0:
+                self._wave_style_combo.setCurrentIndex(style_idx)
+            self._color_button.setEnabled(self._layout.waveform)
 
             w_val = int(round(self._layout.wave_w * 100))
             self._width.setEnabled(True)
@@ -2602,6 +3076,10 @@ class FrameTab(QWidget):
             self._wave_h_spin.setValue(wh_val)
             self._wave_h_label.setText(f"Chiều cao sóng: {wh_val}%")
         elif kind == "video":
+            self._sub_group.setVisible(False)
+            self._wave_group.setVisible(False)
+            self._image_group.setVisible(False)
+            self._blend_box.setVisible(False)
             vid_vis = getattr(self._layout, "video_visible", True)
             vid_locked = getattr(self._layout, "video_locked", False)
             vid_tag = "" if vid_vis else " (Đang ẩn)"
@@ -2646,6 +3124,10 @@ class FrameTab(QWidget):
             self._wave_h_slider.setEnabled(False)
             self._wave_h_spin.setEnabled(False)
         else:
+            self._sub_group.setVisible(False)
+            self._wave_group.setVisible(False)
+            self._image_group.setVisible(False)
+            self._blend_box.setVisible(False)
             self._inspector_title.setText("Chọn một đối tượng để chỉnh sửa")
             self._width.setEnabled(False)
             self._width_spin.setEnabled(False)
@@ -2757,6 +3239,69 @@ class FrameTab(QWidget):
         self._canvas.update()
         self._rebuild_list()
         self._commit_history()
+
+    def _on_sub_box_toggled(self, checked: bool) -> None:
+        if self._block:
+            return
+        self._layout.subtitle_box = bool(checked)
+        self._sub_box_color_btn.setEnabled(checked)
+        self._sub_box_opacity_slider.setEnabled(checked)
+        self._sub_box_opacity_spin.setEnabled(checked)
+        self._canvas.update()
+        self._commit_history()
+
+    def _pick_sub_box_color(self) -> None:
+        initial = QColor(getattr(self._layout, "subtitle_box_color", "#000000") or "#000000")
+        color = QColorDialog.getColor(initial, self, "Chọn màu nền khung phụ đề")
+        if color.isValid():
+            self._set_sub_box_color(color.name().upper())
+
+    def _set_sub_box_color(self, hex_code: str) -> None:
+        self._layout.subtitle_box_color = hex_code.upper()
+        self._paint_sub_box_color_button()
+        self._canvas.update()
+        self._commit_history()
+
+    def _paint_sub_box_color_button(self) -> None:
+        color = QColor(getattr(self._layout, "subtitle_box_color", "#000000") or "#000000")
+        if not color.isValid():
+            color = QColor("#000000")
+        text = "#0B1728" if color.lightness() > 150 else "#FFFFFF"
+        self._sub_box_color_btn.setStyleSheet(
+            "QPushButton {"
+            f" background:{color.name()}; color:{text};"
+            f" border:1px solid {theme.BORDER_STRONG}; font-weight:600; border-radius:4px;"
+            "}"
+        )
+
+    def _on_sub_box_opacity_slider(self, value: int) -> None:
+        if self._block:
+            return
+        self._block = True
+        self._sub_box_opacity_spin.setValue(value)
+        self._block = False
+        self._layout.subtitle_box_opacity = value / 100.0
+        self._sub_box_opacity_label.setText(f"Độ mờ nền: {value}%")
+        self._canvas.update()
+
+    def _on_sub_box_opacity_spin(self, value: int) -> None:
+        if self._block:
+            return
+        self._block = True
+        self._sub_box_opacity_slider.setValue(value)
+        self._block = False
+        self._layout.subtitle_box_opacity = value / 100.0
+        self._sub_box_opacity_label.setText(f"Độ mờ nền: {value}%")
+        self._canvas.update()
+
+    def _on_wave_style_changed(self, index: int) -> None:
+        if self._block:
+            return
+        style = self._wave_style_combo.currentData()
+        if style:
+            self._layout.wave_style = str(style)
+            self._canvas.update()
+            self._commit_history()
 
     def _on_scale_slider(self, value: int) -> None:
         if self._block:
@@ -3037,15 +3582,84 @@ class FrameTab(QWidget):
         paint_status(self._status, "success")
         self._status.setText(f"Đã áp dụng mẫu “{preset.get('name', '')}”.")
 
+    def _rebuild_library_tab(self) -> None:
+        if not hasattr(self, "_user_images_layout"):
+            return
+        while self._user_images_layout.count():
+            item = self._user_images_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+        valid_images = [p for p in getattr(self, "_custom_images", []) if Path(p).is_file()]
+        self._custom_images = valid_images
+
+        if not valid_images:
+            empty_lbl = QLabel("Chưa có ảnh nào tải lên.\nBấm nút '+ Thêm ảnh từ file...' ở trên để đưa ảnh vào thư viện.")
+            empty_lbl.setObjectName("MutedLabel")
+            empty_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px; padding: 4px;")
+            empty_lbl.setWordWrap(True)
+            self._user_images_layout.addWidget(empty_lbl)
+            return
+
+        for p_str in valid_images:
+            card = QFrame()
+            card.setObjectName("presetCard")
+            card.setStyleSheet(
+                f"QFrame#presetCard {{ background: {theme.PROJECT_CARD_BG}; border: 1px solid {theme.BORDER_SOFT}; border-radius: 6px; padding: 3px; }}"
+                f"QFrame#presetCard:hover {{ border-color: {theme.ACCENT}; }}"
+            )
+            card_layout = QHBoxLayout(card)
+            card_layout.setContentsMargins(4, 3, 4, 3)
+            card_layout.setSpacing(6)
+
+            thumb_lbl = QLabel()
+            thumb_lbl.setFixedSize(36, 36)
+            thumb_lbl.setStyleSheet("border-radius: 4px; background: rgba(0,0,0,0.15);")
+            thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            pix = QPixmap(p_str)
+            if not pix.isNull():
+                thumb_lbl.setPixmap(pix.scaled(36, 36, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            card_layout.addWidget(thumb_lbl)
+
+            info_layout = QVBoxLayout()
+            info_layout.setSpacing(2)
+            name_lbl = QLabel(Path(p_str).name)
+            name_lbl.setStyleSheet("font-weight: 500; font-size: 11px;")
+            name_lbl.setToolTip(p_str)
+            info_layout.addWidget(name_lbl)
+
+            insert_btn = QPushButton("+ Chèn vào khung")
+            insert_btn.setFixedHeight(22)
+            insert_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            insert_btn.setStyleSheet(f"QPushButton {{ font-size: 10px; font-weight: 600; padding: 0 6px; background: {theme.ACCENT}; color: white; border-radius: 3px; border: none; }} QPushButton:hover {{ background: {theme.PRIMARY_HOVER}; }}")
+            insert_btn.clicked.connect(lambda _c=False, p=p_str: self._insert_preset(p))
+            info_layout.addWidget(insert_btn)
+            card_layout.addLayout(info_layout, 1)
+
+            del_btn = icon_button("x", "Xoá khỏi thư viện", size=10, side=20)
+            del_btn.clicked.connect(lambda _c=False, p=p_str: self._remove_from_library(p))
+            card_layout.addWidget(del_btn)
+
+            self._user_images_layout.addWidget(card)
+
+    def _remove_from_library(self, path: str) -> None:
+        if path in self._custom_images:
+            self._custom_images.remove(path)
+            if self._settings is not None:
+                self._settings["frame_library_images"] = list(self._custom_images)
+            self._rebuild_library_tab()
+
     def _insert_preset(self, path: str) -> None:
         asset = _resolve_asset(path)
-        if asset is None:
+        img_path = str(asset.resolve()) if asset is not None else str(Path(path).resolve())
+        if not Path(img_path).is_file():
             return
         old_layers = self._layout.ordered_layers()
         index = len(self._layout.images)
         offset = 0.03 * (index % 5)
         self._layout.images.append(FrameImage(
-            path=str(asset.resolve()), x=0.35 + offset, y=0.35 + offset, width=0.22))
+            path=img_path, x=0.35 + offset, y=0.35 + offset, width=0.22))
         new_layers = [("image", index)] + [layer for layer in old_layers if layer != ("image", index)]
         self._layout.set_ordered_layers(new_layers)
         self._layout.enabled = True
@@ -3054,24 +3668,25 @@ class FrameTab(QWidget):
         self._canvas.set_selection("image", index)
         self._canvas.update()
         self._commit_history()
+        paint_status(self._status, "success")
+        self._status.setText(f"✓ Đã chèn ảnh “{Path(img_path).name}” vào khung hình.")
 
     def _add_image(self) -> None:
-        path, _filter = QFileDialog.getOpenFileName(self, "Chọn ảnh lớp phủ", "", _IMAGE_FILTER)
-        if not path:
+        paths, _filter = QFileDialog.getOpenFileNames(self, "Chọn ảnh thêm vào Thư viện", "", _IMAGE_FILTER)
+        if not paths:
             return
-        old_layers = self._layout.ordered_layers()
-        index = len(self._layout.images)
-        offset = 0.03 * (index % 5)
-        self._layout.images.append(FrameImage(
-            path=str(Path(path)), x=0.06 + offset, y=0.06 + offset, width=0.18))
-        new_layers = [("image", index)] + [layer for layer in old_layers if layer != ("image", index)]
-        self._layout.set_ordered_layers(new_layers)
-        self._layout.enabled = True
-        self._canvas.reload_assets()
-        self._rebuild_list(index)
-        self._canvas.set_selection("image", index)
-        self._canvas.update()
-        self._commit_history()
+        added = 0
+        for p in paths:
+            clean_p = str(Path(p).resolve())
+            if clean_p not in self._custom_images:
+                self._custom_images.append(clean_p)
+                added += 1
+        if added > 0:
+            if self._settings is not None:
+                self._settings["frame_library_images"] = list(self._custom_images)
+            self._rebuild_library_tab()
+            paint_status(self._status, "success")
+            self._status.setText(f"✓ Đã thêm {added} ảnh vào Thư viện Ảnh. Bấm 'Chèn vào khung' để đặt ảnh vào video.")
 
     def _replace_image(self) -> None:
         kind, index = self._canvas.selection()
@@ -3104,16 +3719,48 @@ class FrameTab(QWidget):
         kind, idx = data
         self._canvas.set_selection(kind, idx)
         menu = QMenu(self)
-        if kind == "image":
-            act_del = menu.addAction("Xoá lớp ảnh này (Delete)")
+        if kind == "image" and 0 <= idx < len(self._layout.images):
+            img = self._layout.images[idx]
+            act_del = menu.addAction(f"Xoá ảnh “{img.name}” (Delete)")
             set_icon(act_del, "trash", "danger", 12)
             act_dup = menu.addAction("Nhân bản (Duplicate)")
             set_icon(act_dup, "copy", "accent", 12)
             menu.addSeparator()
-            act_vis = menu.addAction("Ẩn / Hiện")
+            vis_text = "Hiện ảnh" if not getattr(img, "visible", True) else "Ẩn ảnh"
+            act_vis = menu.addAction(vis_text)
             set_icon(act_vis, "eye", "muted", 12)
-            act_lock = menu.addAction("Khóa / Mở khóa")
+            lock_text = "Mở khóa vị trí" if getattr(img, "locked", False) else "Khóa vị trí"
+            act_lock = menu.addAction(lock_text)
             set_icon(act_lock, "lock", "muted", 12)
+            menu.addSeparator()
+
+            align_menu = menu.addMenu("Căn lề nhanh")
+            set_icon(align_menu, "crosshair", "accent", 12)
+            act_c_both = align_menu.addAction("Chính giữa khung")
+            act_c_x = align_menu.addAction("Chính giữa ngang (X)")
+            act_c_y = align_menu.addAction("Chính giữa dọc (Y)")
+            act_l = align_menu.addAction("Căn lề trái")
+            act_r = align_menu.addAction("Căn lề phải")
+            act_t = align_menu.addAction("Căn lên trên")
+            act_b = align_menu.addAction("Căn xuống dưới")
+
+            flip_menu = menu.addMenu("Lật & Xoay")
+            set_icon(flip_menu, "refresh", "muted", 12)
+            act_flip_h = flip_menu.addAction("Lật ngang")
+            act_flip_v = flip_menu.addAction("Lật dọc")
+            act_rot_0 = flip_menu.addAction("Đặt lại góc xoay (0°)")
+
+            order_menu = menu.addMenu("Thứ tự lớp ảnh")
+            set_icon(order_menu, "layers", "muted", 12)
+            act_up = order_menu.addAction("Đưa lên 1 lớp")
+            act_down = order_menu.addAction("Đưa xuống 1 lớp")
+            act_top = order_menu.addAction("Đưa lên trên cùng")
+            act_bottom = order_menu.addAction("Đưa xuống dưới cùng")
+
+            menu.addSeparator()
+            act_replace = menu.addAction("Đổi file ảnh...")
+            set_icon(act_replace, "image", "accent", 12)
+
             chosen = menu.exec(self._image_list.mapToGlobal(point))
             if chosen == act_del:
                 self._remove_image()
@@ -3123,12 +3770,146 @@ class FrameTab(QWidget):
                 self._toggle_visibility()
             elif chosen == act_lock:
                 self._toggle_lock()
-        elif kind in ("wave", "subtitle", "video"):
-            act_vis = menu.addAction("Ẩn / Hiện")
+            elif chosen == act_c_both:
+                self._canvas.align_selected("center_both")
+            elif chosen == act_c_x:
+                self._canvas.align_selected("center_x")
+            elif chosen == act_c_y:
+                self._canvas.align_selected("center_y")
+            elif chosen == act_l:
+                self._canvas.align_selected("left")
+            elif chosen == act_r:
+                self._canvas.align_selected("right")
+            elif chosen == act_t:
+                self._canvas.align_selected("top")
+            elif chosen == act_b:
+                self._canvas.align_selected("bottom")
+            elif chosen == act_flip_h:
+                self._canvas.flip_selected(True)
+            elif chosen == act_flip_v:
+                self._canvas.flip_selected(False)
+            elif chosen == act_rot_0:
+                self._canvas.rotate_selected(0.0)
+            elif chosen == act_up:
+                self._move_layer(-1)
+            elif chosen == act_down:
+                self._move_layer(1)
+            elif chosen == act_top:
+                self._canvas.move_selected_to_extreme(True)
+                self._rebuild_list(idx)
+            elif chosen == act_bottom:
+                self._canvas.move_selected_to_extreme(False)
+                self._rebuild_list(idx)
+            elif chosen == act_replace:
+                self._replace_image()
+        elif kind == "subtitle":
+            sub_vis = getattr(self._layout, "subtitle_visible", True)
+            act_vis = menu.addAction("Ẩn phụ đề" if sub_vis else "Hiện phụ đề")
             set_icon(act_vis, "eye", "muted", 12)
+            sub_box_on = getattr(self._layout, "subtitle_box", True)
+            act_box = menu.addAction("Tắt khung nền phụ đề" if sub_box_on else "Bật khung nền phụ đề")
+            set_icon(act_box, "square", "muted", 12)
+            menu.addSeparator()
+            act_center = menu.addAction("Căn chính giữa")
+            set_icon(act_center, "crosshair", "accent", 12)
+            act_c_x = menu.addAction("Căn giữa ngang (X)")
+            act_reset = menu.addAction("Đặt lại vị trí mặc định")
+            set_icon(act_reset, "refresh", "muted", 12)
+
             chosen = menu.exec(self._image_list.mapToGlobal(point))
             if chosen == act_vis:
                 self._toggle_visibility()
+            elif chosen == act_box:
+                self._on_sub_box_toggled(not sub_box_on)
+            elif chosen == act_center:
+                self._canvas.align_selected("center_both")
+            elif chosen == act_c_x:
+                self._canvas.align_selected("center_x")
+            elif chosen == act_reset:
+                self._layout.subtitle_x = 0.5
+                self._layout.subtitle_y = 0.9
+                self._layout.subtitle_w = 0.8
+                self._layout.subtitle_h = 0.14
+                self._canvas.update()
+                self._update_inspector()
+                self._commit_history()
+        elif kind == "wave":
+            wave_on = self._layout.waveform
+            act_vis = menu.addAction("Ẩn dải sóng" if wave_on else "Hiện dải sóng")
+            set_icon(act_vis, "waveform", "muted", 12)
+            style_menu = menu.addMenu("Đổi kiểu sóng")
+            set_icon(style_menu, "sliders", "accent", 12)
+            act_s_bars = style_menu.addAction("Cột sóng (Bars)")
+            act_s_line = style_menu.addAction("Đường sóng (Line)")
+            act_s_mirror = style_menu.addAction("Đối xứng (Mirror)")
+            act_s_dots = style_menu.addAction("Điểm sóng (Dots)")
+            act_s_curve = style_menu.addAction("Sóng uốn lượn (Curve)")
+            menu.addSeparator()
+            act_center = menu.addAction("Căn chính giữa")
+            set_icon(act_center, "crosshair", "accent", 12)
+            act_c_x = menu.addAction("Căn giữa ngang (X)")
+            act_reset = menu.addAction("Đặt lại vị trí mặc định")
+            set_icon(act_reset, "refresh", "muted", 12)
+
+            chosen = menu.exec(self._image_list.mapToGlobal(point))
+            if chosen == act_vis:
+                self._toggle_visibility()
+            elif chosen in (act_s_bars, act_s_line, act_s_mirror, act_s_dots, act_s_curve):
+                style_map = {
+                    act_s_bars: "bars",
+                    act_s_line: "line",
+                    act_s_mirror: "mirror",
+                    act_s_dots: "dots",
+                    act_s_curve: "curve",
+                }
+                self._layout.wave_style = style_map[chosen]
+                self._canvas.update()
+                self._update_inspector()
+                self._commit_history()
+            elif chosen == act_center:
+                self._canvas.align_selected("center_both")
+            elif chosen == act_c_x:
+                self._canvas.align_selected("center_x")
+            elif chosen == act_reset:
+                self._layout.wave_x = 0.06
+                self._layout.wave_y = 0.74
+                self._layout.wave_w = 0.88
+                self._layout.wave_h = 0.08
+                self._canvas.update()
+                self._update_inspector()
+                self._commit_history()
+        elif kind == "video":
+            vid_vis = getattr(self._layout, "video_visible", True)
+            act_vis = menu.addAction("Ẩn video" if vid_vis else "Hiện video")
+            set_icon(act_vis, "eye", "muted", 12)
+            vid_lock = getattr(self._layout, "video_locked", False)
+            act_lock = menu.addAction("Mở khóa video" if vid_lock else "Khóa video")
+            set_icon(act_lock, "lock", "muted", 12)
+            menu.addSeparator()
+            act_center = menu.addAction("Căn chính giữa")
+            set_icon(act_center, "crosshair", "accent", 12)
+            act_reset = menu.addAction("Đặt lại video toàn khung (100%)")
+            set_icon(act_reset, "refresh", "muted", 12)
+            menu.addSeparator()
+            act_fs = menu.addAction("Xem toàn màn hình (F11)")
+            set_icon(act_fs, "maximize", "accent", 12)
+
+            chosen = menu.exec(self._image_list.mapToGlobal(point))
+            if chosen == act_vis:
+                self._toggle_visibility()
+            elif chosen == act_lock:
+                self._toggle_lock()
+            elif chosen == act_center:
+                self._canvas.align_selected("center_both")
+            elif chosen == act_reset:
+                self._layout.video_x = 0.0
+                self._layout.video_y = 0.0
+                self._layout.video_w = 1.0
+                self._canvas.update()
+                self._update_inspector()
+                self._commit_history()
+            elif chosen == act_fs:
+                self.show_fullscreen()
 
     def _duplicate_layer(self) -> None:
         if self._canvas.duplicate_selected():
