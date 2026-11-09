@@ -1813,8 +1813,8 @@ class FFmpegRenderer:
                 if image.opacity < 0.999:
                     chain += f",colorchannelmixer=aa={image.opacity:.3f}"
                 parts.append(chain + f"[frameimg{index}]")
-                image_x = max(0, min(width - 1, int(round(image.x * width))))
-                image_y = max(0, min(height - 1, int(round(image.y * height))))
+                image_x = int(round(image.x * width))
+                image_y = int(round(image.y * height))
                 if rot:
                     parts.append(
                         f"[{vlabel}][frameimg{index}]overlay='{image_x}+({image_w}-w)/2':'{image_y}+({image_w}-h)/2':"
@@ -1887,8 +1887,8 @@ class FFmpegRenderer:
                     if image.opacity < 0.999:
                         chain += f",colorchannelmixer=aa={image.opacity:.3f}"
                     parts.append(chain + f"[frameimg{idx}]")
-                    image_x = max(0, min(width - 1, int(round(image.x * width))))
-                    image_y = max(0, min(height - 1, int(round(image.y * height))))
+                    image_x = int(round(image.x * width))
+                    image_y = int(round(image.y * height))
                     if rot:
                         parts.append(
                             f"[{vlabel}][frameimg{idx}]overlay='{image_x}+({image_w}-w)/2':'{image_y}+({image_w}-h)/2':"

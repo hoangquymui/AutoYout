@@ -296,11 +296,11 @@ class FrameCanvas(QWidget):
 
     def heightForWidth(self, width: int) -> int:  # noqa: N802 (Qt override)
         ratio = _ASPECT_RATIOS.get(self.aspect_ratio_mode, 16.0 / 9.0)
-        usable_w = max(1, width - 12)
-        return int(round(usable_w / ratio)) + 12
+        usable_w = max(1, width - 48)
+        return int(round(usable_w / ratio)) + 48
 
     def _frame_rect(self) -> QRectF:
-        rect = QRectF(self.rect()).adjusted(6, 6, -6, -6)
+        rect = QRectF(self.rect()).adjusted(24, 24, -24, -24)
         if rect.width() <= 0 or rect.height() <= 0:
             return QRectF()
         ratio = _ASPECT_RATIOS.get(self.aspect_ratio_mode, 16.0 / 9.0)
@@ -398,18 +398,18 @@ class FrameCanvas(QWidget):
             if mode == "left":
                 image.x = 0.04
             elif mode == "center_x":
-                image.x = max(0.0, round((1.0 - norm_w) / 2.0, 4))
+                image.x = round((1.0 - norm_w) / 2.0, 4)
             elif mode == "right":
-                image.x = max(0.0, round(1.0 - norm_w - 0.04, 4))
+                image.x = round(1.0 - norm_w - 0.04, 4)
             elif mode == "top":
                 image.y = 0.04
             elif mode == "center_y":
-                image.y = max(0.0, round((1.0 - norm_h) / 2.0, 4))
+                image.y = round((1.0 - norm_h) / 2.0, 4)
             elif mode == "bottom":
-                image.y = max(0.0, round(1.0 - norm_h - 0.04, 4))
+                image.y = round(1.0 - norm_h - 0.04, 4)
             elif mode == "center_both":
-                image.x = max(0.0, round((1.0 - norm_w) / 2.0, 4))
-                image.y = max(0.0, round((1.0 - norm_h) / 2.0, 4))
+                image.x = round((1.0 - norm_w) / 2.0, 4)
+                image.y = round((1.0 - norm_h) / 2.0, 4)
             image.clamp()
         elif kind == "subtitle":
             half_w = getattr(self._layout, "subtitle_w", 0.8) / 2.0
@@ -492,17 +492,26 @@ class FrameCanvas(QWidget):
 
         self._paint_backdrop(painter)
 
-        painter.save()
-        path = QPainterPath()
-        path.addRoundedRect(frame, 10, 10)
-        painter.setClipPath(path)
-
+        # 1. Fill video background (inside frame)
         painter.fillRect(frame, QColor("#050810"))
+
+        # 2. Draw layers.
+        # Clip to widget bounds so layers can bleed into the canvas pasteboard
+        painter.save()
+        widget_path = QPainterPath()
+        widget_path.addRoundedRect(QRectF(self.rect()).adjusted(1, 1, -1, -1), 10, 10)
+        painter.setClipPath(widget_path)
 
         layers = self._layout.ordered_layers()
         for kind, idx in reversed(layers):
             if kind == "video":
+                # Video stream is clipped to the frame boundary
+                painter.save()
+                frame_path = QPainterPath()
+                frame_path.addRoundedRect(frame, 10, 10)
+                painter.setClipPath(frame_path)
                 self._paint_preview(painter, frame)
+                painter.restore()
             elif kind == "wave":
                 self._paint_wave(painter)
             elif kind == "image" and 0 <= idx < len(self._layout.images):
@@ -510,18 +519,34 @@ class FrameCanvas(QWidget):
             elif kind == "subtitle":
                 self._paint_subtitle(painter)
 
+        # Inside frame: grid / safe area / snap guides
+        painter.save()
+        frame_path = QPainterPath()
+        frame_path.addRoundedRect(frame, 10, 10)
+        painter.setClipPath(frame_path)
         if self.show_grid:
             self._paint_grid(painter, frame)
         if self.show_safe_area:
             self._paint_safe_area(painter, frame)
-
         if self.show_center_guides and (self._snap_x or self._snap_y):
             self._paint_snap_guides(painter, frame)
+        painter.restore()
+
+        # Dim pasteboard area outside video frame so bleed is visible but distinguished
+        outside_path = QPainterPath()
+        outside_path.addRect(QRectF(self.rect()))
+        outside_path.addRoundedRect(frame, 10, 10)
+        painter.setClipPath(outside_path)
+        painter.fillRect(self.rect(), QColor(10, 14, 22, 160))
 
         painter.restore()
 
+        # Frame border & badge
         self._paint_frame_border(painter, frame)
         self._paint_badge(painter, frame)
+
+        # Active selection outline & resize handles drawn unclipped on top
+        self._paint_active_selection(painter)
 
     def _paint_backdrop(self, painter: QPainter) -> None:
         rect = QRectF(self.rect())
@@ -566,15 +591,12 @@ class FrameCanvas(QWidget):
             glow.setColorAt(1.0, QColor(0, 0, 0, 0))
             painter.fillRect(vbox, glow)
 
-        locked = getattr(self._layout, "video_locked", False)
-        if self._selected_kind == "video":
-            label = "Video 🔒" if locked else "Video"
-            self._paint_selection(painter, vbox, label)
-        elif self._layout.video_w < 0.999 or self._layout.video_x > 0.001 or self._layout.video_y > 0.001:
-            painter.setPen(QPen(_qcolor(theme.BLUE, 130), 1.0, Qt.PenStyle.DashLine))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(vbox, 6, 6)
-            self._paint_caption(painter, vbox, "Video")
+        if self._selected_kind != "video":
+            if self._layout.video_w < 0.999 or self._layout.video_x > 0.001 or self._layout.video_y > 0.001:
+                painter.setPen(QPen(_qcolor(theme.BLUE, 130), 1.0, Qt.PenStyle.DashLine))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRoundedRect(vbox, 6, 6)
+                self._paint_caption(painter, vbox, "Video")
 
     def _paint_grid(self, painter: QPainter, frame: QRectF) -> None:
         pen = QPen(QColor(theme.BORDER_STRONG))
@@ -647,9 +669,7 @@ class FrameCanvas(QWidget):
             painter.setBrush(bar_color)
             painter.drawRoundedRect(bar, 1.5, 1.5)
 
-        if self._selected_kind == "wave":
-            self._paint_selection(painter, box, "Sóng âm thanh")
-        else:
+        if self._selected_kind != "wave":
             painter.setPen(QPen(color, 1.0, Qt.PenStyle.DashLine))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(box, 6, 6)
@@ -696,10 +716,6 @@ class FrameCanvas(QWidget):
             self._paint_caption(painter, box, "Thiếu file ảnh")
         painter.restore()
 
-        if self._selected_kind == "image" and self._selected_index == index:
-            label = f"{image.name} 🔒" if locked else image.name
-            self._paint_selection(painter, box, label)
-
     def _paint_subtitle(self, painter: QPainter) -> None:
         sub_visible = getattr(self._layout, "subtitle_visible", True)
         box = self._subtitle_box()
@@ -724,14 +740,39 @@ class FrameCanvas(QWidget):
         painter.drawText(inner_box, Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, text)
         painter.restore()
 
-        if self._selected_kind == "subtitle":
-            self._paint_selection(painter, box, "Phụ đề (Textbox)")
-        else:
+        if self._selected_kind != "subtitle":
             self._paint_caption(painter, box, "Phụ đề")
             pen = QPen(_qcolor(theme.ACCENT, 110), 1.0, Qt.PenStyle.DashLine)
             painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(box, 6, 6)
+
+    def _paint_active_selection(self, painter: QPainter) -> None:
+        kind, index = self.selection()
+        if not kind:
+            return
+        if kind == "subtitle":
+            if getattr(self._layout, "subtitle_visible", True):
+                box = self._subtitle_box()
+                self._paint_selection(painter, box, "Phụ đề (Textbox)")
+        elif kind == "wave":
+            if self._layout.wave_active:
+                box = self._wave_box()
+                self._paint_selection(painter, box, "Sóng âm thanh")
+        elif kind == "video":
+            if getattr(self._layout, "video_visible", True):
+                box = self._video_box()
+                locked = getattr(self._layout, "video_locked", False)
+                label = "Video 🔒" if locked else "Video"
+                self._paint_selection(painter, box, label)
+        elif kind == "image" and 0 <= index < len(self._layout.images):
+            image = self._layout.images[index]
+            if getattr(image, "visible", True):
+                box = self._image_box(index)
+                if not box.isEmpty():
+                    locked = getattr(image, "locked", False)
+                    label = f"{image.name} 🔒" if locked else image.name
+                    self._paint_selection(painter, box, label)
 
     def _paint_selection(self, painter: QPainter, box: QRectF, label: str) -> None:
         pulse = 0.60 + 0.40 * abs(math.sin(self._phase * 0.8))
@@ -755,7 +796,7 @@ class FrameCanvas(QWidget):
         font.setBold(True)
         metrics = QFontMetricsF(font)
         width = metrics.horizontalAdvance(text) + 12
-        chip = QRectF(box.left(), max(0.0, box.top() - 18), width, 16)
+        chip = QRectF(max(4.0, box.left()), max(4.0, box.top() - 18), width, 16)
         painter.setPen(Qt.PenStyle.NoPen)
         chip_bg = QColor(theme.SURFACE)
         chip_bg.setAlpha(220)
@@ -817,11 +858,7 @@ class FrameCanvas(QWidget):
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt override)
         if event.button() != Qt.MouseButton.LeftButton:
             return
-        frame = self._frame_rect()
         pos = event.position()
-        if not frame.contains(pos):
-            self.set_selection("", -1)
-            return
         self.setFocus()
         cur_kind, cur_idx = self.selection()
         if cur_kind and self._resize_handle().contains(pos):
@@ -871,10 +908,9 @@ class FrameCanvas(QWidget):
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt override)
         pos = event.position()
         if not self._drag_mode:
-            frame = self._frame_rect()
-            if frame.contains(pos) and self._resize_handle().contains(pos):
+            if self._resize_handle().contains(pos):
                 self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-            elif frame.contains(pos) and self._hit_test(pos)[0]:
+            elif self._hit_test(pos)[0]:
                 self.setCursor(Qt.CursorShape.SizeAllCursor)
             else:
                 self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -906,8 +942,8 @@ class FrameCanvas(QWidget):
             else:
                 orig_left = self._origin["x"] - self._origin["w"] / 2.0
                 orig_top = self._origin["y"] - self._origin["h"] / 2.0
-                new_w = max(0.10, min(1.0, self._origin["w"] + dx))
-                new_h = max(0.03, min(0.80, self._origin["h"] + dy))
+                new_w = max(0.05, min(3.0, self._origin["w"] + dx))
+                new_h = max(0.02, min(2.0, self._origin["h"] + dy))
                 layout.subtitle_w = new_w
                 layout.subtitle_h = new_h
                 layout.subtitle_x = orig_left + new_w / 2.0
@@ -924,8 +960,8 @@ class FrameCanvas(QWidget):
                 layout.wave_x = target_x
                 layout.wave_y = target_y
             else:
-                layout.wave_w = max(0.1, min(1.0 - layout.wave_x, self._origin["w"] + dx))
-                layout.wave_h = max(0.02, min(1.0 - layout.wave_y, self._origin["h"] + dy))
+                layout.wave_w = max(0.05, min(3.0, self._origin["w"] + dx))
+                layout.wave_h = max(0.02, min(2.0, self._origin["h"] + dy))
             layout.clamp()
         elif kind == "image" and 0 <= index < len(layout.images):
             image = layout.images[index]
@@ -939,7 +975,7 @@ class FrameCanvas(QWidget):
                 image.x = target_x
                 image.y = target_y
             else:
-                image.width = max(0.02, min(1.0 - image.x, self._origin["width"] + dx))
+                image.width = max(0.02, min(5.0, self._origin["width"] + dx))
             image.clamp()
         elif kind == "video":
             if self._drag_mode == "move":
@@ -956,7 +992,7 @@ class FrameCanvas(QWidget):
                 layout.video_x = target_x
                 layout.video_y = target_y
             else:
-                layout.video_w = max(0.1, min(1.0 - layout.video_x, self._origin["w"] + dx))
+                layout.video_w = max(0.05, min(3.0, self._origin["w"] + dx))
             layout.clamp()
 
         self.layout_changed.emit()
@@ -1561,15 +1597,15 @@ class FrameTab(QWidget):
         w_row = QHBoxLayout()
         w_row.setSpacing(4)
         self._width = QSlider(Qt.Orientation.Horizontal)
-        self._width.setRange(2, 100)
+        self._width.setRange(2, 300)
         self._width.setValue(18)
         self._width.valueChanged.connect(self._on_width_slider)
         w_row.addWidget(self._width, 1)
         self._width_spin = QSpinBox()
-        self._width_spin.setRange(2, 100)
+        self._width_spin.setRange(2, 300)
         self._width_spin.setValue(18)
         self._width_spin.setSuffix("%")
-        self._width_spin.setFixedWidth(52)
+        self._width_spin.setFixedWidth(60)
         self._width_spin.setFixedHeight(24)
         self._width_spin.valueChanged.connect(self._on_width_spin)
         w_row.addWidget(self._width_spin)
@@ -1582,15 +1618,15 @@ class FrameTab(QWidget):
         x_row = QHBoxLayout()
         x_row.setSpacing(4)
         self._pos_x = QSlider(Qt.Orientation.Horizontal)
-        self._pos_x.setRange(0, 100)
+        self._pos_x.setRange(-150, 200)
         self._pos_x.setValue(5)
         self._pos_x.valueChanged.connect(self._on_pos_x_slider)
         x_row.addWidget(self._pos_x, 1)
         self._pos_x_spin = QSpinBox()
-        self._pos_x_spin.setRange(0, 100)
+        self._pos_x_spin.setRange(-150, 200)
         self._pos_x_spin.setValue(5)
         self._pos_x_spin.setSuffix("%")
-        self._pos_x_spin.setFixedWidth(52)
+        self._pos_x_spin.setFixedWidth(60)
         self._pos_x_spin.setFixedHeight(24)
         self._pos_x_spin.valueChanged.connect(self._on_pos_x_spin)
         x_row.addWidget(self._pos_x_spin)
@@ -1606,15 +1642,15 @@ class FrameTab(QWidget):
         y_row = QHBoxLayout()
         y_row.setSpacing(4)
         self._pos_y = QSlider(Qt.Orientation.Horizontal)
-        self._pos_y.setRange(0, 100)
+        self._pos_y.setRange(-150, 200)
         self._pos_y.setValue(5)
         self._pos_y.valueChanged.connect(self._on_pos_y_slider)
         y_row.addWidget(self._pos_y, 1)
         self._pos_y_spin = QSpinBox()
-        self._pos_y_spin.setRange(0, 100)
+        self._pos_y_spin.setRange(-150, 200)
         self._pos_y_spin.setValue(5)
         self._pos_y_spin.setSuffix("%")
-        self._pos_y_spin.setFixedWidth(52)
+        self._pos_y_spin.setFixedWidth(60)
         self._pos_y_spin.setFixedHeight(24)
         self._pos_y_spin.valueChanged.connect(self._on_pos_y_spin)
         y_row.addWidget(self._pos_y_spin)

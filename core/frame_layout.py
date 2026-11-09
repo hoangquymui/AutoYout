@@ -22,6 +22,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 DEFAULT_WAVE_COLOR = "#4FC3F7"
 MIN_IMAGE_WIDTH = 0.02
+MAX_IMAGE_WIDTH = 5.0
+MIN_COORD = -3.0
+MAX_COORD = 3.0
 MIN_WAVE_WIDTH = 0.1
 MIN_WAVE_HEIGHT = 0.02
 
@@ -73,10 +76,9 @@ class FrameImage:
 
     def clamp(self) -> "FrameImage":
         self.width = round(_clamp(_as_float(self.width, 0.18),
-                                  MIN_IMAGE_WIDTH, 1.0), 4)
-        self.x = round(_clamp(_as_float(self.x, 0.05), 0.0,
-                              1.0 - self.width), 4)
-        self.y = round(_clamp(_as_float(self.y, 0.05), 0.0, 1.0), 4)
+                                  MIN_IMAGE_WIDTH, MAX_IMAGE_WIDTH), 4)
+        self.x = round(_clamp(_as_float(self.x, 0.05), MIN_COORD, MAX_COORD), 4)
+        self.y = round(_clamp(_as_float(self.y, 0.05), MIN_COORD, MAX_COORD), 4)
         self.opacity = round(_clamp(_as_float(self.opacity, 1.0), 0.05, 1.0), 3)
         self.rotation = round((_as_float(self.rotation, 0.0) % 360), 1)
         if self.rotation > 180:
@@ -201,28 +203,26 @@ class FrameLayout:
     def clamp(self) -> "FrameLayout":
         if self.aspect_ratio not in ("16:9", "9:16", "1:1", "4:5"):
             self.aspect_ratio = "16:9"
-        self.subtitle_x = round(_clamp(_as_float(self.subtitle_x, 0.5), 0.0, 1.0), 4)
-        self.subtitle_y = round(_clamp(_as_float(self.subtitle_y, 0.9), 0.02, 0.98), 4)
+        self.subtitle_x = round(_clamp(_as_float(self.subtitle_x, 0.5), -2.0, 2.0), 4)
+        self.subtitle_y = round(_clamp(_as_float(self.subtitle_y, 0.9), -2.0, 2.0), 4)
         self.subtitle_scale = round(
-            _clamp(_as_float(self.subtitle_scale, 1.0), 0.5, 2.0), 3)
+            _clamp(_as_float(self.subtitle_scale, 1.0), 0.5, 3.0), 3)
         self.subtitle_w = round(
-            _clamp(_as_float(self.subtitle_w, 0.8), 0.1, 1.0), 4)
+            _clamp(_as_float(self.subtitle_w, 0.8), 0.05, 3.0), 4)
         self.subtitle_h = round(
-            _clamp(_as_float(self.subtitle_h, 0.14), 0.03, 0.8), 4)
+            _clamp(_as_float(self.subtitle_h, 0.14), 0.02, 2.0), 4)
         self.subtitle_font = str(self.subtitle_font or "Arial").strip() or "Arial"
         self.subtitle_font_size = max(14, min(120, int(_as_float(self.subtitle_font_size, 44))))
         self.wave_w = round(_clamp(_as_float(self.wave_w, 0.88),
-                                   MIN_WAVE_WIDTH, 1.0), 4)
+                                   MIN_WAVE_WIDTH, 3.0), 4)
         self.wave_h = round(_clamp(_as_float(self.wave_h, 0.08),
-                                   MIN_WAVE_HEIGHT, 1.0), 4)
-        self.wave_x = round(_clamp(_as_float(self.wave_x, 0.06), 0.0,
-                                   1.0 - self.wave_w), 4)
-        self.wave_y = round(_clamp(_as_float(self.wave_y, 0.74), 0.0,
-                                   1.0 - self.wave_h), 4)
+                                   MIN_WAVE_HEIGHT, 2.0), 4)
+        self.wave_x = round(_clamp(_as_float(self.wave_x, 0.06), -2.0, 2.0), 4)
+        self.wave_y = round(_clamp(_as_float(self.wave_y, 0.74), -2.0, 2.0), 4)
         self.wave_color = normalize_color(self.wave_color)
-        self.video_w = round(_clamp(_as_float(self.video_w, 1.0), 0.1, 1.0), 4)
-        self.video_x = round(_clamp(_as_float(self.video_x, 0.0), 0.0, 1.0 - self.video_w), 4)
-        self.video_y = round(_clamp(_as_float(self.video_y, 0.0), 0.0, 1.0 - self.video_w), 4)
+        self.video_w = round(_clamp(_as_float(self.video_w, 1.0), 0.05, 3.0), 4)
+        self.video_x = round(_clamp(_as_float(self.video_x, 0.0), -2.0, 2.0), 4)
+        self.video_y = round(_clamp(_as_float(self.video_y, 0.0), -2.0, 2.0), 4)
         self.video_visible = bool(self.video_visible)
         self.video_locked = bool(self.video_locked)
         for image in self.images:
@@ -322,8 +322,8 @@ class FrameLayout:
         """Pixel ``(x, y, w, h)`` box for the bottom-most video layer."""
         w = max(2, int(round(self.video_w * max(1, width))))
         h = max(2, int(round(self.video_w * max(1, height))))
-        x = max(0, min(max(0, width - w), int(round(self.video_x * max(1, width)))))
-        y = max(0, min(max(0, height - h), int(round(self.video_y * max(1, height)))))
+        x = int(round(self.video_x * max(1, width)))
+        y = int(round(self.video_y * max(1, height)))
         return x, y, w, h
 
     def subtitle_rect(self, width: int, height: int) -> Tuple[int, int, int, int]:
@@ -345,8 +345,8 @@ class FrameLayout:
         """Pixel ``(x, y, w, h)`` box for the waveform overlay."""
         w = max(2, int(round(self.wave_w * max(1, width))))
         h = max(2, int(round(self.wave_h * max(1, height))))
-        x = max(0, min(max(0, width - w), int(round(self.wave_x * max(1, width)))))
-        y = max(0, min(max(0, height - h), int(round(self.wave_y * max(1, height)))))
+        x = int(round(self.wave_x * max(1, width)))
+        y = int(round(self.wave_y * max(1, height)))
         return x, y, w, h
 
     def image_rect(self, image: FrameImage, width: int, height: int,
@@ -362,6 +362,6 @@ class FrameLayout:
             h = max(2, int(round(w * image_size[1] / image_size[0])))
         else:
             h = w
-        x = max(0, min(max(0, width - w), int(round(image.x * max(1, width)))))
-        y = max(0, min(max(0, height - h), int(round(image.y * max(1, height)))))
+        x = int(round(image.x * max(1, width)))
+        y = int(round(image.y * max(1, height)))
         return x, y, w, h

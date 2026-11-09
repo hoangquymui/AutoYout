@@ -41,7 +41,7 @@ def test_from_settings_handles_junk() -> None:
     assert FrameLayout.from_settings({}).enabled is False
 
 
-def test_clamp_keeps_boxes_inside_frame() -> None:
+def test_clamp_keeps_boxes_within_extended_bounds() -> None:
     layout = FrameLayout(
         subtitle_y=4.0,
         subtitle_scale=9.0,
@@ -51,31 +51,31 @@ def test_clamp_keeps_boxes_inside_frame() -> None:
         wave_h=0.5,
         images=[FrameImage(path="a.png", x=0.95, width=0.5)],
     ).clamp()
-    assert layout.subtitle_y == 0.98
-    assert layout.subtitle_scale == 2.0
-    assert layout.wave_x == 0.5
-    assert layout.wave_y == 0.5
-    assert layout.images[0].x == 0.5
+    assert layout.subtitle_y == 2.0
+    assert layout.subtitle_scale == 3.0
+    assert layout.wave_x == 0.9
+    assert layout.wave_y == 0.9
+    assert layout.images[0].x == 0.95
 
 
 def test_image_clamping_and_serialisation() -> None:
-    image = FrameImage.from_dict({"path": "logo.png", "x": -2,
-                                  "y": 2, "width": 0.01, "opacity": 3})
+    image = FrameImage.from_dict({"path": "logo.png", "x": -5,
+                                  "y": 5, "width": 0.01, "opacity": 3})
     assert image.width == 0.02
-    assert image.x == 0.0
-    assert image.y == 1.0
+    assert image.x == -3.0
+    assert image.y == 3.0
     assert image.opacity == 1.0
     assert image.to_dict()["path"] == "logo.png"
 
 
-def test_image_rect_uses_aspect_ratio_and_stays_inside() -> None:
+def test_image_rect_allows_off_canvas_bleeding() -> None:
     layout = FrameLayout()
     image = FrameImage(path="a.png", x=0.9, y=0.5, width=0.2)
     x, y, w, h = layout.image_rect(image, 1920, 1080, (400, 200))
     assert w == 384
     assert h == 192
-    assert x == 1536
-    assert y <= 1080 - h
+    assert x == 1728
+    assert y == 540
 
 
 def test_wave_rect_and_subtitle_pos_scale() -> None:
