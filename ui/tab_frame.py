@@ -296,11 +296,11 @@ class FrameCanvas(QWidget):
 
     def heightForWidth(self, width: int) -> int:  # noqa: N802 (Qt override)
         ratio = _ASPECT_RATIOS.get(self.aspect_ratio_mode, 16.0 / 9.0)
-        usable_w = max(1, width - 48)
-        return int(round(usable_w / ratio)) + 48
+        usable_w = max(1, width)
+        return int(round(usable_w / ratio))
 
     def _frame_rect(self) -> QRectF:
-        rect = QRectF(self.rect()).adjusted(24, 24, -24, -24)
+        rect = QRectF(self.rect())
         if rect.width() <= 0 or rect.height() <= 0:
             return QRectF()
         ratio = _ASPECT_RATIOS.get(self.aspect_ratio_mode, 16.0 / 9.0)
@@ -490,26 +490,16 @@ class FrameCanvas(QWidget):
         if frame.isEmpty():
             return
 
-        self._paint_backdrop(painter)
-
-        # 1. Fill video background (inside frame)
-        painter.fillRect(frame, QColor("#050810"))
+        # 1. Fill entire canvas background with dark video background (no outer gray margin)
+        painter.fillRect(self.rect(), QColor("#050810"))
 
         # 2. Draw layers.
-        # Clip to widget bounds so layers can bleed into the canvas pasteboard
-        painter.save()
-        widget_path = QPainterPath()
-        widget_path.addRoundedRect(QRectF(self.rect()).adjusted(1, 1, -1, -1), 10, 10)
-        painter.setClipPath(widget_path)
-
         layers = self._layout.ordered_layers()
         for kind, idx in reversed(layers):
             if kind == "video":
                 # Video stream is clipped to the frame boundary
                 painter.save()
-                frame_path = QPainterPath()
-                frame_path.addRoundedRect(frame, 10, 10)
-                painter.setClipPath(frame_path)
+                painter.setClipRect(frame)
                 self._paint_preview(painter, frame)
                 painter.restore()
             elif kind == "wave":
@@ -521,9 +511,7 @@ class FrameCanvas(QWidget):
 
         # Inside frame: grid / safe area / snap guides
         painter.save()
-        frame_path = QPainterPath()
-        frame_path.addRoundedRect(frame, 10, 10)
-        painter.setClipPath(frame_path)
+        painter.setClipRect(frame)
         if self.show_grid:
             self._paint_grid(painter, frame)
         if self.show_safe_area:
@@ -532,27 +520,14 @@ class FrameCanvas(QWidget):
             self._paint_snap_guides(painter, frame)
         painter.restore()
 
-        # Dim pasteboard area outside video frame so bleed is visible but distinguished
-        outside_path = QPainterPath()
-        outside_path.addRect(QRectF(self.rect()))
-        outside_path.addRoundedRect(frame, 10, 10)
-        painter.setClipPath(outside_path)
-        painter.fillRect(self.rect(), QColor(10, 14, 22, 160))
-
-        painter.restore()
-
-        # Frame border & badge
-        self._paint_frame_border(painter, frame)
+        # Resolution badge
         self._paint_badge(painter, frame)
 
         # Active selection outline & resize handles drawn unclipped on top
         self._paint_active_selection(painter)
 
     def _paint_backdrop(self, painter: QPainter) -> None:
-        rect = QRectF(self.rect())
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(theme.SURFACE_ALT))
-        painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 10, 10)
+        pass
 
     def _paint_preview(self, painter: QPainter, frame: QRectF) -> None:
         vid_vis = getattr(self._layout, "video_visible", True)
@@ -561,7 +536,7 @@ class FrameCanvas(QWidget):
             if self._selected_kind == "video":
                 painter.setPen(QPen(_qcolor(theme.TEXT_MUTED, 120), 1.0, Qt.PenStyle.DotLine))
                 painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.drawRoundedRect(vbox, 6, 6)
+                painter.drawRect(vbox)
                 self._paint_caption(painter, vbox, "Video (Đang ẩn)")
             return
 
@@ -595,7 +570,7 @@ class FrameCanvas(QWidget):
             if self._layout.video_w < 0.999 or self._layout.video_x > 0.001 or self._layout.video_y > 0.001:
                 painter.setPen(QPen(_qcolor(theme.BLUE, 130), 1.0, Qt.PenStyle.DashLine))
                 painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.drawRoundedRect(vbox, 6, 6)
+                painter.drawRect(vbox)
                 self._paint_caption(painter, vbox, "Video")
 
     def _paint_grid(self, painter: QPainter, frame: QRectF) -> None:
@@ -616,7 +591,7 @@ class FrameCanvas(QWidget):
         pen10 = QPen(_qcolor(theme.BLUE, 70), 1.0, Qt.PenStyle.DashLine)
         painter.setPen(pen10)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(safe_title, 6, 6)
+        painter.drawRect(safe_title)
 
         if self.aspect_ratio_mode == "9:16":
             right_w = frame.width() * 0.18
@@ -624,11 +599,11 @@ class FrameCanvas(QWidget):
                                 right_w, frame.height() * 0.40)
             painter.setPen(QPen(_qcolor(theme.WARNING, 80), 1.0, Qt.PenStyle.DotLine))
             painter.setBrush(_qcolor(theme.WARNING, 15))
-            painter.drawRoundedRect(right_zone, 4, 4)
+            painter.drawRect(right_zone)
 
             bottom_h = frame.height() * 0.20
             bottom_zone = QRectF(frame.left(), frame.bottom() - bottom_h, frame.width(), bottom_h)
-            painter.drawRoundedRect(bottom_zone, 4, 4)
+            painter.drawRect(bottom_zone)
 
     def _paint_snap_guides(self, painter: QPainter, frame: QRectF) -> None:
         pen = QPen(_qcolor(theme.ACCENT, 200), 1.5, Qt.PenStyle.DashLine)
@@ -649,7 +624,7 @@ class FrameCanvas(QWidget):
         bg.setAlpha(25)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(bg)
-        painter.drawRoundedRect(box, 6, 6)
+        painter.drawRect(box)
 
         bars = max(8, int(box.width() / 11))
         bar_w = box.width() / bars
@@ -672,7 +647,7 @@ class FrameCanvas(QWidget):
         if self._selected_kind != "wave":
             painter.setPen(QPen(color, 1.0, Qt.PenStyle.DashLine))
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(box, 6, 6)
+            painter.drawRect(box)
             self._paint_caption(painter, box, "Sóng âm")
 
     def _paint_image(self, painter: QPainter, index: int) -> None:
@@ -688,7 +663,7 @@ class FrameCanvas(QWidget):
             if self._selected_kind == "image" and self._selected_index == index:
                 painter.setPen(QPen(_qcolor(theme.TEXT_MUTED, 120), 1.0, Qt.PenStyle.DotLine))
                 painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.drawRoundedRect(box, 4, 4)
+                painter.drawRect(box)
                 self._paint_caption(painter, box, f"{image.name} (Đang ẩn)")
             return
 
@@ -712,7 +687,7 @@ class FrameCanvas(QWidget):
         else:
             painter.setPen(QPen(_qcolor(theme.WARNING, 180), 1.4, Qt.PenStyle.DashLine))
             painter.setBrush(QColor(0, 0, 0, 70))
-            painter.drawRoundedRect(box, 4, 4)
+            painter.drawRect(box)
             self._paint_caption(painter, box, "Thiếu file ảnh")
         painter.restore()
 
@@ -725,7 +700,7 @@ class FrameCanvas(QWidget):
             if self._selected_kind == "subtitle":
                 painter.setPen(QPen(_qcolor(theme.TEXT_MUTED, 120), 1.0, Qt.PenStyle.DotLine))
                 painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.drawRoundedRect(box, 6, 6)
+                painter.drawRect(box)
                 self._paint_caption(painter, box, "Phụ đề (Đang ẩn)")
             return
 
@@ -733,7 +708,7 @@ class FrameCanvas(QWidget):
         painter.setClipRect(box)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(0, 0, 0, 150))
-        painter.drawRoundedRect(box, 6, 6)
+        painter.drawRect(box)
         painter.setFont(self._subtitle_font())
         painter.setPen(QColor("#FFFFFF"))
         inner_box = box.adjusted(8, 4, -8, -4)
@@ -745,7 +720,7 @@ class FrameCanvas(QWidget):
             pen = QPen(_qcolor(theme.ACCENT, 110), 1.0, Qt.PenStyle.DashLine)
             painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(box, 6, 6)
+            painter.drawRect(box)
 
     def _paint_active_selection(self, painter: QPainter) -> None:
         kind, index = self.selection()
@@ -778,16 +753,16 @@ class FrameCanvas(QWidget):
         pulse = 0.60 + 0.40 * abs(math.sin(self._phase * 0.8))
         glow = QColor(theme.ACCENT)
         glow.setAlpha(int(70 * pulse))
-        painter.setPen(QPen(glow, 5))
+        painter.setPen(QPen(glow, 4))
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(box, 6, 6)
+        painter.drawRect(box)
         painter.setPen(QPen(_qcolor(theme.ACCENT), 1.6))
-        painter.drawRoundedRect(box, 6, 6)
+        painter.drawRect(box)
 
         handle = self._resize_handle()
         painter.setPen(QPen(_qcolor(theme.PRIMARY_TEXT), 1.0))
         painter.setBrush(QColor(theme.ACCENT))
-        painter.drawRoundedRect(handle, 2.5, 2.5)
+        painter.drawRect(handle)
         self._paint_caption(painter, box, label)
 
     def _paint_caption(self, painter: QPainter, box: QRectF, text: str) -> None:
@@ -796,25 +771,18 @@ class FrameCanvas(QWidget):
         font.setBold(True)
         metrics = QFontMetricsF(font)
         width = metrics.horizontalAdvance(text) + 12
-        chip = QRectF(max(4.0, box.left()), max(4.0, box.top() - 18), width, 16)
+        chip = QRectF(max(0.0, box.left()), max(0.0, box.top() - 18), width, 16)
         painter.setPen(Qt.PenStyle.NoPen)
         chip_bg = QColor(theme.SURFACE)
         chip_bg.setAlpha(220)
         painter.setBrush(chip_bg)
-        painter.drawRoundedRect(chip, 3, 3)
+        painter.drawRect(chip)
         painter.setFont(font)
         painter.setPen(QColor(theme.TEXT_BODY))
         painter.drawText(chip, Qt.AlignmentFlag.AlignCenter, text)
 
     def _paint_frame_border(self, painter: QPainter, frame: QRectF) -> None:
-        gradient = QLinearGradient(frame.topLeft(), frame.bottomRight())
-        gradient.setColorAt(0.0, QColor(theme.ACCENT))
-        gradient.setColorAt(0.5, QColor(theme.BLUE))
-        gradient.setColorAt(1.0, QColor(theme.ACCENT))
-        pen = QPen(QBrush(gradient), 1.6)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(frame, 10, 10)
+        pass
 
     def _paint_badge(self, painter: QPainter, frame: QRectF) -> None:
         font = QFont(self.font())
@@ -833,7 +801,7 @@ class FrameCanvas(QWidget):
         chip = QRectF(frame.right() - width - 8, frame.top() + 8, width, 20)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(0, 0, 0, 130))
-        painter.drawRoundedRect(chip, 5, 5)
+        painter.drawRect(chip)
         painter.setPen(QColor("#FFFFFF"))
         painter.drawText(chip, Qt.AlignmentFlag.AlignCenter, text)
 
