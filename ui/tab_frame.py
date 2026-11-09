@@ -22,6 +22,7 @@ from PySide6.QtGui import (
     QFont,
     QFontMetricsF,
     QIcon,
+    QKeyEvent,
     QKeySequence,
     QLinearGradient,
     QMouseEvent,
@@ -47,6 +48,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -99,6 +101,7 @@ class FrameCanvas(QWidget):
 
     layout_changed = Signal()
     selection_changed = Signal(str, int)
+    layer_structure_changed = Signal()
     edit_committed = Signal()
     phase_changed = Signal(float)
 
@@ -189,6 +192,7 @@ class FrameCanvas(QWidget):
                 new_layers.append((k, idx))
         self._layout.set_ordered_layers(new_layers)
         self.set_selection("", -1)
+        self.layer_structure_changed.emit()
         self.layout_changed.emit()
         self.edit_committed.emit()
         self.update()
@@ -219,6 +223,7 @@ class FrameCanvas(QWidget):
         new_layers = [("image", insert_at)] + [layer for layer in old_layers if layer != ("image", insert_at)]
         self._layout.set_ordered_layers(new_layers)
         self.set_selection("image", insert_at)
+        self.layer_structure_changed.emit()
         self.layout_changed.emit()
         self.edit_committed.emit()
         self.update()
@@ -228,24 +233,28 @@ class FrameCanvas(QWidget):
         if self._selected_kind == "image" and 0 <= self._selected_index < len(self._layout.images):
             img = self._layout.images[self._selected_index]
             img.visible = not getattr(img, "visible", True)
+            self.layer_structure_changed.emit()
             self.layout_changed.emit()
             self.edit_committed.emit()
             self.update()
             return True
         elif self._selected_kind == "wave":
             self._layout.waveform = not self._layout.waveform
+            self.layer_structure_changed.emit()
             self.layout_changed.emit()
             self.edit_committed.emit()
             self.update()
             return True
         elif self._selected_kind == "subtitle":
             self._layout.subtitle_visible = not getattr(self._layout, "subtitle_visible", True)
+            self.layer_structure_changed.emit()
             self.layout_changed.emit()
             self.edit_committed.emit()
             self.update()
             return True
         elif self._selected_kind == "video":
             self._layout.video_visible = not getattr(self._layout, "video_visible", True)
+            self.layer_structure_changed.emit()
             self.layout_changed.emit()
             self.edit_committed.emit()
             self.update()
@@ -256,12 +265,14 @@ class FrameCanvas(QWidget):
         if self._selected_kind == "image" and 0 <= self._selected_index < len(self._layout.images):
             img = self._layout.images[self._selected_index]
             img.locked = not getattr(img, "locked", False)
+            self.layer_structure_changed.emit()
             self.layout_changed.emit()
             self.edit_committed.emit()
             self.update()
             return True
         elif self._selected_kind == "video":
             self._layout.video_locked = not getattr(self._layout, "video_locked", False)
+            self.layer_structure_changed.emit()
             self.layout_changed.emit()
             self.edit_committed.emit()
             self.update()
@@ -971,6 +982,49 @@ class FrameCanvas(QWidget):
                 return
         super().keyPressEvent(event)
 
+    def contextMenuEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        pos = event.pos()
+        kind, index = self._hit_test(pos)
+        if kind:
+            self.set_selection(kind, index)
+        cur_kind, cur_idx = self.selection()
+        if not cur_kind:
+            return
+        menu = QMenu(self)
+        if cur_kind == "image" and 0 <= cur_idx < len(self._layout.images):
+            img = self._layout.images[cur_idx]
+            act_del = menu.addAction(f"Xoá ảnh “{img.name}” (Delete)")
+            set_icon(act_del, "trash", "danger", 12)
+            act_dup = menu.addAction("Nhân bản (Duplicate)")
+            set_icon(act_dup, "copy", "accent", 12)
+            menu.addSeparator()
+            vis_text = "Hiện ảnh" if not getattr(img, "visible", True) else "Ẩn ảnh"
+            act_vis = menu.addAction(vis_text)
+            set_icon(act_vis, "eye", "muted", 12)
+            lock_text = "Mở khóa vị trí" if getattr(img, "locked", False) else "Khóa vị trí"
+            act_lock = menu.addAction(lock_text)
+            set_icon(act_lock, "lock", "muted", 12)
+            menu.addSeparator()
+            act_center = menu.addAction("Căn chính giữa")
+            set_icon(act_center, "crosshair", "accent", 12)
+            chosen = menu.exec(event.globalPos())
+            if chosen == act_del:
+                self.delete_selected()
+            elif chosen == act_dup:
+                self.duplicate_selected()
+            elif chosen == act_vis:
+                self.toggle_selected_visibility()
+            elif chosen == act_lock:
+                self.toggle_selected_lock()
+            elif chosen == act_center:
+                self.align_selected("center_both")
+        elif cur_kind in ("wave", "subtitle", "video"):
+            act_center = menu.addAction("Căn chính giữa")
+            set_icon(act_center, "crosshair", "accent", 12)
+            chosen = menu.exec(event.globalPos())
+            if chosen == act_center:
+                self.align_selected("center_both")
+
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
         if self._playing:
             self._timer.start()
@@ -1123,10 +1177,17 @@ class FrameTab(QWidget):
         undo.activated.connect(self._undo_action)
         redo = QShortcut(QKeySequence.StandardKey.Redo, self)
         redo.activated.connect(self._redo_action)
+        del_sc = QShortcut(QKeySequence(Qt.Key.Key_Delete), self)
+        del_sc.activated.connect(self._remove_image)
+        backspace_sc = QShortcut(QKeySequence(Qt.Key.Key_Backspace), self)
+        backspace_sc.activated.connect(self._remove_image)
         self._undo_shortcut = undo
         self._redo_shortcut = redo
+        self._delete_shortcut = del_sc
+        self._backspace_shortcut = backspace_sc
 
         self._canvas.layout_changed.connect(self._on_layout_changed)
+        self._canvas.layer_structure_changed.connect(lambda: self._rebuild_list())
         self._canvas.selection_changed.connect(self._on_selection)
         self._canvas.edit_committed.connect(self._commit_history)
         self._canvas.phase_changed.connect(self._on_phase)
@@ -1201,7 +1262,16 @@ class FrameTab(QWidget):
         self._history_label.setObjectName("MutedLabel")
         row.addWidget(self._history_label)
 
+        self._save_btn = QPushButton("Lưu")
+        self._save_btn.setObjectName("primaryButton")
+        self._save_btn.setFixedHeight(26)
+        set_icon(self._save_btn, "save", "white", 12)
+        self._save_btn.setToolTip("Lưu lại thiết kế khung mẫu vào video/frame của project đang chọn.")
+        self._save_btn.clicked.connect(self._manual_save_project)
+        row.addWidget(self._save_btn)
+
         self._reset_btn = QPushButton("Đặt lại")
+        self._reset_btn.setFixedHeight(26)
         set_icon(self._reset_btn, "refresh", "muted", 12)
         self._reset_btn.setToolTip("Khôi phục toàn bộ khung mẫu về mặc định.")
         self._reset_btn.clicked.connect(self._reset)
@@ -1283,6 +1353,15 @@ class FrameTab(QWidget):
         self._image_list.setTextElideMode(Qt.TextElideMode.ElideRight)
         self._image_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._image_list.currentRowChanged.connect(self._on_list_row)
+        orig_list_key = self._image_list.keyPressEvent
+        def _list_key_press(event: QKeyEvent) -> None:
+            if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+                self._remove_image()
+                return
+            orig_list_key(event)
+        self._image_list.keyPressEvent = _list_key_press
+        self._image_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._image_list.customContextMenuRequested.connect(self._on_layer_list_context_menu)
         l_box.addWidget(self._image_list, 1)
 
         bg_group = QGroupBox("Nền xem trước")
@@ -1617,6 +1696,13 @@ class FrameTab(QWidget):
         flip_row.addWidget(self._flip_v_btn)
         t_layout.addLayout(flip_row)
 
+        self._del_img_btn = QPushButton("Xoá ảnh này khỏi khung")
+        self._del_img_btn.setObjectName("smallButton")
+        self._del_img_btn.setFixedHeight(26)
+        set_icon(self._del_img_btn, "trash", "danger", 12)
+        self._del_img_btn.clicked.connect(self._remove_image)
+        t_layout.addWidget(self._del_img_btn)
+
         vbox.addWidget(trans_box)
 
         # Group 2: Opacity
@@ -1814,6 +1900,30 @@ class FrameTab(QWidget):
             self._status.setText(f"Đã lưu khung vào video/frame ({proj_name}).")
         except Exception as exc:
             logger.warning("Không thể lưu khung mẫu vào project: %s", exc)
+
+    def _manual_save_project(self) -> None:
+        if not self._manager:
+            if self._settings is not None:
+                self._settings["frame"] = self._layout.to_dict()
+            paint_status(self._status, "warning")
+            self._status.setText("Chưa chọn project. Khung đã được lưu vào cấu hình tạm.")
+            return
+        try:
+            self._save_to_current_project()
+            proj_name = getattr(self._manager, "project_dir", Path(".")).name
+            paint_status(self._status, "success")
+            self._status.setText(f"✓ Đã lưu thành công khung mẫu vào video/frame ({proj_name}).")
+            self._save_btn.setText("Đã lưu ✓")
+            set_icon(self._save_btn, "check", "white", 12)
+            QTimer.singleShot(1500, self._restore_save_btn)
+        except Exception as exc:
+            logger.warning("Không thể lưu khung mẫu vào project: %s", exc)
+            paint_status(self._status, "danger")
+            self._status.setText(f"Lỗi khi lưu khung mẫu: {exc}")
+
+    def _restore_save_btn(self) -> None:
+        self._save_btn.setText("Lưu")
+        set_icon(self._save_btn, "save", "white", 12)
 
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
@@ -2050,6 +2160,8 @@ class FrameTab(QWidget):
         cur_pos = layers.index(cur_pair) if cur_pair in layers else -1
 
         self._remove_button.setEnabled(valid_img)
+        self._del_img_btn.setEnabled(valid_img)
+        self._del_img_btn.setVisible(valid_img)
         self._dup_button.setEnabled(valid_img)
         self._eye_button.setEnabled(valid_img or kind in ("wave", "subtitle", "video"))
         self._lock_button.setEnabled(valid_img or kind == "video")
@@ -2278,6 +2390,8 @@ class FrameTab(QWidget):
 
     def _on_layout_changed(self) -> None:
         self._layout.enabled = True
+        if self._image_list.count() != len(self._layout.ordered_layers()):
+            self._rebuild_list()
         self._update_inspector()
 
     # ── playback ────────────────────────────────────────────────────────────
@@ -2668,9 +2782,48 @@ class FrameTab(QWidget):
         self._commit_history()
 
     def _remove_image(self) -> None:
+        focused = self.focusWidget()
+        if isinstance(focused, (QLineEdit, QSpinBox)):
+            return
         if self._canvas.delete_selected():
             self._rebuild_list(-1)
             self._commit_history()
+
+    def _on_layer_list_context_menu(self, point) -> None:
+        item = self._image_list.itemAt(point)
+        if item is None:
+            return
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if not (isinstance(data, tuple) and len(data) == 2):
+            return
+        kind, idx = data
+        self._canvas.set_selection(kind, idx)
+        menu = QMenu(self)
+        if kind == "image":
+            act_del = menu.addAction("Xoá lớp ảnh này (Delete)")
+            set_icon(act_del, "trash", "danger", 12)
+            act_dup = menu.addAction("Nhân bản (Duplicate)")
+            set_icon(act_dup, "copy", "accent", 12)
+            menu.addSeparator()
+            act_vis = menu.addAction("Ẩn / Hiện")
+            set_icon(act_vis, "eye", "muted", 12)
+            act_lock = menu.addAction("Khóa / Mở khóa")
+            set_icon(act_lock, "lock", "muted", 12)
+            chosen = menu.exec(self._image_list.mapToGlobal(point))
+            if chosen == act_del:
+                self._remove_image()
+            elif chosen == act_dup:
+                self._duplicate_layer()
+            elif chosen == act_vis:
+                self._toggle_visibility()
+            elif chosen == act_lock:
+                self._toggle_lock()
+        elif kind in ("wave", "subtitle", "video"):
+            act_vis = menu.addAction("Ẩn / Hiện")
+            set_icon(act_vis, "eye", "muted", 12)
+            chosen = menu.exec(self._image_list.mapToGlobal(point))
+            if chosen == act_vis:
+                self._toggle_visibility()
 
     def _duplicate_layer(self) -> None:
         if self._canvas.duplicate_selected():

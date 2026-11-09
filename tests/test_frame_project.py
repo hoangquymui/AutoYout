@@ -72,3 +72,38 @@ def test_frame_auto_saved_to_project_and_images_copied(tmp_path: Path, app):
     assert new_tab._layout.enabled is True
     assert len(new_tab._layout.images) == 1
     assert Path(new_tab._layout.images[0].path).resolve() == copied_img.resolve()
+
+
+def test_frame_tab_delete_on_canvas_updates_layer_list(app):
+    tab = FrameTab()
+    tab._layout.images.append(FrameImage(path="dummy.png", x=0.1, y=0.1, width=0.2))
+    tab._rebuild_list(0)
+    assert any("dummy.png" in tab._image_list.item(r).text() for r in range(tab._image_list.count()))
+
+    # Select on canvas and delete
+    tab._canvas.set_selection("image", 0)
+    assert tab._canvas.delete_selected() is True
+
+    # Layer list must be updated immediately
+    assert not any("dummy.png" in tab._image_list.item(r).text() for r in range(tab._image_list.count()))
+
+
+def test_save_button_in_toolbar(tmp_path: Path, app):
+    proj_dir = tmp_path / "MyProject"
+    proj_dir.mkdir()
+    manager = ProjectManager(proj_dir)
+
+    tab = FrameTab()
+    assert hasattr(tab, "_save_btn")
+    assert tab._save_btn.text() == "Lưu"
+
+    tab.set_project(manager)
+    tab._layout.enabled = True
+    tab._layout.aspect_ratio = "1:1"
+    tab._save_btn.click()
+
+    frame_json = proj_dir / "video" / "frame" / "frame.json"
+    assert frame_json.is_file()
+    data = json.loads(frame_json.read_text(encoding="utf-8"))
+    assert data.get("aspect_ratio") == "1:1"
+    assert "Đã lưu thành công" in tab._status.text()
