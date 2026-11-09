@@ -241,11 +241,16 @@ QComboBox QAbstractItemView {
     outline: 0;
 }
 QComboBox QAbstractItemView::item { padding: 6px 8px; border-radius: 6px; }
-QSpinBox, QDoubleSpinBox { padding-right: 24px; }
+QSpinBox, QDoubleSpinBox {
+    padding-left: 4px;
+    padding-right: 20px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
 QSpinBox::up-button, QDoubleSpinBox::up-button {
     subcontrol-origin: border;
     subcontrol-position: top right;
-    width: 20px;
+    width: 18px;
     background: $SPIN_BG;
     border-left: 1px solid $BORDER;
     border-top-right-radius: 7px;
@@ -253,7 +258,7 @@ QSpinBox::up-button, QDoubleSpinBox::up-button {
 QSpinBox::down-button, QDoubleSpinBox::down-button {
     subcontrol-origin: border;
     subcontrol-position: bottom right;
-    width: 20px;
+    width: 18px;
     background: $SPIN_BG;
     border-left: 1px solid $BORDER;
     border-top: 1px solid $BORDER;
