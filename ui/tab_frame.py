@@ -124,7 +124,7 @@ class FrameCanvas(QWidget):
         self.show_grid = True
         self.show_safe_area = True
         self.show_center_guides = True
-        self.aspect_ratio_mode = layout.aspect_ratio or "16:9"
+        self._aspect_ratio_mode = layout.aspect_ratio or "16:9"
 
         # Magnetic snapping state
         self._snap_x = False
@@ -132,8 +132,8 @@ class FrameCanvas(QWidget):
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
-        self.setMinimumSize(280, 180)
-        policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumSize(160, 90)
+        policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         policy.setHeightForWidth(True)
         self.setSizePolicy(policy)
 
@@ -143,6 +143,19 @@ class FrameCanvas(QWidget):
         self._load_assets()
 
     # ── model binding ────────────────────────────────────────────────────────
+    @property
+    def aspect_ratio_mode(self) -> str:
+        return getattr(self, "_aspect_ratio_mode", "16:9")
+
+    @aspect_ratio_mode.setter
+    def aspect_ratio_mode(self, value: str) -> None:
+        self._aspect_ratio_mode = value or "16:9"
+        parent = self.parentWidget()
+        if parent is not None and hasattr(parent, "reposition_canvas"):
+            parent.reposition_canvas()
+        self.updateGeometry()
+        self.update()
+
     @property
     def layout(self) -> FrameLayout:
         return self._layout
@@ -300,15 +313,19 @@ class FrameCanvas(QWidget):
         return int(round(usable_w / ratio))
 
     def _frame_rect(self) -> QRectF:
-        rect = QRectF(self.rect())
-        if rect.width() <= 0 or rect.height() <= 0:
+        w = float(self.width())
+        h = float(self.height())
+        if w <= 0.0 or h <= 0.0:
             return QRectF()
         ratio = _ASPECT_RATIOS.get(self.aspect_ratio_mode, 16.0 / 9.0)
-        target_w = min(rect.width(), rect.height() * ratio)
+        target_w = min(w, h * ratio)
         target_h = target_w / ratio
+        if target_h > h:
+            target_h = h
+            target_w = target_h * ratio
         return QRectF(
-            rect.left() + (rect.width() - target_w) / 2,
-            rect.top() + (rect.height() - target_h) / 2,
+            (w - target_w) / 2.0,
+            (h - target_h) / 2.0,
             target_w,
             target_h,
         )
@@ -490,8 +507,8 @@ class FrameCanvas(QWidget):
         if frame.isEmpty():
             return
 
-        # 1. Fill entire canvas background with dark video background (no outer gray margin)
-        painter.fillRect(self.rect(), QColor("#050810"))
+        # 1. Fill exact video canvas (strictly 16:9, no excess, no deficit)
+        painter.fillRect(frame, QColor("#050810"))
 
         # 2. Draw layers.
         layers = self._layout.ordered_layers()
@@ -1068,7 +1085,53 @@ class FrameCanvas(QWidget):
         self.update()
 
     def sizeHint(self) -> QSize:  # noqa: N802 (Qt override)
-        return QSize(640, 360)
+        ratio = _ASPECT_RATIOS.get(self.aspect_ratio_mode, 16.0 / 9.0)
+        if ratio >= 1.0:
+            return QSize(640, max(1, int(round(640 / ratio))))
+        return QSize(max(1, int(round(360 * ratio))), 360)
+
+
+class CanvasContainer(QWidget):
+    """Host container that keeps the canvas strictly sized to the selected aspect ratio, centered with no excess bars."""
+
+    def __init__(self, canvas: FrameCanvas, parent=None) -> None:
+        super().__init__(parent)
+        self.canvas = canvas
+        self.canvas.setParent(self)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumSize(160, 90)
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802 (Qt override)
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802 (Qt override)
+        ratio = _ASPECT_RATIOS.get(self.canvas.aspect_ratio_mode, 16.0 / 9.0)
+        return max(1, int(round(width / ratio)))
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self.reposition_canvas()
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().showEvent(event)
+        self.reposition_canvas()
+
+    def reposition_canvas(self) -> None:
+        cw = float(self.width())
+        ch = float(self.height())
+        if cw <= 0.0 or ch <= 0.0:
+            return
+        ratio = _ASPECT_RATIOS.get(self.canvas.aspect_ratio_mode, 16.0 / 9.0)
+        target_w = min(cw, ch * ratio)
+        target_h = target_w / ratio
+        if target_h > ch:
+            target_h = ch
+            target_w = target_h * ratio
+        w = max(1, int(round(target_w)))
+        h = max(1, int(round(target_h)))
+        x = int(round((cw - w) / 2.0))
+        y = int(round((ch - h) / 2.0))
+        self.canvas.setGeometry(x, y, w, h)
 
 
 class FrameTab(QWidget):
@@ -1485,7 +1548,8 @@ class FrameTab(QWidget):
         vbox.setContentsMargins(0, 0, 0, 0)
         vbox.setSpacing(6)
 
-        vbox.addWidget(self._canvas, 1)
+        self._canvas_container = CanvasContainer(self._canvas, panel)
+        vbox.addWidget(self._canvas_container, 1)
 
         bar = QFrame()
         bar.setObjectName("PlaybackBar")
