@@ -107,3 +107,31 @@ def test_save_button_in_toolbar(tmp_path: Path, app):
     data = json.loads(frame_json.read_text(encoding="utf-8"))
     assert data.get("aspect_ratio") == "1:1"
     assert "Đã lưu thành công" in tab._status.text()
+
+
+def test_fullscreen_preview_dialog(app):
+    from ui.tab_frame import FrameTab, FullscreenPreviewDialog
+    tab = FrameTab()
+    assert hasattr(tab, "_fullscreen_btn")
+    assert hasattr(tab, "_btn_fullscreen")
+
+    dlg = FullscreenPreviewDialog(tab)
+    assert dlg.preview_canvas is not None
+    assert dlg.preview_canvas.show_grid is False
+    assert dlg.preview_canvas.show_safe_area is False
+    assert dlg.container is not None
+    assert dlg._play_btn is not None
+    assert dlg._timeline is not None
+
+    # Test toggling playback
+    dlg._toggle_playback()
+    assert dlg.preview_canvas.playing is True
+    dlg._toggle_playback()
+    assert dlg.preview_canvas.playing is False
+
+    # Test seek
+    dlg._on_timeline(500)
+    assert abs(dlg.preview_canvas._playhead - 0.5) < 0.01
+
+    dlg.close()
+

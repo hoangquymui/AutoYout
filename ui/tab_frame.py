@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFontComboBox,
     QFrame,
@@ -1020,6 +1021,13 @@ class FrameCanvas(QWidget):
         kind, _index = self._hit_test(event.position())
         if kind:
             self.set_selection(kind, _index)
+        else:
+            parent = self.parent()
+            while parent is not None:
+                if hasattr(parent, "show_fullscreen"):
+                    parent.show_fullscreen()
+                    break
+                parent = parent.parent()
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt override)
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
@@ -1158,8 +1166,164 @@ class CanvasContainer(QWidget):
         self.canvas.setGeometry(x, y, w, h)
 
 
+class FullscreenPreviewDialog(QDialog):
+    """Full-screen borderless cinema view for the frame layout canvas."""
+
+    def __init__(self, frame_tab: "FrameTab") -> None:
+        super().__init__(frame_tab, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+        self.frame_tab = frame_tab
+        self._timeline_block = False
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        self.setStyleSheet("background-color: #070a13;")
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Top overlay bar
+        top_bar = QFrame(self)
+        top_bar.setStyleSheet(
+            "background-color: rgba(10, 15, 29, 0.85); "
+            "border-bottom: 1px solid rgba(255, 255, 255, 0.08);"
+        )
+        t_row = QHBoxLayout(top_bar)
+        t_row.setContentsMargins(16, 6, 16, 6)
+        t_row.setSpacing(10)
+
+        ratio_name = {
+            "16:9": "16:9 Ngang",
+            "9:16": "9:16 Shorts/TikTok",
+            "1:1": "1:1 Vuông",
+            "4:5": "4:5 Dọc",
+        }.get(frame_tab._canvas.aspect_ratio_mode, "16:9")
+        title_lbl = QLabel(f"Toàn màn hình · {ratio_name}", top_bar)
+        title_lbl.setStyleSheet("color: #FFFFFF; font-weight: 600; font-size: 10.5pt;")
+        t_row.addWidget(title_lbl)
+
+        t_row.addStretch(1)
+
+        hint_lbl = QLabel("Phím cách: Phát/Dừng  ·  ESC / F11: Thoát", top_bar)
+        hint_lbl.setStyleSheet("color: #94a3b8; font-size: 8.5pt;")
+        t_row.addWidget(hint_lbl)
+
+        btn_close = QPushButton("✕ Đóng", top_bar)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_close.setStyleSheet(
+            "QPushButton { background: rgba(255, 255, 255, 0.1); color: #FFFFFF; border: none; "
+            "padding: 5px 14px; border-radius: 6px; font-weight: 600; font-size: 9pt; } "
+            "QPushButton:hover { background: #ef4444; }"
+        )
+        btn_close.clicked.connect(self.close)
+        t_row.addWidget(btn_close)
+        outer.addWidget(top_bar)
+
+        # Center canvas preview
+        self.preview_canvas = FrameCanvas(frame_tab._layout, self)
+        self.preview_canvas.show_grid = False
+        self.preview_canvas.show_safe_area = False
+        self.preview_canvas.show_center_guides = False
+        self.preview_canvas.sample_text = frame_tab._canvas.sample_text
+        self.preview_canvas.aspect_ratio_mode = frame_tab._canvas.aspect_ratio_mode
+        self.preview_canvas._phase = frame_tab._canvas._phase
+        self.preview_canvas._playhead = frame_tab._canvas._playhead
+        self.preview_canvas._preview = frame_tab._canvas._preview
+        self.preview_canvas._pixmaps = dict(frame_tab._canvas._pixmaps)
+        self.preview_canvas.phase_changed.connect(self._on_phase)
+
+        self.container = CanvasContainer(self.preview_canvas, self)
+        outer.addWidget(self.container, 1)
+
+        # Bottom playback controls
+        bottom_bar = QFrame(self)
+        bottom_bar.setStyleSheet(
+            "background-color: rgba(10, 15, 29, 0.85); "
+            "border-top: 1px solid rgba(255, 255, 255, 0.08);"
+        )
+        b_row = QHBoxLayout(bottom_bar)
+        b_row.setContentsMargins(16, 6, 16, 6)
+        b_row.setSpacing(10)
+
+        self._play_btn = icon_button(
+            "play", "Phát/Tạm dừng (Phím cách)", role="accent", size=14, side=32
+        )
+        self._play_btn.clicked.connect(self._toggle_playback)
+        b_row.addWidget(self._play_btn)
+
+        cur_sec = frame_tab._canvas._playhead * PREVIEW_SECONDS
+        self._time_label = QLabel(
+            f"{_format_time(cur_sec)} / {_format_time(PREVIEW_SECONDS)}", bottom_bar
+        )
+        self._time_label.setStyleSheet("color: #FFFFFF; font-family: monospace; font-size: 10pt; font-weight: 600;")
+        b_row.addWidget(self._time_label)
+
+        self._timeline = QSlider(Qt.Orientation.Horizontal, bottom_bar)
+        self._timeline.setRange(0, 1000)
+        self._timeline.setValue(int(round(frame_tab._canvas._playhead * 1000)))
+        self._timeline.valueChanged.connect(self._on_timeline)
+        b_row.addWidget(self._timeline, 1)
+
+        dur_lbl = QLabel(_format_time(PREVIEW_SECONDS), bottom_bar)
+        dur_lbl.setStyleSheet("color: #94a3b8; font-family: monospace; font-size: 10pt;")
+        b_row.addWidget(dur_lbl)
+
+        exit_btn = icon_button("minimize", "Thoát toàn màn hình (ESC / F11)", size=14, side=32)
+        exit_btn.clicked.connect(self.close)
+        b_row.addWidget(exit_btn)
+
+        outer.addWidget(bottom_bar)
+
+        if frame_tab._canvas.playing:
+            self._toggle_playback()
+
+    def _toggle_playback(self) -> None:
+        playing = not self.preview_canvas.playing
+        self.preview_canvas.set_playing(playing)
+        set_icon(self._play_btn, "pause" if playing else "play", "accent", 14)
+
+    def _on_timeline(self, value: int) -> None:
+        if self._timeline_block:
+            return
+        self.preview_canvas.set_playhead(value / 1000.0)
+
+    def _on_phase(self, fraction: float) -> None:
+        self._timeline_block = True
+        self._timeline.setValue(int(round(fraction * 1000)))
+        self._timeline_block = False
+        seconds = fraction * PREVIEW_SECONDS
+        self._time_label.setText(f"{_format_time(seconds)} / {_format_time(PREVIEW_SECONDS)}")
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_F11):
+            self.close()
+            return
+        if event.key() == Qt.Key.Key_Space:
+            self._toggle_playback()
+            return
+        if event.key() == Qt.Key.Key_Left:
+            new_val = max(0, self._timeline.value() - int(1000 / PREVIEW_SECONDS))
+            self._timeline.setValue(new_val)
+            return
+        if event.key() == Qt.Key.Key_Right:
+            new_val = min(1000, self._timeline.value() + int(1000 / PREVIEW_SECONDS))
+            self._timeline.setValue(new_val)
+            return
+        super().keyPressEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+        self.close()
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self.frame_tab._timeline.setValue(self._timeline.value())
+        self.frame_tab._canvas.set_playhead(self.preview_canvas._playhead)
+        super().closeEvent(event)
+
+
 class FrameTab(QWidget):
     """Professional creative studio editor: 3 columns, compact padding, undo/redo."""
+
+    @property
+    def canvas(self) -> FrameCanvas:
+        return self._canvas
 
     _PRESETS = (
         {
@@ -1276,6 +1440,9 @@ class FrameTab(QWidget):
         self._redo_shortcut = redo
         self._delete_shortcut = del_sc
         self._backspace_shortcut = backspace_sc
+        fs_sc = QShortcut(QKeySequence(Qt.Key.Key_F11), self)
+        fs_sc.activated.connect(self.show_fullscreen)
+        self._fullscreen_shortcut = fs_sc
 
         self._canvas.layout_changed.connect(self._on_layout_changed)
         self._canvas.layer_structure_changed.connect(lambda: self._rebuild_list())
@@ -1346,6 +1513,10 @@ class FrameTab(QWidget):
         self._btn_center.setChecked(True)
         self._btn_center.clicked.connect(self._toggle_center_guides)
         row.addWidget(self._btn_center)
+
+        self._btn_fullscreen = icon_button("maximize", "Xem toàn màn hình (F11)", size=13, side=28)
+        self._btn_fullscreen.clicked.connect(self.show_fullscreen)
+        row.addWidget(self._btn_fullscreen)
 
         self._update_view_btn_styles()
 
@@ -1611,6 +1782,12 @@ class FrameTab(QWidget):
         self._duration_label = QLabel(_format_time(PREVIEW_SECONDS))
         self._duration_label.setObjectName("MutedLabel")
         row.addWidget(self._duration_label)
+
+        self._fullscreen_btn = icon_button(
+            "maximize", "Xem toàn màn hình (F11)", size=13, side=28
+        )
+        self._fullscreen_btn.clicked.connect(self.show_fullscreen)
+        row.addWidget(self._fullscreen_btn)
 
         vbox.addWidget(bar)
         return panel
@@ -2498,6 +2675,10 @@ class FrameTab(QWidget):
         self._update_inspector()
 
     # ── playback ────────────────────────────────────────────────────────────
+    def show_fullscreen(self) -> None:
+        dlg = FullscreenPreviewDialog(self)
+        dlg.showFullScreen()
+
     def _toggle_playback(self) -> None:
         playing = not self._canvas.playing
         self._canvas.set_playing(playing)
