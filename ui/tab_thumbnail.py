@@ -1,6 +1,8 @@
 """Thumbnail sub-tab: title hooks, AI background, template render and save."""
 from __future__ import annotations
 
+import os
+import re
 import tempfile
 import threading
 from pathlib import Path
@@ -12,6 +14,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGridLayout,
     QGroupBox,
@@ -366,6 +369,10 @@ class ThumbnailPanel(QWidget):
         self.image_btn.setObjectName("primaryButton")
         set_icon(self.image_btn, "image", "white", 14)
         self.image_btn.clicked.connect(self._generate_background)
+        self.pick_image_btn = QPushButton("Chọn ảnh từ máy…")
+        set_icon(self.pick_image_btn, "folder-open", "muted", 13)
+        self.pick_image_btn.setToolTip("Chọn tệp ảnh có sẵn trên máy làm ảnh nền thumbnail.")
+        self.pick_image_btn.clicked.connect(self._pick_custom_background)
         self.image_cancel_btn = QPushButton("Huỷ")
         set_icon(self.image_cancel_btn, "x", "muted", 13)
         self.image_cancel_btn.setEnabled(False)
@@ -374,6 +381,7 @@ class ThumbnailPanel(QWidget):
         self.image_status.setObjectName("MutedLabel")
         self.image_status.setWordWrap(True)
         row.addWidget(self.image_btn)
+        row.addWidget(self.pick_image_btn)
         row.addWidget(self.image_cancel_btn)
         row.addWidget(self.image_status, 1)
         layout.addLayout(row)
@@ -776,6 +784,38 @@ class ThumbnailPanel(QWidget):
         if provider == "imagen":
             paint_status(self.image_status, "muted")
             self.image_status.setText("Sử dụng API key Gemini từ tab Cài đặt.")
+        elif provider == "pollinations":
+            paint_status(self.image_status, "muted")
+            self.image_status.setText("Tạo ảnh miễn phí qua Pollinations AI (không cần API key).")
+        elif provider == "frame":
+            paint_status(self.image_status, "muted")
+            self.image_status.setText("Trích xuất khung hình từ video đã render.")
+
+    def _pick_custom_background(self) -> None:
+        start_dir = ""
+        if self._manager is not None:
+            assets = getattr(self._manager, "assets_dir", None)
+            proj = getattr(self._manager, "project_dir", None)
+            if assets and Path(assets).is_dir():
+                start_dir = str(assets)
+            elif proj and Path(proj).is_dir():
+                start_dir = str(proj)
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Chọn ảnh nền thumbnail",
+            start_dir,
+            "Hình ảnh (*.png *.jpg *.jpeg *.webp *.bmp);;Tất cả tệp (*.*)",
+        )
+        if not file_path:
+            return
+        p = Path(file_path)
+        if not p.is_file():
+            return
+        self._bg_path = p
+        paint_status(self.image_status, "success")
+        self.image_status.setText(f"Ảnh nền: {p.name}")
+        self._set_status(f"Đã chọn ảnh nền: {p.name}", "success")
+        self._schedule_preview()
 
     def _generate_background(self) -> None:
         if self._image_worker is not None:
@@ -963,7 +1003,7 @@ class ThumbnailPanel(QWidget):
             self._set_status("Hãy chọn file trước.", "warning")
             return
         if self._bg_path is None or not self._bg_path.is_file():
-            self._set_status("Hãy tạo ảnh nền trước khi lưu.", "warning")
+            self._set_status("Hãy tạo hoặc chọn ảnh nền trước khi lưu.", "warning")
             return
         title = self.title_edit.toPlainText().strip()
         if not title:
@@ -975,6 +1015,7 @@ class ThumbnailPanel(QWidget):
         if not selected_langs:
             selected_langs = [current_lang]
 
+        root_stem = re.sub(r"_[a-zA-Z]{2,5}$", "", self._base)
         saved_targets: List[Path] = []
         all_items = self._manager.get_items()
         try:
@@ -986,13 +1027,25 @@ class ThumbnailPanel(QWidget):
                     else Path(self._manager.thumbs_dir) / lang_norm
                 )
                 thumbs_lang_dir.mkdir(parents=True, exist_ok=True)
-                # Find matching items for this language, or fall back to current_item
+                # Find matching items scoped to this video's root stem
                 lang_items = [
                     it for it in all_items
                     if normalize_language_code(getattr(it, "language", "") or "") == lang_norm
+                    and (it.base == self._base or re.sub(r"_[a-zA-Z]{2,5}$", "", it.base) == root_stem)
                 ]
-                if not lang_items and current_item is not None:
-                    lang_items = [current_item]
+                if not lang_items:
+                    if current_item is not None and lang_norm == current_lang:
+                        lang_items = [current_item]
+                    else:
+                        # Direct thumbnail render when no specific language item exists
+                        target_name = f"{root_stem}_{lang_norm}.jpg" if root_stem else f"{self._base}_{lang_norm}.jpg"
+                        target = thumbs_lang_dir / target_name
+                        render_thumbnail(
+                            self._bg_path, title, self._highlights, self._current_template_id(),
+                            self._palette(), target, font_size=int(self.font_spin.value()))
+                        saved_targets.append(target)
+                        continue
+
                 for it in lang_items:
                     item_title = (
                         title
@@ -1029,7 +1082,9 @@ class ThumbnailPanel(QWidget):
         if self._preview_file is not None and Path(self._preview_file).is_file():
             open_in_explorer(Path(self._preview_file))
             return
-        open_in_explorer(Path(self._manager.thumbs_dir))
+        thumbs_dir = Path(self._manager.thumbs_dir)
+        thumbs_dir.mkdir(parents=True, exist_ok=True)
+        open_in_explorer(thumbs_dir)
 
     # ── helpers ──────────────────────────────────────────────────────────────
     def _api_key(self) -> str:
@@ -1053,6 +1108,8 @@ class ThumbnailPanel(QWidget):
         busy = self._image_worker is not None or self._title_worker is not None
         has_item = bool(self._base)
         self.image_btn.setEnabled(not busy and has_item)
+        if hasattr(self, "pick_image_btn"):
+            self.pick_image_btn.setEnabled(not busy and has_item)
         self.suggest_btn.setEnabled(not busy and has_item)
         self.save_btn.setEnabled(has_item)
 
