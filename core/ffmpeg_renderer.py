@@ -34,6 +34,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
+try:
+    from PIL import ImageFont
+except ImportError:
+    ImageFont = None
+
 from core.ai_images import (
     AIImageCancelled,
     AIImageError,
@@ -1354,6 +1359,78 @@ class FFmpegRenderer:
         secs = seconds % 60
         return f"{hours}:{minutes:02d}:{secs:05.2f}"
 
+    @staticmethod
+    def _load_font_for_measure(font_name: str, font_size: int):
+        if not ImageFont:
+            return None
+        candidates = [font_name, f"{font_name}.ttf", f"{font_name.lower()}.ttf", "arial.ttf", "Arial.ttf"]
+        for c in candidates:
+            try:
+                return ImageFont.truetype(c, max(8, int(font_size)))
+            except Exception:
+                continue
+        return None
+
+    @classmethod
+    def _estimate_subtitle_height(cls, text: str, font_name: str, font_size: int,
+                                 avail_w: int, pil_font=None) -> int:
+        if not text or avail_w <= 0:
+            return font_size
+        raw_lines = text.replace("\\N", "\n").replace("\\n", "\n").splitlines()
+        if not raw_lines:
+            return font_size
+
+        font = pil_font if pil_font is not None else cls._load_font_for_measure(font_name, font_size)
+        total_lines = 0
+        if font is not None:
+            try:
+                space_w = font.getlength(" ")
+            except Exception:
+                space_w = font_size * 0.25
+            for rline in raw_lines:
+                words = rline.split()
+                if not words:
+                    total_lines += 1
+                    continue
+                cur_w = 0.0
+                cur_lines = 1
+                for w in words:
+                    try:
+                        wl = font.getlength(w)
+                    except Exception:
+                        wl = len(w) * font_size * 0.52
+                    if cur_w == 0.0:
+                        cur_w = wl
+                    elif cur_w + space_w + wl <= avail_w:
+                        cur_w += space_w + wl
+                    else:
+                        cur_lines += 1
+                        cur_w = wl
+                total_lines += cur_lines
+        else:
+            avg_char_w = max(1.0, font_size * 0.52)
+            chars_per_line = max(1, int(avail_w / avg_char_w))
+            for rline in raw_lines:
+                words = rline.split()
+                if not words:
+                    total_lines += 1
+                    continue
+                cur_len = 0
+                cur_lines = 1
+                for w in words:
+                    w_len = len(w)
+                    if cur_len == 0:
+                        cur_len = w_len
+                    elif cur_len + 1 + w_len <= chars_per_line:
+                        cur_len += 1 + w_len
+                    else:
+                        cur_lines += 1
+                        cur_len = w_len
+                total_lines += cur_lines
+
+        line_h = font_size
+        return max(font_size, total_lines * line_h)
+
     def _write_chapters(self, entries: List[Tuple[float, str]], total: float,
                         temp_dir: Path, cfg: VideoConfig,
                         language: str = DEFAULT_LANGUAGE) -> bool:
@@ -1500,47 +1577,103 @@ class FFmpegRenderer:
         """Write timed events as ``subs.ass``; False when there is nothing to show."""
         width, height = cfg.dimensions
         frame = cfg.frame if cfg.frame.enabled else None
-        pos_tag = ""
-        margin_l = 0
-        margin_r = 0
-        margin_v = max(40, int(round(70 * height / 1080)))
-        alignment = 2
         font_name = subtitle_font(language)
         scale = 1.0
         base_size = 44
         if frame is not None:
-            px, py = frame.subtitle_pos(width, height)
-            bx, by, bw, bh = frame.subtitle_rect(width, height)
-            pos_tag = f"\\pos({px},{py})\\clip({bx},{by},{bx + bw},{by + bh})"
-            margin_l = max(10, bx)
-            margin_r = max(10, width - (bx + bw))
-            margin_v = 0
-            alignment = 5
-            scale = frame.subtitle_scale
             if getattr(frame, "subtitle_font", None):
                 font_name = str(frame.subtitle_font).strip() or font_name
             if getattr(frame, "subtitle_font_size", None):
                 base_size = int(frame.subtitle_font_size)
+            scale = frame.subtitle_scale
+
+        font_size = max(14, int(round(base_size * scale * height / 1080)))
+
+        styles: List[str] = []
         dialogues: List[str] = []
-        for start, end, text in events:
-            if total > 0 and start >= total:
-                continue
-            end = min(end, total) if total > 0 else end
-            if end - start < 0.3:
-                continue
-            dialogues.append(
-                f"Dialogue: 0,{self._ass_time(start)},{self._ass_time(end)},"
-                f"Sub,,{margin_l},{margin_r},0,,{{\\fad(120,180){pos_tag}}}{self._ass_text(text)}"
+
+        if frame is not None:
+            bx, by, bw, bh = frame.subtitle_rect(width, height)
+            px, _ = frame.subtitle_pos(width, height)
+            pad_x = max(12, int(round(bw * 0.02)))
+            pad_y = max(8, int(round(font_size * 0.25)))
+            margin_l = max(10, bx + pad_x)
+            margin_r = max(10, width - (bx + bw) + pad_x)
+            avail_w = max(20, width - margin_l - margin_r)
+            alignment = 8  # Top-Center: text flows downwards from first word
+
+            # Pre-load font for measuring text wrapping heights
+            pil_font = self._load_font_for_measure(font_name, font_size)
+
+            for start, end, text in events:
+                if total > 0 and start >= total:
+                    continue
+                end = min(end, total) if total > 0 else end
+                if end - start < 0.3:
+                    continue
+
+                clean_text = self._ass_text(text)
+                req_text_h = self._estimate_subtitle_height(
+                    clean_text, font_name, font_size, avail_w, pil_font=pil_font
+                )
+                req_total_h = req_text_h + pad_y * 2
+                if req_total_h > bh:
+                    max_h = max(bh, height - by - 10)
+                    cur_bh = min(max_h, req_total_h)
+                    text_top = by + pad_y
+                else:
+                    cur_bh = bh
+                    text_top = by + (bh - req_text_h) // 2
+
+                t_start = self._ass_time(start)
+                t_end = self._ass_time(end)
+
+                # Layer 0: Semi-transparent background box matching preview QColor(0, 0, 0, 150)
+                box_shape = f"m 0 0 l {bw} 0 l {bw} {cur_bh} l 0 {cur_bh}"
+                dialogues.append(
+                    f"Dialogue: 0,{t_start},{t_end},Box,,0,0,0,,"
+                    f"{{\\fad(120,180)\\pos({bx},{by})\\p1\\1c&H000000&\\1a&H6A&\\bord0\\shad0}}{box_shape}{{\\p0}}"
+                )
+
+                # Layer 1: Subtitle text with clip to box (top-aligned, clips bottom if ever overflow)
+                pos_clip = f"\\pos({px},{text_top})\\clip({bx},{by},{bx + bw},{by + cur_bh})"
+                dialogues.append(
+                    f"Dialogue: 1,{t_start},{t_end},Sub,,{margin_l},{margin_r},0,,"
+                    f"{{\\fad(120,180){pos_clip}}}{clean_text}"
+                )
+
+            styles.append(
+                "Style: Box,Arial,44,&H00000000,&H000000FF,&H00000000,"
+                "&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1"
             )
+            styles.append(
+                f"Style: Sub,{font_name},{font_size},"
+                f"&H00FFFFFF,&H000000FF,&H00000000,"
+                f"&H96000000,0,0,0,0,100,100,0,0,1,{max(2, font_size // 14)},1,"
+                f"{alignment},20,20,0,1"
+            )
+        else:
+            margin_v = max(40, int(round(70 * height / 1080)))
+            alignment = 2
+            for start, end, text in events:
+                if total > 0 and start >= total:
+                    continue
+                end = min(end, total) if total > 0 else end
+                if end - start < 0.3:
+                    continue
+                dialogues.append(
+                    f"Dialogue: 0,{self._ass_time(start)},{self._ass_time(end)},"
+                    f"Sub,,0,0,0,,{{\\fad(120,180)}}{self._ass_text(text)}"
+                )
+            styles.append(
+                f"Style: Sub,{font_name},{font_size},"
+                f"&H00FFFFFF,&H000000FF,&H00000000,"
+                f"&H96000000,0,0,0,0,100,100,0,0,1,{max(2, font_size // 14)},1,"
+                f"{alignment},20,20,{margin_v},1"
+            )
+
         if not dialogues:
             return False
-        font_size = max(14, int(round(base_size * scale * height / 1080)))
-        style = (
-            f"Style: Sub,{font_name},{font_size},"
-            f"&H00FFFFFF,&H000000FF,&H00000000,"
-            f"&H96000000,0,0,0,0,100,100,0,0,1,{max(2, font_size // 14)},1,"
-            f"{alignment},20,20,{margin_v},1"
-        )
         lines = [
             "[Script Info]",
             "ScriptType: v4.00+",
@@ -1554,7 +1687,7 @@ class FFmpegRenderer:
             "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, "
             "ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
             "MarginL, MarginR, MarginV, Encoding",
-            style,
+            *styles,
             "",
             "[Events]",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "

@@ -721,23 +721,47 @@ class FrameCanvas(QWidget):
                 self._paint_caption(painter, box, "Phụ đề (Đang ẩn)")
             return
 
+        font = self._subtitle_font()
+        painter.setFont(font)
+        fm = painter.fontMetrics()
+        inner_w = max(10, int(box.width() - 16))
+        text_rect = fm.boundingRect(
+            0, 0, inner_w, 10000,
+            int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap),
+            text,
+        )
+        req_h = float(text_rect.height() + 8)
+        if req_h > box.height():
+            max_bottom = float(self._rect.bottom() - 4)
+            draw_h = min(max_bottom - box.top(), max(box.height(), req_h))
+            draw_box = QRectF(box.left(), box.top(), box.width(), draw_h)
+            is_overflow = True
+        else:
+            draw_box = box
+            is_overflow = False
+
         painter.save()
-        painter.setClipRect(box)
+        painter.setClipRect(draw_box)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(0, 0, 0, 150))
-        painter.drawRect(box)
-        painter.setFont(self._subtitle_font())
+        painter.drawRect(draw_box)
+        painter.setFont(font)
         painter.setPen(QColor("#FFFFFF"))
-        inner_box = box.adjusted(8, 4, -8, -4)
-        painter.drawText(inner_box, Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, text)
+        inner_box = draw_box.adjusted(8, 4, -8, -4)
+        align_flag = (
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap
+            if is_overflow
+            else Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap
+        )
+        painter.drawText(inner_box, align_flag, text)
         painter.restore()
 
         if self._selected_kind != "subtitle":
-            self._paint_caption(painter, box, "Phụ đề")
+            self._paint_caption(painter, draw_box, "Phụ đề")
             pen = QPen(_qcolor(theme.ACCENT, 110), 1.0, Qt.PenStyle.DashLine)
             painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRect(box)
+            painter.drawRect(draw_box)
 
     def _paint_active_selection(self, painter: QPainter) -> None:
         kind, index = self.selection()

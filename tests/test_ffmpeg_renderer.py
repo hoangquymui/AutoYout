@@ -1,6 +1,7 @@
 """Renderer job planning and a real short encode."""
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -433,9 +434,12 @@ def test_write_ass_uses_frame_position(tmp_path: Path) -> None:
     renderer = _renderer()
     assert renderer._write_ass([(0.5, 2.0, "Xin chào")], 3.0, tmp_path, cfg)
     ass = (tmp_path / "subs.ass").read_text(encoding="utf-8")
-    assert "\\pos(160,270)" in ass
+    assert "\\pos(160," in ass
+    assert "Style: Box," in ass
+    assert "Box,,0,0,0,," in ass
+    assert "\\p1\\1c&H000000&\\1a&H6A&" in ass
     style = next(line for line in ass.splitlines() if line.startswith("Style: Sub,"))
-    assert style.endswith(",5,20,20,0,1")
+    assert style.endswith(",8,20,20,0,1")
 
 
 def test_build_filter_places_frame_waveform_and_overlay(tmp_path: Path) -> None:
@@ -602,7 +606,40 @@ def test_write_ass_uses_frame_custom_font_size_and_clip(tmp_path: Path) -> None:
     renderer = _renderer()
     assert renderer._write_ass([(1.0, 3.0, "Thử nghiệm phụ đề")], 5.0, tmp_path, cfg)
     ass = (tmp_path / "subs.ass").read_text(encoding="utf-8")
-    assert "\\pos(960,918)" in ass
+    assert "\\pos(960," in ass
     assert "\\clip(384,864,1536,972)" in ass
+    assert "Style: Box," in ass
+    assert "\\p1\\1c&H000000&\\1a&H6A&" in ass
     style = next(line for line in ass.splitlines() if line.startswith("Style: Sub,"))
     assert "Style: Sub,Roboto,50," in style
+
+
+def test_write_ass_auto_expands_box_for_overflow_text(tmp_path: Path) -> None:
+    cfg = _config(tmp_path, resolution="1920x1080")
+    cfg.frame = FrameLayout(
+        enabled=True,
+        subtitle_x=0.5,
+        subtitle_y=0.85,
+        subtitle_w=0.6,
+        subtitle_h=0.08,
+        subtitle_font="Arial",
+        subtitle_font_size=44,
+        subtitle_scale=1.0,
+    )
+    long_text = (
+        "dựa vào việc đứa nào giỏi dịch bài và giỏi cãi hơn thì đứa đó thắng. "
+        "Mua bài chính hãng thì giá trên trời nên học sinh thời đó chủ yếu mua sấp bài lậu "
+        "từ Trung Quốc, loại này bán đầy ở cổng trường với giá rẻ, chỉ từ 5.000 đồng là có"
+    )
+    renderer = _renderer()
+    assert renderer._write_ass([(1.0, 5.0, long_text)], 6.0, tmp_path, cfg)
+    ass = (tmp_path / "subs.ass").read_text(encoding="utf-8")
+    # Sub box height should expand downwards beyond the default 86px
+    box_line = next(line for line in ass.splitlines() if "Box,,0,0,0,," in line)
+    m = re.search(r"m 0 0 l 1152 0 l 1152 (\d+) l 0 \1", box_line)
+    assert m is not None
+    cur_bh = int(m.group(1))
+    assert cur_bh > 86, f"Expected box height > 86, got {cur_bh}"
+    # Subtitle clip should use the expanded box height so text is not sliced
+    assert f"\\clip(384,875,1536,{875 + cur_bh})" in ass or f"\\clip(384,874,1536,{874 + cur_bh})" in ass
+
