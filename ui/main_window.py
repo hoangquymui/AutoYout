@@ -48,6 +48,7 @@ from ui.components.icons import (
 )
 from ui.components.page import icon_button, refresh_statuses
 from ui.components.status_badge import StatusBadge
+from ui.components.toast import ToastManager
 from ui.styles import app_stylesheet
 from ui.tab_automation import AutomationTab
 from ui.tab_project import ProjectTab
@@ -231,6 +232,9 @@ class MainWindow(QMainWindow):
         self.resize(1400, 920)
 
         self.console_window = ConsoleWindow(self)
+        self.toast_manager = ToastManager(self)
+        self._tray_icon = None
+        self._init_system_tray()
         self._build_ui()
         self._apply_theme(theme.current_mode())
         self._apply_responsive_layout()
@@ -242,6 +246,8 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
         super().resizeEvent(event)
         self._apply_responsive_layout()
+        if hasattr(self, "toast_manager"):
+            self.toast_manager.reposition()
 
     def _apply_responsive_layout(self) -> None:
         if not hasattr(self, "badge_tts"):
@@ -788,17 +794,23 @@ class MainWindow(QMainWindow):
         if self.worker is not None:
             return
         if self._preview_busy or self._auth_busy:
-            self._set_status("Đang chạy tác vụ khác, hãy đợi hoặc huỷ trước.", error=True)
+            msg = "Đang chạy tác vụ khác, hãy đợi hoặc huỷ trước."
+            self._set_status(msg, error=True)
+            self.notify_warning("Chưa thể chạy tác vụ", msg)
             return
         if self.manager is None:
+            msg = "Vui lòng chọn thư mục Project trước khi tạo video."
             self._set_status("Chưa chọn project.", error=True)
+            self.notify_error("Chưa chọn Project", msg)
             return
         has_yt = bool(
             self.settings.get("automation", {}).get("youtube_url")
             or self.settings.get("script", {}).get("youtube_url")
         )
         if not self.manager.get_items() and not (mode in ("all", "script") and has_yt):
-            self._set_status("Project không có file .txt/.json nào và chưa nhập link YouTube.", error=True)
+            msg = "Project không có file .txt/.json nào và chưa nhập link YouTube."
+            self._set_status(msg, error=True)
+            self.notify_error("Project trống", msg)
             return
         self._collect_all()
         has_yt = bool(
@@ -824,7 +836,9 @@ class MainWindow(QMainWindow):
                     return
                 only = confirmed_ids
             else:
-                self._set_status("Chưa có video nào sẵn sàng để đăng tải.", error=True)
+                msg = "Chưa có video nào sẵn sàng để đăng tải."
+                self._set_status(msg, error=True)
+                self.notify_warning("Chưa có video", msg)
                 return
 
         snapshot = copy.deepcopy(self.settings)
@@ -994,7 +1008,9 @@ class MainWindow(QMainWindow):
 
     def _on_youtube_upload_requested(self, video_ids: list[str]) -> None:
         if not video_ids:
-            self._set_status("Chưa chọn video nào để đăng tải.", error=True)
+            msg = "Chưa chọn video nào để đăng tải."
+            self._set_status(msg, error=True)
+            self.notify_warning("Chưa chọn video", msg)
             return
         self._start_pipeline("upload", only=video_ids)
 
@@ -1015,6 +1031,11 @@ class MainWindow(QMainWindow):
         self.automation_tab.set_task(100)
         if success:
             self.automation_tab.set_overall(100)
+        else:
+            is_cancelled = "Đã dừng pipeline" in message or "theo yêu cầu" in message
+            if not is_cancelled:
+                title, detail = self._parse_error_notification(message)
+                self.notify_error(title, detail)
         self.project_tab.refresh()
 
     def _on_worker_finished(self) -> None:
@@ -1060,6 +1081,82 @@ class MainWindow(QMainWindow):
         self.project_tab.refresh()
 
     # ── helpers ──────────────────────────────────────────────────────────────
+    def _init_system_tray(self) -> None:
+        try:
+            from PySide6.QtWidgets import QSystemTrayIcon
+            if QSystemTrayIcon.isSystemTrayAvailable():
+                self._tray_icon = QSystemTrayIcon(brand_icon(), self)
+                self._tray_icon.setToolTip("AutoYout")
+                self._tray_icon.show()
+            else:
+                self._tray_icon = None
+        except Exception as exc:
+            logger.debug("Khởi tạo system tray không khả dụng: %s", exc)
+            self._tray_icon = None
+
+    def notify_error(
+        self,
+        title: str,
+        message: str,
+        timeout_ms: int = 12000,
+        action_text: str = "Xem nhật ký log (F12)",
+    ) -> None:
+        """Display an error notification at the bottom right corner."""
+        if hasattr(self, "toast_manager") and self.toast_manager is not None:
+            self.toast_manager.show_error(
+                title=title,
+                message=message,
+                timeout_ms=timeout_ms,
+                action_text=action_text,
+                action_callback=self._toggle_console_window,
+            )
+        if hasattr(self, "_tray_icon") and self._tray_icon and self._tray_icon.isSystemTrayAvailable():
+            try:
+                from PySide6.QtWidgets import QSystemTrayIcon
+                self._tray_icon.showMessage(title, message, QSystemTrayIcon.MessageIcon.Critical, timeout_ms)
+            except Exception:
+                pass
+
+    def notify_warning(self, title: str, message: str, timeout_ms: int = 7000) -> None:
+        if hasattr(self, "toast_manager") and self.toast_manager is not None:
+            self.toast_manager.show_warning(title=title, message=message, timeout_ms=timeout_ms)
+
+    def notify_success(self, title: str, message: str, timeout_ms: int = 5000) -> None:
+        if hasattr(self, "toast_manager") and self.toast_manager is not None:
+            self.toast_manager.show_success(title=title, message=message, timeout_ms=timeout_ms)
+
+    def _parse_error_notification(self, message: str) -> tuple[str, str]:
+        lines = [l.strip() for l in (message or "").splitlines() if l.strip()]
+        if not lines:
+            return "Lỗi thực thi", "Đã xảy ra lỗi trong quá trình xử lý."
+
+        bullets = [l.lstrip("•").strip() for l in lines if l.startswith("•")]
+        if bullets:
+            detail = "\n".join(bullets[:3])
+            if len(bullets) > 3:
+                detail += f"\n(+ {len(bullets) - 3} lỗi khác)"
+        elif len(lines) > 1 and lines[0].startswith("Hoàn tất có"):
+            detail = "\n".join(lines[1:4])
+        else:
+            detail = "\n".join(lines[:3])
+
+        mode = self.worker.mode if self.worker else ""
+        lower_detail = detail.lower()
+        if mode == "video" or "video" in lower_detail or "render" in lower_detail or "ffmpeg" in lower_detail or "ảnh nền" in lower_detail:
+            title = "Lỗi tạo video"
+        elif mode == "tts" or "audio" in lower_detail or "lồng tiếng" in lower_detail or "giọng đọc" in lower_detail:
+            title = "Lỗi lồng tiếng (TTS)"
+        elif mode == "upload" or "youtube" in lower_detail or "đăng tải" in lower_detail:
+            title = "Lỗi đăng YouTube"
+        elif mode == "script" or "kịch bản" in lower_detail:
+            title = "Lỗi kịch bản"
+        elif mode == "thumbnail" or "thumbnail" in lower_detail:
+            title = "Lỗi tạo thumbnail"
+        else:
+            title = "Lỗi tạo video" if ("one::" in detail or ".mp4" in detail or "chưa có ảnh nền" in lower_detail) else "Lỗi quy trình (Pipeline)"
+
+        return title, detail
+
     def _set_status(self, message: str, error: bool = False, running: bool = False) -> None:
         self.automation_tab.set_status(message, error=error, running=running)
 
@@ -1107,6 +1204,9 @@ class MainWindow(QMainWindow):
             self.pipeline_dock.apply_theme()
         if hasattr(self, "console_window"):
             self.console_window.apply_theme()
+        if hasattr(self, "toast_manager") and self.toast_manager is not None:
+            for t in getattr(self.toast_manager, "_toasts", []):
+                t._apply_style()
         self._sync_theme_button()
         if persist:
             self.settings.setdefault("app", {})["theme"] = active
@@ -1224,4 +1324,9 @@ class MainWindow(QMainWindow):
                 logging.getLogger(APP_LOGGER_NAME), self._log_handler
             )
             self._log_handler = None
+        if getattr(self, "_tray_icon", None) is not None:
+            try:
+                self._tray_icon.hide()
+            except Exception:
+                pass
         super().closeEvent(event)
