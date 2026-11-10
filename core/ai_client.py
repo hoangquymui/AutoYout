@@ -178,6 +178,53 @@ def gemini_generate(
     raise AIError("Không thể nhận phản hồi từ Gemini.")
 
 
+def cloudflare_generate(
+    prompt: str,
+    account_id: str,
+    api_token: str,
+    model: str = "@cf/meta/llama-3.1-8b-instruct",
+    timeout: float = 60.0,
+    system_instruction: str = "",
+) -> str:
+    """Send a prompt to Cloudflare Workers AI and return the generated text."""
+    acc = (account_id or "").strip()
+    token = (api_token or "").strip()
+    if not acc or not token:
+        raise AIError("Thiếu Account ID hoặc API Token Cloudflare.")
+    m = (model or "").strip() or "@cf/meta/llama-3.1-8b-instruct"
+    import requests
+
+    url = f"https://api.cloudflare.com/client/v4/accounts/{acc}/ai/run/{m}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "User-Agent": "AutoYout/1.0",
+    }
+    messages = []
+    if system_instruction:
+        messages.append({"role": "system", "content": system_instruction})
+    messages.append({"role": "user", "content": prompt})
+
+    try:
+        resp = requests.post(url, headers=headers, json={"messages": messages}, timeout=timeout)
+    except Exception as exc:
+        raise AIError(f"Kết nối tới Cloudflare Workers AI thất bại: {exc}") from exc
+
+    if resp.status_code != 200:
+        raise AIError(f"Cloudflare Workers AI lỗi {resp.status_code}: {resp.text[:300]}")
+
+    try:
+        data = resp.json()
+        ans = (data.get("result") or {}).get("response", "")
+        if not ans and isinstance(data.get("result"), str):
+            ans = data.get("result")
+        if not ans:
+            raise AIError(f"Cloudflare không trả về văn bản: {data}")
+        return str(ans).strip()
+    except Exception as exc:
+        raise AIError(f"Không phân tích được phản hồi Cloudflare: {exc}") from exc
+
+
 def build_translate_prompt(
     text: str,
     source_lang: str,

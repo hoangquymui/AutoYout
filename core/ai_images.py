@@ -240,6 +240,108 @@ class GeminiImageProvider:
 ImagenProvider = GeminiImageProvider
 
 
+class CloudflareImageProvider:
+    """Cloudflare Workers AI image generator (Flux, Leonardo, SDXL, etc.)."""
+
+    def __init__(
+        self,
+        account_id: str,
+        api_token: str,
+        model: str = "@cf/black-forest-labs/flux-1-schnell",
+        steps: int = 4,
+        timeout: float = 90.0,
+    ) -> None:
+        self.account_id = (account_id or "").strip()
+        self.api_token = (api_token or "").strip()
+        self.model = (model or "").strip() or "@cf/black-forest-labs/flux-1-schnell"
+        self.steps = max(1, min(20, int(steps or 4)))
+        self.timeout = timeout
+        if not self.account_id or not self.api_token:
+            raise AIImageError(
+                "Chưa cấu hình Account ID hoặc API Token Cloudflare trong tab Cài đặt > API > Ảnh."
+            )
+
+    def generate(self, prompt: str, stem: Path, width: int = 1280, height: int = 720) -> Path:
+        import requests
+
+        url = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/{self.model}"
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Content-Type": "application/json",
+            "User-Agent": "AutoYout/1.0",
+        }
+        payload: dict = {
+            "prompt": prompt,
+        }
+        if "flux" in self.model.lower():
+            payload["steps"] = self.steps
+        if width and height:
+            payload["width"] = width
+            payload["height"] = height
+
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+        except Exception as exc:
+            raise AIImageError(f"Lỗi kết nối tới Cloudflare Workers AI: {exc}") from exc
+
+        if resp.status_code != 200:
+            raise AIImageError(
+                f"Cloudflare Workers AI trả về lỗi HTTP {resp.status_code}: {resp.text[:300]}"
+            )
+
+        content_type = resp.headers.get("Content-Type", "")
+        target = stem.with_suffix(".png")
+
+        if "application/json" in content_type:
+            try:
+                data = resp.json()
+            except Exception as exc:
+                raise AIImageError(f"Không thể đọc JSON từ Cloudflare: {exc}") from exc
+            image_b64 = (data.get("result") or {}).get("image")
+            if image_b64:
+                target.write_bytes(base64.b64decode(image_b64))
+            else:
+                raise AIImageError(f"Cloudflare không trả về ảnh trong JSON: {data}")
+        else:
+            target.write_bytes(resp.content)
+
+        if not target.is_file() or target.stat().st_size == 0:
+            raise AIImageError("Không lưu được ảnh từ Cloudflare Workers AI.")
+        return target
+
+
+def fetch_cloudflare_models(
+    account_id: str, api_token: str, task: str = "Text-to-Image"
+) -> List[Tuple[str, str]]:
+    """Fetch available models from Cloudflare Workers AI for a given task filter."""
+    import requests
+
+    acc = (account_id or "").strip()
+    token = (api_token or "").strip()
+    if not acc or not token:
+        raise AIImageError("Thiếu Account ID hoặc API Token Cloudflare.")
+
+    url = f"https://api.cloudflare.com/client/v4/accounts/{acc}/ai/models/search"
+    headers = {"Authorization": f"Bearer {token}", "User-Agent": "AutoYout/1.0"}
+    try:
+        resp = requests.get(url, headers=headers, params={"task": task}, timeout=15)
+    except Exception as exc:
+        raise AIImageError(f"Lỗi kết nối tới Cloudflare: {exc}") from exc
+
+    if resp.status_code != 200:
+        raise AIImageError(f"Cloudflare lỗi HTTP {resp.status_code}: {resp.text[:200]}")
+
+    models = resp.json().get("result", [])
+    results: List[Tuple[str, str]] = []
+    for m in models:
+        name = m.get("name", "")
+        if not name:
+            continue
+        clean_name = name.split("/")[-1].replace("-", " ").title()
+        results.append((f"{clean_name} ({name})", name))
+    return results
+
+
 def _post_json(url: str, payload: dict, timeout: float, api_key: str) -> dict:
     request = urllib.request.Request(
         url,

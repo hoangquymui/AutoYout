@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import urllib.request
 import urllib.error
+import urllib.parse
 import zipfile
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QThread, QUrl, Signal
@@ -47,6 +48,53 @@ from utils.logger import get_logger
 logger = get_logger("ui.settings")
 
 from core.ai_client import GEMINI_TEXT_MODELS
+
+DEFAULT_CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID", "")
+DEFAULT_CF_API_TOKEN = os.environ.get("CF_API_TOKEN", "")
+DEFAULT_CF_IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell"
+DEFAULT_CF_TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+
+CLOUDFLARE_IMAGE_MODELS: List[Tuple[str, str]] = [
+    ("FLUX.1 [schnell] (Khuyên dùng)", "@cf/black-forest-labs/flux-1-schnell"),
+    ("FLUX.2 [klein] 9B", "@cf/black-forest-labs/flux-2-klein-9b"),
+    ("FLUX.2 [klein] 4B", "@cf/black-forest-labs/flux-2-klein-4b"),
+    ("FLUX.2 [dev]", "@cf/black-forest-labs/flux-2-dev"),
+    ("Leonardo Lucid Origin", "@cf/leonardo/lucid-origin"),
+    ("Leonardo Phoenix 1.0", "@cf/leonardo/phoenix-1.0"),
+    ("SDXL Lightning (ByteDance)", "@cf/bytedance/stable-diffusion-xl-lightning"),
+    ("DreamShaper 8 LCM", "@cf/lykon/dreamshaper-8-lcm"),
+    ("Stable Diffusion v1.5 Inpainting", "@cf/runwayml/stable-diffusion-v1-5-inpainting"),
+    ("Stable Diffusion XL Base 1.0", "@cf/stabilityai/stable-diffusion-xl-base-1.0"),
+]
+
+CLOUDFLARE_TEXT_MODELS: List[Tuple[str, str]] = [
+    ("Llama 3.1 8B Instruct (Khuyên dùng)", "@cf/meta/llama-3.1-8b-instruct"),
+    ("Llama 3.3 70B Instruct Fast", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
+    ("DeepSeek R1 Distill Qwen 32B", "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b"),
+    ("Qwen 2.5 7B Instruct", "@cf/qwen/qwen2.5-7b-instruct"),
+    ("Mistral 7B Instruct v0.2", "@cf/mistral/mistral-7b-instruct-v0.2"),
+    ("Gemma 7B IT", "@cf/google/gemma-7b-it"),
+]
+
+EDGE_MULTILANG_VOICES: List[Tuple[str, str]] = [
+    ("🇻🇳 Tiếng Việt - Hoài My (Nữ)", "vi-VN-HoaiMyNeural"),
+    ("🇻🇳 Tiếng Việt - Nam Minh (Nam)", "vi-VN-NamMinhNeural"),
+    ("🇺🇸 Tiếng Anh (Mỹ) - Jenny (Nữ)", "en-US-JennyNeural"),
+    ("🇺🇸 Tiếng Anh (Mỹ) - Guy (Nam)", "en-US-GuyNeural"),
+    ("🇬🇧 Tiếng Anh (Anh) - Sonia (Nữ)", "en-GB-SoniaNeural"),
+    ("🇨🇳 Tiếng Trung - Xiaoxiao (Nữ)", "zh-CN-XiaoxiaoNeural"),
+    ("🇨🇳 Tiếng Trung - Yunxi (Nam)", "zh-CN-YunxiNeural"),
+    ("🇯🇵 Tiếng Nhật - Nanami (Nữ)", "ja-JP-NanamiNeural"),
+    ("🇯🇵 Tiếng Nhật - Keita (Nam)", "ja-JP-KeitaNeural"),
+    ("🇰🇷 Tiếng Hàn - SunHi (Nữ)", "ko-KR-SunHiNeural"),
+    ("🇰🇷 Tiếng Hàn - InJoon (Nam)", "ko-KR-InJoonNeural"),
+    ("🇫🇷 Tiếng Pháp - Denise (Nữ)", "fr-FR-DeniseNeural"),
+    ("🇪🇸 Tiếng Tây Ban Nha - Elvira (Nữ)", "es-ES-ElviraNeural"),
+    ("🇹🇭 Tiếng Thái - Premwadee (Nữ)", "th-TH-PremwadeeNeural"),
+    ("🇮🇩 Tiếng Indo - Gadis (Nữ)", "id-ID-GadisNeural"),
+    ("🇩🇪 Tiếng Đức - Katja (Nữ)", "de-DE-KatjaNeural"),
+    ("🇷🇺 Tiếng Nga - Svetlana (Nữ)", "ru-RU-SvetlanaNeural"),
+]
 
 GEMINI_TTS_MODELS: List[Tuple[str, str]] = [
     ("Gemini 2.5 Flash TTS (Tiêu chuẩn)", "gemini-2.5-flash-tts"),
@@ -644,6 +692,355 @@ class ServiceCard(QFrame):
     def apply_theme(self) -> None:
         self.setStyleSheet(
             f"QFrame#ServiceCard {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 8px; }}"
+        )
+
+
+class _CheckCloudflareWorker(QThread):
+    done = Signal(str, bool, str)
+    models_discovered = Signal(str, list)
+
+    def __init__(
+        self,
+        service_id: str,
+        account_id: str,
+        api_token: str,
+        task: str = "Text-to-Image",
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.service_id = service_id
+        self.account_id = account_id.strip()
+        self.api_token = api_token.strip()
+        self.task = task.strip()
+
+    def run(self) -> None:
+        if not self.account_id:
+            self.done.emit(self.service_id, False, "Chưa nhập Cloudflare Account ID.")
+            return
+        if not self.api_token:
+            self.done.emit(self.service_id, False, "Chưa nhập Cloudflare API Token.")
+            return
+
+        try:
+            task_param = urllib.parse.quote(self.task)
+            url = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/models/search?task={task_param}"
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "Authorization": f"Bearer {self.api_token}",
+                    "User-Agent": "AutoYout/1.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    raw = resp.read().decode("utf-8")
+                    data = json.loads(raw)
+                    results = data.get("result", [])
+                    discovered: List[Tuple[str, str]] = []
+                    for m in results:
+                        name = m.get("name", "").strip()
+                        if not name:
+                            continue
+                        short_name = name.split("/")[-1]
+                        display_name = f"{short_name} ({name})"
+                        discovered.append((display_name, name))
+
+                    msg = (
+                        f"Kết nối Cloudflare thành công! ({len(discovered)} models {self.task})"
+                        if discovered
+                        else "Kết nối Cloudflare thành công!"
+                    )
+                    if discovered:
+                        self.models_discovered.emit(self.service_id, discovered)
+                    self.done.emit(self.service_id, True, msg)
+                    return
+        except urllib.error.HTTPError as exc:
+            self.done.emit(self.service_id, False, f"Lỗi HTTP {exc.code} (Token/Account ID không hợp lệ)")
+            return
+        except Exception as exc:
+            self.done.emit(self.service_id, False, f"Lỗi kết nối: {exc}")
+            return
+
+        self.done.emit(self.service_id, False, "Không nhận được phản hồi từ Cloudflare.")
+
+
+class CloudflareCard(QFrame):
+    """Configuration card for Cloudflare Workers AI (Text or Image)."""
+
+    changed = Signal()
+    save_requested = Signal(str, str, str)  # service_id, account_id, token
+
+    def __init__(
+        self,
+        service_id: str,
+        title: str,
+        tag: str = "Cloudflare-hosted",
+        subtitle: str = "",
+        task: str = "Text-to-Image",
+        models: Optional[List[Tuple[str, str]]] = None,
+        default_model: str = "",
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.service_id = service_id
+        self.title_text = title
+        self.task = task
+        self._checker: Optional[_CheckCloudflareWorker] = None
+
+        self.setObjectName("CloudflareCard")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+
+        # ── 1. Top row: Title + Tag + Status + Toggle ────────────────────────
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
+
+        title_lbl = QLabel(title)
+        title_font = QFont()
+        title_font.setBold(True)
+        title_font.setPointSize(10)
+        title_lbl.setFont(title_font)
+        top_row.addWidget(title_lbl)
+
+        if tag:
+            tag_lbl = QLabel(tag)
+            tag_lbl.setStyleSheet(
+                f"background: {theme.SURFACE_RAISED}; color: {theme.TEXT_MUTED}; "
+                "border-radius: 4px; padding: 2px 6px; font-size: 11px;"
+            )
+            top_row.addWidget(tag_lbl)
+
+        top_row.addStretch(1)
+
+        self.status_badge = QLabel("• Đã kích hoạt")
+        self.status_badge.setStyleSheet(
+            f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
+            "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+        )
+        top_row.addWidget(self.status_badge)
+
+        self.switch = ToggleSwitch(checked=True)
+        self.switch.toggled.connect(self._on_switch_toggled)
+        top_row.addWidget(self.switch)
+        layout.addLayout(top_row)
+
+        # ── 2. Subtitle ──────────────────────────────────────────────────────
+        if subtitle:
+            self.sub_lbl = QLabel(subtitle)
+            self.sub_lbl.setWordWrap(True)
+            self.sub_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+            layout.addWidget(self.sub_lbl)
+
+        # ── 3. Inputs Form ───────────────────────────────────────────────────
+        # Row A: Account ID
+        acc_row = QHBoxLayout()
+        acc_row.setSpacing(8)
+        acc_lbl = QLabel("Account ID:")
+        acc_lbl.setFixedWidth(80)
+        acc_lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
+        self.account_edit = QLineEdit()
+        self.account_edit.setPlaceholderText("Nhập Cloudflare Account ID...")
+        self.account_edit.textChanged.connect(self._on_input_changed)
+        acc_row.addWidget(acc_lbl)
+        acc_row.addWidget(self.account_edit, 1)
+        layout.addLayout(acc_row)
+
+        # Row B: API Token + Eye button
+        tok_row = QHBoxLayout()
+        tok_row.setSpacing(8)
+        tok_lbl = QLabel("API Token:")
+        tok_lbl.setFixedWidth(80)
+        tok_lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
+        self.token_edit = QLineEdit()
+        self.token_edit.setPlaceholderText("Nhập Cloudflare API Token (Bearer)...")
+        self.token_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.token_edit.textChanged.connect(self._on_input_changed)
+
+        self.eye_btn = icon_button("eye", "Hiện/Ẩn API Token", role="muted", size=14, side=30)
+        self.eye_btn.clicked.connect(self._toggle_eye)
+
+        tok_row.addWidget(tok_lbl)
+        tok_row.addWidget(self.token_edit, 1)
+        tok_row.addWidget(self.eye_btn)
+        layout.addLayout(tok_row)
+
+        # Row C: Model combo
+        mod_row = QHBoxLayout()
+        mod_row.setSpacing(8)
+        mod_lbl = QLabel("Model AI:")
+        mod_lbl.setFixedWidth(80)
+        mod_lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
+        self.model_combo = QComboBox()
+        self.model_combo.setEditable(True)
+        self.model_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        if models:
+            for label, val in models:
+                self.model_combo.addItem(label, val)
+        if default_model:
+            self.set_model(default_model)
+        self.model_combo.currentIndexChanged.connect(lambda _: self.changed.emit())
+        self.model_combo.currentTextChanged.connect(lambda _: self.changed.emit())
+        mod_row.addWidget(mod_lbl)
+        mod_row.addWidget(self.model_combo, 1)
+        layout.addLayout(mod_row)
+
+        # ── 4. Action buttons row ────────────────────────────────────────────
+        act_row = QHBoxLayout()
+        act_row.setSpacing(8)
+
+        self.btn_save = QPushButton("Lưu cấu hình")
+        set_icon(self.btn_save, "key", "muted", 12)
+        self.btn_save.clicked.connect(self._save_clicked)
+        act_row.addWidget(self.btn_save)
+
+        self.btn_check = QPushButton("Check Connection & Tải models")
+        set_icon(self.btn_check, "check-circle", "accent", 12)
+        self.btn_check.clicked.connect(self.check_connection)
+        act_row.addWidget(self.btn_check)
+
+        act_row.addStretch(1)
+        layout.addLayout(act_row)
+
+        self.apply_theme()
+
+    def get_account_id(self) -> str:
+        return self.account_edit.text().strip()
+
+    def set_account_id(self, val: str) -> None:
+        self.account_edit.setText(val or "")
+
+    def get_token(self) -> str:
+        return self.token_edit.text().strip()
+
+    def set_token(self, val: str) -> None:
+        self.token_edit.setText(val or "")
+
+    def get_key(self) -> str:
+        return self.get_token()
+
+    def get_model(self) -> str:
+        cur_idx = self.model_combo.currentIndex()
+        cur_text = self.model_combo.currentText().strip()
+        if cur_idx >= 0 and self.model_combo.itemText(cur_idx) == cur_text:
+            data = self.model_combo.itemData(cur_idx)
+            if data:
+                return str(data)
+        return cur_text
+
+    def set_model(self, model_name: str) -> None:
+        if not model_name:
+            return
+        idx = self.model_combo.findData(model_name)
+        if idx >= 0:
+            self.model_combo.setCurrentIndex(idx)
+            return
+        idx = self.model_combo.findText(model_name)
+        if idx >= 0:
+            self.model_combo.setCurrentIndex(idx)
+            return
+        self.model_combo.setEditText(model_name)
+
+    def _toggle_eye(self) -> None:
+        if self.token_edit.echoMode() == QLineEdit.EchoMode.Password:
+            self.token_edit.setEchoMode(QLineEdit.EchoMode.Normal)
+            set_icon(self.eye_btn, "eye", "accent", 14)
+        else:
+            self.token_edit.setEchoMode(QLineEdit.EchoMode.Password)
+            set_icon(self.eye_btn, "eye", "muted", 14)
+
+    def _on_switch_toggled(self, checked: bool) -> None:
+        if checked:
+            if self.get_token() and self.get_account_id():
+                self.set_status("valid", "• Đã kích hoạt")
+            else:
+                self.set_status("missing", "• Chưa nhập Account ID / Token")
+        else:
+            self.set_status("needed", "• Đang tắt")
+        self.changed.emit()
+
+    def _on_input_changed(self) -> None:
+        acc = self.get_account_id()
+        tok = self.get_token()
+        if acc and tok:
+            if not self.switch.isChecked():
+                self.switch.blockSignals(True)
+                self.switch.setChecked(True)
+                self.switch.blockSignals(False)
+            self.set_status("valid", "• Sẵn sàng")
+        else:
+            self.set_status("missing", "• Thiếu Account ID hoặc Token")
+        self.changed.emit()
+
+    def _save_clicked(self) -> None:
+        acc = self.get_account_id()
+        tok = self.get_token()
+        if acc and tok:
+            self.set_status("valid", "• Đã lưu")
+        else:
+            self.set_status("missing", "• Thiếu Account ID hoặc Token")
+        self.save_requested.emit(self.service_id, acc, tok)
+        self.changed.emit()
+
+    def check_connection(self) -> None:
+        if self._checker is not None:
+            return
+        acc = self.get_account_id()
+        tok = self.get_token()
+        if not acc or not tok:
+            self.set_status("missing", "• Cần Account ID & Token")
+            self.btn_check.setToolTip("Vui lòng nhập cả Account ID và API Token trước khi kiểm tra.")
+            return
+
+        self.set_status("running", "• Đang kiểm tra & tải model…")
+        self._checker = _CheckCloudflareWorker(self.service_id, acc, tok, self.task, self)
+        self._checker.done.connect(self._on_check_done)
+        self._checker.models_discovered.connect(self._on_models_discovered)
+        self._checker.start()
+
+    def _on_models_discovered(self, _sid: str, models: List[Tuple[str, str]]) -> None:
+        existing_vals = {
+            self.model_combo.itemData(i) for i in range(self.model_combo.count())
+        }
+        for label, val in models:
+            if val and val not in existing_vals:
+                self.model_combo.addItem(label, val)
+                existing_vals.add(val)
+
+    def _on_check_done(self, _sid: str, success: bool, msg: str) -> None:
+        self._checker = None
+        if success:
+            self.set_status("valid", "• Hợp lệ")
+        else:
+            self.set_status("missing", f"• {msg}")
+        self.btn_check.setToolTip(msg)
+
+    def set_status(self, kind: str, text: str) -> None:
+        self.status_badge.setText(text)
+        if kind == "valid":
+            self.status_badge.setStyleSheet(
+                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
+                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+            )
+        elif kind == "needed":
+            self.status_badge.setStyleSheet(
+                f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
+                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+            )
+        elif kind == "running":
+            self.status_badge.setStyleSheet(
+                f"background: {theme.SURFACE_RAISED}; color: {theme.BLUE}; "
+                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+            )
+        else:
+            self.status_badge.setStyleSheet(
+                f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
+                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+            )
+
+    def apply_theme(self) -> None:
+        self.setStyleSheet(
+            f"QFrame#CloudflareCard {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 8px; }}"
         )
 
 
@@ -1529,6 +1926,36 @@ class SettingsTab(QWidget):
         self._build_tts_page()
         self._build_media_ai_page()
 
+        # Two-way sync of credentials between Cloudflare Text and Image cards
+        def _sync_cf_from_text() -> None:
+            acc = self.card_cloudflare_text.get_account_id()
+            tok = self.card_cloudflare_text.get_token()
+            if self.card_cloudflare_image.get_account_id() != acc:
+                self.card_cloudflare_image.account_edit.blockSignals(True)
+                self.card_cloudflare_image.set_account_id(acc)
+                self.card_cloudflare_image.account_edit.blockSignals(False)
+            if self.card_cloudflare_image.get_token() != tok:
+                self.card_cloudflare_image.token_edit.blockSignals(True)
+                self.card_cloudflare_image.set_token(tok)
+                self.card_cloudflare_image.token_edit.blockSignals(False)
+
+        def _sync_cf_from_image() -> None:
+            acc = self.card_cloudflare_image.get_account_id()
+            tok = self.card_cloudflare_image.get_token()
+            if self.card_cloudflare_text.get_account_id() != acc:
+                self.card_cloudflare_text.account_edit.blockSignals(True)
+                self.card_cloudflare_text.set_account_id(acc)
+                self.card_cloudflare_text.account_edit.blockSignals(False)
+            if self.card_cloudflare_text.get_token() != tok:
+                self.card_cloudflare_text.token_edit.blockSignals(True)
+                self.card_cloudflare_text.set_token(tok)
+                self.card_cloudflare_text.token_edit.blockSignals(False)
+
+        self.card_cloudflare_text.account_edit.textChanged.connect(_sync_cf_from_text)
+        self.card_cloudflare_text.token_edit.textChanged.connect(_sync_cf_from_text)
+        self.card_cloudflare_image.account_edit.textChanged.connect(_sync_cf_from_image)
+        self.card_cloudflare_image.token_edit.textChanged.connect(_sync_cf_from_image)
+
         # Two-way sync between General page and H2MTTS card path inputs
         def _sync_h2_from_card(text: str) -> None:
             if self.general_page.h2mtts_edit.text() != text:
@@ -1549,7 +1976,7 @@ class SettingsTab(QWidget):
 
         self.inner_tabs.addTab(api_wrapper, "API")
 
-    # ── Page 1: Văn bản AI (Image 1) ─────────────────────────────────────────
+    # ── Page 1: Văn bản ──────────────────────────────────────────────────────
     def _build_text_ai_page(self) -> None:
         page = QWidget()
         page.setObjectName("PageContent")
@@ -1559,15 +1986,15 @@ class SettingsTab(QWidget):
 
         layout.addWidget(
             PageHeader(
-                "Văn bản AI",
-                "Viết kịch bản, caption, trả lời tự động bằng Google Gemini.",
+                "Văn bản",
+                "Viết kịch bản, caption, tạo nội dung bằng Gemini Flash hoặc Cloudflare Workers AI.",
             )
         )
 
         self.card_gemini = ServiceCard(
             service_id="gemini",
             title="Gemini Flash",
-            tag="Gemini Flash (key dùng chung cho Nano Banana, Veo, Lyria)",
+            tag="Google Gemini API",
             key_placeholder="Nhập AIza...",
             models=GEMINI_TEXT_MODELS,
             has_endpoint=True,
@@ -1579,10 +2006,24 @@ class SettingsTab(QWidget):
         self.card_gemini.save_requested.connect(lambda sid, k: self._on_changed())
         layout.addWidget(self.card_gemini)
 
-        layout.addStretch(1)
-        self.api_tabs.addTab(wrap_scroll(page), "Văn bản AI")
+        self.card_cloudflare_text = CloudflareCard(
+            service_id="cloudflare_text",
+            title="Cloudflare Workers AI (Văn bản)",
+            tag="Llama / DeepSeek / Qwen",
+            subtitle="Chạy mô hình ngôn ngữ Llama 3, DeepSeek, Qwen trên hạ tầng serverless của Cloudflare.",
+            task="Text Generation",
+            models=CLOUDFLARE_TEXT_MODELS,
+            default_model=DEFAULT_CF_TEXT_MODEL,
+            parent=page,
+        )
+        self.card_cloudflare_text.changed.connect(self._on_changed)
+        self.card_cloudflare_text.save_requested.connect(lambda sid, acc, tok: self._on_changed())
+        layout.addWidget(self.card_cloudflare_text)
 
-    # ── Page 2: Giọng đọc (TTS) (Image 2) ────────────────────────────────────
+        layout.addStretch(1)
+        self.api_tabs.addTab(wrap_scroll(page), "Văn bản")
+
+    # ── Page 2: Giọng đọc ────────────────────────────────────────────────────
     def _build_tts_page(self) -> None:
         page = QWidget()
         page.setObjectName("PageContent")
@@ -1592,55 +2033,39 @@ class SettingsTab(QWidget):
 
         layout.addWidget(
             PageHeader(
-                "Giọng đọc (TTS)",
-                "Thuyết minh cho Reels & TikTok.",
+                "Giọng đọc",
+                "Thuyết minh đa ngôn ngữ cho video với Edge-TTS và H2MTTS offline.",
             )
         )
 
-        grid = QGridLayout()
-        grid.setSpacing(12)
-
-        # 1. Google Gemini TTS
-        self.card_gemini_tts = ServiceCard(
-            service_id="gemini_tts",
-            title="Google Gemini TTS",
-            shared_from="Gemini Flash",
-            models=GEMINI_TTS_MODELS,
-            has_key_input=False,
-            key_provider=self.card_gemini.get_key,
-            parent=page,
-        )
-        self.card_gemini_tts.changed.connect(self._on_changed)
-        grid.addWidget(self.card_gemini_tts, 0, 0)
-
-        # 2. Edge-TTS (Miễn phí)
+        # Edge-TTS (Đa ngôn ngữ & Miễn phí)
         self.card_edge_tts = ServiceCard(
             service_id="edge_tts",
-            title="Edge-TTS (Miễn phí)",
-            subtitle="Miễn phí – không cần API key\nKhông cần API key, không giới hạn ký tự. Giọng Việt HoaiMy & NamMinh Neural.",
-            models=[
-                ("NamMinh (Nam)", "vi-VN-NamMinhNeural"),
-                ("HoaiMy (Nữ)", "vi-VN-HoaiMyNeural"),
-            ],
+            title="Edge-TTS (Đa ngôn ngữ & Miễn phí)",
+            tag="Miễn phí · Đa ngôn ngữ",
+            subtitle=(
+                "Miễn phí – không cần API key, không giới hạn ký tự.\n"
+                "Hỗ trợ đa ngôn ngữ: Tiếng Việt (Hoài My, Nam Minh), Tiếng Anh, Tiếng Trung, "
+                "Tiếng Nhật, Tiếng Hàn, Tiếng Pháp, Tiếng Tây Ban Nha, Tiếng Thái..."
+            ),
+            models=EDGE_MULTILANG_VOICES,
             has_key_input=False,
             parent=page,
         )
         self.card_edge_tts.switch.setChecked(True)
         self.card_edge_tts.set_status("valid", "• Hợp lệ")
         self.card_edge_tts.changed.connect(self._on_changed)
-        grid.addWidget(self.card_edge_tts, 0, 1)
+        layout.addWidget(self.card_edge_tts)
 
-        layout.addLayout(grid)
-
-        # 5. Local H2MTTS (Nâng cao)
+        # Local H2MTTS (Nâng cao)
         self.card_h2mtts = H2MTTSCard(parent=page)
         self.card_h2mtts.changed.connect(self._on_changed)
         layout.addWidget(self.card_h2mtts)
 
         layout.addStretch(1)
-        self.api_tabs.addTab(wrap_scroll(page), "Giọng đọc (TTS)")
+        self.api_tabs.addTab(wrap_scroll(page), "Giọng đọc")
 
-    # ── Page 3: Ảnh / Video AI (Image 3) ─────────────────────────────────────
+    # ── Page 3: Ảnh ──────────────────────────────────────────────────────────
     def _build_media_ai_page(self) -> None:
         page = QWidget()
         page.setObjectName("PageContent")
@@ -1650,55 +2075,43 @@ class SettingsTab(QWidget):
 
         layout.addWidget(
             PageHeader(
-                "Ảnh / Video AI",
-                "Tạo ảnh minh họa & video bằng Google Nano Banana, Imagen & Veo (dùng chung API key Gemini).",
+                "Ảnh",
+                "Tạo ảnh minh họa & thumbnail bằng Cloudflare Workers AI (Flux, Leonardo, SDXL...).",
             )
         )
 
-        grid = QGridLayout()
-        grid.setSpacing(12)
-
-        # 1. Google Gemini - Ảnh AI
-        self.card_gemini_image = ServiceCard(
-            service_id="gemini_image",
-            title="Google Gemini – Ảnh AI",
-            shared_from="Gemini Flash",
-            models=GEMINI_IMAGE_MODELS,
-            has_key_input=False,
-            key_provider=self.card_gemini.get_key,
+        self.card_cloudflare_image = CloudflareCard(
+            service_id="cloudflare_image",
+            title="Cloudflare Workers AI (Ảnh)",
+            tag="Flux-1 / Flux-2 / Leonardo / SDXL",
+            subtitle="Tạo ảnh AI cực nhanh và chân thực với Flux-1 [schnell], Leonardo Phoenix, SDXL Lightning trên Cloudflare.",
+            task="Text-to-Image",
+            models=CLOUDFLARE_IMAGE_MODELS,
+            default_model=DEFAULT_CF_IMAGE_MODEL,
             parent=page,
         )
-        self.card_gemini_image.switch.setChecked(True)
-        self.card_gemini_image.changed.connect(self._on_changed)
-        grid.addWidget(self.card_gemini_image, 0, 0)
+        self.card_cloudflare_image.changed.connect(self._on_changed)
+        self.card_cloudflare_image.save_requested.connect(lambda sid, acc, tok: self._on_changed())
+        layout.addWidget(self.card_cloudflare_image)
 
-        # 2. Google Veo 3 - Video AI
-        self.card_veo = ServiceCard(
-            service_id="veo",
-            title="Google Veo 3 – Video AI",
-            tag="Video AI",
-            shared_from="Gemini Flash",
-            models=VEO_VIDEO_MODELS,
-            has_key_input=False,
-            key_provider=self.card_gemini.get_key,
-            parent=page,
-        )
-        self.card_veo.switch.setChecked(False)
-        self.card_veo.changed.connect(self._on_changed)
-        grid.addWidget(self.card_veo, 0, 1)
-
-        layout.addLayout(grid)
         layout.addStretch(1)
-        self.api_tabs.addTab(wrap_scroll(page), "Ảnh / Video AI")
+        self.api_tabs.addTab(wrap_scroll(page), "Ảnh")
 
     # ── Shared key propagation ───────────────────────────────────────────────
     def _sync_shared_keys(self) -> None:
-        gemini_key = self.card_gemini.get_key()
-        has_gemini = bool(gemini_key)
-        self.card_gemini_tts.update_shared_status(has_gemini)
-        self.card_gemini_image.update_shared_status(has_gemini)
-        if hasattr(self, "card_veo"):
-            self.card_veo.update_shared_status(has_gemini)
+        if hasattr(self, "card_cloudflare_text") and hasattr(self, "card_cloudflare_image"):
+            acc = self.card_cloudflare_image.get_account_id() or self.card_cloudflare_text.get_account_id()
+            tok = self.card_cloudflare_image.get_token() or self.card_cloudflare_text.get_token()
+            if acc:
+                if self.card_cloudflare_text.get_account_id() != acc:
+                    self.card_cloudflare_text.set_account_id(acc)
+                if self.card_cloudflare_image.get_account_id() != acc:
+                    self.card_cloudflare_image.set_account_id(acc)
+            if tok:
+                if self.card_cloudflare_text.get_token() != tok:
+                    self.card_cloudflare_text.set_token(tok)
+                if self.card_cloudflare_image.get_token() != tok:
+                    self.card_cloudflare_image.set_token(tok)
 
     def _on_changed(self) -> None:
         if getattr(self, "_loading", False):
@@ -1731,11 +2144,10 @@ class SettingsTab(QWidget):
             self.general_page.stop_error_check.setChecked(bool(app.get("stop_on_error", False)))
             self.general_page.log_dir_edit.setText(str(app.get("log_dir") or "logs"))
 
-            # Gemini key sync from script/video
+            # Gemini Flash key sync
             gemini_val = str(api.get("gemini_key") or script.get("api_key") or video.get("ai_api_key") or "").strip()
             self.card_gemini.key_edit.setText(gemini_val)
 
-            # Persist and restore switch states
             gemini_enabled = bool(api.get("gemini_enabled", bool(gemini_val)))
             self.card_gemini.switch.blockSignals(True)
             self.card_gemini.switch.setChecked(gemini_enabled and bool(gemini_val))
@@ -1749,41 +2161,44 @@ class SettingsTab(QWidget):
             else:
                 self.card_gemini.set_status("missing", "• Chưa kích hoạt / Thiếu key")
 
-            self.card_gemini_tts.switch.blockSignals(True)
-            self.card_gemini_tts.switch.setChecked(bool(api.get("gemini_tts_enabled", bool(gemini_val))))
-            self.card_gemini_tts.switch.blockSignals(False)
-
-            self.card_edge_tts.switch.blockSignals(True)
-            self.card_edge_tts.switch.setChecked(bool(api.get("edge_tts_enabled", True)))
-            self.card_edge_tts.switch.blockSignals(False)
-
-            self.card_gemini_image.switch.blockSignals(True)
-            self.card_gemini_image.switch.setChecked(bool(api.get("gemini_image_enabled", bool(gemini_val))))
-            self.card_gemini_image.switch.blockSignals(False)
-
-            if hasattr(self, "card_veo"):
-                self.card_veo.switch.blockSignals(True)
-                self.card_veo.switch.setChecked(bool(api.get("veo_enabled", False)))
-                self.card_veo.switch.blockSignals(False)
-
-            # Model selections (normalizing legacy/retired models like gemini-2.0-flash)
             from core.ai_client import normalize_model
             gemini_model = normalize_model(str(script.get("model") or api.get("gemini_model") or ""))
             if gemini_model:
                 self.card_gemini.set_model(gemini_model)
 
-            tts_model = str(api.get("gemini_tts_model") or "")
-            if tts_model:
-                self.card_gemini_tts.set_model(tts_model)
+            # Cloudflare credentials
+            cf_account = str(api.get("cloudflare_account_id") or DEFAULT_CF_ACCOUNT_ID).strip()
+            cf_token = str(api.get("cloudflare_token") or DEFAULT_CF_API_TOKEN).strip()
+            cf_text_model = str(api.get("cloudflare_text_model") or DEFAULT_CF_TEXT_MODEL).strip()
+            cf_image_model = str(video.get("ai_image_model") or api.get("cloudflare_image_model") or DEFAULT_CF_IMAGE_MODEL).strip()
 
-            img_model = str(video.get("ai_image_model") or api.get("gemini_image_model") or "")
-            if img_model:
-                self.card_gemini_image.set_model(img_model)
+            self.card_cloudflare_text.set_account_id(cf_account)
+            self.card_cloudflare_text.set_token(cf_token)
+            self.card_cloudflare_text.set_model(cf_text_model)
+            cf_text_en = bool(api.get("cloudflare_text_enabled", True))
+            self.card_cloudflare_text.switch.blockSignals(True)
+            self.card_cloudflare_text.switch.setChecked(cf_text_en)
+            self.card_cloudflare_text.switch.blockSignals(False)
+            if cf_account and cf_token and cf_text_en:
+                self.card_cloudflare_text.set_status("valid", "• Đã kích hoạt")
 
-            if hasattr(self, "card_veo"):
-                veo_model = str(video.get("ai_video_model") or api.get("veo_model") or "")
-                if veo_model:
-                    self.card_veo.set_model(veo_model)
+            self.card_cloudflare_image.set_account_id(cf_account)
+            self.card_cloudflare_image.set_token(cf_token)
+            self.card_cloudflare_image.set_model(cf_image_model)
+            cf_img_en = bool(api.get("cloudflare_image_enabled", True))
+            self.card_cloudflare_image.switch.blockSignals(True)
+            self.card_cloudflare_image.switch.setChecked(cf_img_en)
+            self.card_cloudflare_image.switch.blockSignals(False)
+            if cf_account and cf_token and cf_img_en:
+                self.card_cloudflare_image.set_status("valid", "• Đã kích hoạt")
+
+            # Edge-TTS
+            self.card_edge_tts.switch.blockSignals(True)
+            self.card_edge_tts.switch.setChecked(bool(api.get("edge_tts_enabled", True)))
+            self.card_edge_tts.switch.blockSignals(False)
+            edge_v = str(api.get("edge_tts_voice") or "").strip()
+            if edge_v:
+                self.card_edge_tts.set_model(edge_v)
 
             self._sync_shared_keys()
         finally:
@@ -1818,45 +2233,47 @@ class SettingsTab(QWidget):
         app["stop_on_error"] = self.general_page.stop_error_check.isChecked()
         app["log_dir"] = self.general_page.log_dir_edit.text().strip() or "logs"
 
-        # API keys & models
+        # Gemini Flash
         gemini_k = self.card_gemini.get_key()
         gemini_en = self.card_gemini.switch.isChecked()
         api["gemini_key"] = gemini_k
         api["gemini_enabled"] = gemini_en
         if gemini_k:
             script["api_key"] = gemini_k
-            video["ai_api_key"] = gemini_k
         else:
             script["api_key"] = ""
-            video["ai_api_key"] = ""
 
         api["gemini_model"] = self.card_gemini.get_model()
         script["model"] = self.card_gemini.get_model()
 
-        api["gemini_tts_model"] = self.card_gemini_tts.get_model()
-        api["gemini_tts_enabled"] = self.card_gemini_tts.switch.isChecked()
+        # Cloudflare settings
+        cf_acc = self.card_cloudflare_image.get_account_id() or self.card_cloudflare_text.get_account_id()
+        cf_tok = self.card_cloudflare_image.get_token() or self.card_cloudflare_text.get_token()
+        api["cloudflare_account_id"] = cf_acc
+        api["cloudflare_token"] = cf_tok
+        api["cloudflare_text_model"] = self.card_cloudflare_text.get_model()
+        api["cloudflare_text_enabled"] = self.card_cloudflare_text.switch.isChecked()
+        api["cloudflare_image_model"] = self.card_cloudflare_image.get_model()
+        api["cloudflare_image_enabled"] = self.card_cloudflare_image.switch.isChecked()
+        video["ai_image_model"] = self.card_cloudflare_image.get_model()
 
+        # Edge-TTS
         api["edge_tts_enabled"] = self.card_edge_tts.switch.isChecked()
-
-        api["gemini_image_model"] = self.card_gemini_image.get_model()
-        api["gemini_image_enabled"] = self.card_gemini_image.switch.isChecked()
-        video["ai_image_model"] = self.card_gemini_image.get_model()
-
-        if hasattr(self, "card_veo"):
-            api["veo_model"] = self.card_veo.get_model()
-            api["veo_enabled"] = self.card_veo.switch.isChecked()
-            video["ai_video_model"] = self.card_veo.get_model()
+        api["edge_tts_voice"] = self.card_edge_tts.get_model()
 
         self._settings = settings
 
     def apply_theme(self) -> None:
-        self.card_gemini.apply_theme()
-        self.card_gemini_tts.apply_theme()
-        self.card_edge_tts.apply_theme()
-        self.card_h2mtts.apply_theme()
-        self.card_gemini_image.apply_theme()
-        if hasattr(self, "card_veo"):
-            self.card_veo.apply_theme()
+        if hasattr(self, "card_gemini"):
+            self.card_gemini.apply_theme()
+        if hasattr(self, "card_cloudflare_text"):
+            self.card_cloudflare_text.apply_theme()
+        if hasattr(self, "card_edge_tts"):
+            self.card_edge_tts.apply_theme()
+        if hasattr(self, "card_h2mtts"):
+            self.card_h2mtts.apply_theme()
+        if hasattr(self, "card_cloudflare_image"):
+            self.card_cloudflare_image.apply_theme()
 
 
     def set_pipeline_busy(self, busy: bool) -> None:

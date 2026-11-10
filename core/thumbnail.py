@@ -278,11 +278,16 @@ def generate_image(
     seed: Optional[int] = None,
     seconds: float = 5.0,
     ffmpeg: str = "",
+    account_id: str = "",
+    api_token: str = "",
+    steps: int = 4,
 ) -> Path:
-    """Create a background image with Gemini, Pollinations or a video frame."""
+    """Create a background image with Cloudflare, Gemini, Pollinations or a video frame."""
     name = str(provider or "").strip().lower()
     target = Path(out_path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    if name in ("cloudflare", "cf", "worker_ai", "workers_ai"):
+        return _cloudflare_image(prompt, target, account_id, api_token, model, width, height, steps)
     if name in ("gemini", "imagen"):
         return _gemini_image(prompt, target, api_key, model, width, height)
     if name == "pollinations":
@@ -290,6 +295,35 @@ def generate_image(
     if name == "frame":
         return _frame_image(prompt, target, seconds, ffmpeg)
     raise RuntimeError(f"Provider ảnh không hợp lệ: {provider!r}.")
+
+
+def _cloudflare_image(
+    prompt: str,
+    target: Path,
+    account_id: str,
+    api_token: str,
+    model: str,
+    width: int,
+    height: int,
+    steps: int = 4,
+) -> Path:
+    from core.ai_images import CloudflareImageProvider, AIImageError
+
+    try:
+        provider = CloudflareImageProvider(
+            account_id, api_token, model or "@cf/black-forest-labs/flux-1-schnell", steps=steps
+        )
+        created = provider.generate(prompt, target.with_suffix(""), width, height)
+    except AIImageError as exc:
+        raise RuntimeError(f"Cloudflare Workers AI lỗi: {exc}") from exc
+    if created != target:
+        if created.suffix.lower() == target.suffix.lower():
+            os.replace(created, target)
+        else:
+            with Image.open(created) as im:
+                im.convert("RGB").save(target)
+            created.unlink(missing_ok=True)
+    return target
 
 
 def _gemini_image(prompt: str, target: Path, api_key: str, model: str,

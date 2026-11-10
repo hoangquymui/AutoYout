@@ -54,9 +54,9 @@ def test_window_builds_all_tabs(window) -> None:
     assert window.settings_tab.inner_tabs.tabText(0) == "Cài đặt chung"
     assert window.settings_tab.inner_tabs.tabText(1) == "API"
     assert window.settings_tab.api_tabs.count() == 3
-    assert window.settings_tab.api_tabs.tabText(0) == "Văn bản AI"
-    assert window.settings_tab.api_tabs.tabText(1) == "Giọng đọc (TTS)"
-    assert window.settings_tab.api_tabs.tabText(2) == "Ảnh / Video AI"
+    assert window.settings_tab.api_tabs.tabText(0) == "Văn bản"
+    assert window.settings_tab.api_tabs.tabText(1) == "Giọng đọc"
+    assert window.settings_tab.api_tabs.tabText(2) == "Ảnh"
     assert window.settings_tab.card_h2mtts is not None
     inner_video_labels = [
         window.video_tab.inner_tabs.tabText(i)

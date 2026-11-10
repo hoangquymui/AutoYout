@@ -53,6 +53,7 @@ from utils.logger import get_logger
 logger = get_logger("ui.thumbnail")
 
 _PROVIDERS = [
+    ("Cloudflare Workers AI", "cloudflare"),
     ("Gemini (AI)", "gemini"),
     ("Pollinations (miễn phí)", "pollinations"),
     ("Frame từ video đã render", "frame"),
@@ -131,8 +132,9 @@ class ImageWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, provider: str, prompt: str, out_path: Path, *,
-                 api_key: str, model: str, seconds: float, ffmpeg: str,
-                 parent=None) -> None:
+                 api_key: str = "", model: str = "", seconds: float = 5.0,
+                 ffmpeg: str = "", account_id: str = "", api_token: str = "",
+                 steps: int = 4, parent=None) -> None:
         super().__init__(parent)
         self._provider = provider
         self._prompt = prompt
@@ -141,6 +143,9 @@ class ImageWorker(QThread):
         self._model = model
         self._seconds = seconds
         self._ffmpeg = ffmpeg
+        self._account_id = account_id
+        self._api_token = api_token
+        self._steps = steps
         self._cancel = threading.Event()
 
     def cancel(self) -> None:
@@ -152,6 +157,8 @@ class ImageWorker(QThread):
                 self._provider, self._prompt, self._out_path,
                 api_key=self._api_key, model=self._model,
                 seconds=self._seconds, ffmpeg=self._ffmpeg,
+                account_id=self._account_id, api_token=self._api_token,
+                steps=self._steps,
             )
         except Exception as exc:
             logger.error("Tạo ảnh nền lỗi: %s", exc)
@@ -1280,19 +1287,43 @@ class ThumbnailPanel(QWidget):
         thumb = self._settings.get("thumbnail") or {}
         api_cfg = self._settings.get("api") or {}
         video_cfg = self._settings.get("video") or {}
+
+        cf_account = str(api_cfg.get("cloudflare_account_id") or os.environ.get("CF_ACCOUNT_ID", "")).strip()
+        cf_token = str(api_cfg.get("cloudflare_token") or os.environ.get("CF_API_TOKEN", "")).strip()
+        cf_model = str(api_cfg.get("cloudflare_image_model") or thumb.get("cloudflare_image_model") or "@cf/black-forest-labs/flux-1-schnell").strip()
+
+        if provider in ("cloudflare", "cf") and (not cf_account or not cf_token):
+            self._set_status(
+                "Chưa có Account ID hoặc API Token Cloudflare — hãy cấu hình trong tab Cài đặt > API > Ảnh.",
+                "warning")
+            paint_status(self.image_status, "warning")
+            self.image_status.setText("Chưa có Cloudflare credentials. Hãy cấu hình ở tab Cài đặt.")
+            return
+
+        if provider in ("gemini", "imagen") and not key:
+            self._set_status(
+                "Chưa có API key Gemini — hãy cấu hình key trong tab Cài đặt.",
+                "warning")
+            paint_status(self.image_status, "warning")
+            self.image_status.setText("Chưa có API key Gemini. Hãy cấu hình ở tab Cài đặt.")
+            return
+
         raw_model = (
-            thumb.get("image_model")
-            or api_cfg.get("gemini_image_model")
-            or video_cfg.get("ai_image_model")
-            or video_cfg.get("ai_model")
-            or "gemini-3.1-flash-image"
+            cf_model if provider in ("cloudflare", "cf") else (
+                thumb.get("image_model")
+                or api_cfg.get("gemini_image_model")
+                or video_cfg.get("ai_image_model")
+                or video_cfg.get("ai_model")
+                or "gemini-3.1-flash-image"
+            )
         )
         from core.ai_images import normalize_image_model
-        model = normalize_image_model(str(raw_model))
+        model = cf_model if provider in ("cloudflare", "cf") else normalize_image_model(str(raw_model))
         ffmpeg = str((self._settings.get("paths") or {}).get("ffmpeg") or "")
         self._image_worker = ImageWorker(
             provider, prompt, out, api_key=key, model=model,
-            seconds=seconds, ffmpeg=ffmpeg, parent=self)
+            seconds=seconds, ffmpeg=ffmpeg, account_id=cf_account,
+            api_token=cf_token, steps=4, parent=self)
         self._image_worker.done.connect(self._on_background_done)
         self._image_worker.failed.connect(self._on_background_failed)
         self._image_worker.finished.connect(self._on_image_worker_finished)
