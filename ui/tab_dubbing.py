@@ -48,7 +48,8 @@ from core.dubbing import (
     load_cues,
     save_cues,
 )
-from core.languages import LANGUAGES
+from core.language_profiles import load_profiles
+from core.languages import LANGUAGES, language_name, normalize_language, normalize_language_code
 from core.piper_tts_engine import (
     EDGE_VOICES_BY_LANG,
     H2M_DEFAULT_VOICES,
@@ -419,74 +420,128 @@ class DubbingTab(QWidget):
         layout.setSpacing(10)
 
         desc = QLabel(
-            "Lựa chọn bộ máy giọng đọc (H2MTTS / EdgeTTS / PiperTTS) và model giọng tương ứng "
-            "cho từng ngôn ngữ. Khi chạy lồng tiếng hoặc xuất đa ngôn ngữ, hệ thống sẽ tự động "
-            "sử dụng model đã chọn cho ngôn ngữ đó."
+            "Danh sách ngôn ngữ được đồng bộ tự động theo các ngôn ngữ đã thêm ở tab Kịch bản. "
+            "Lựa chọn bộ máy giọng đọc (H2MTTS / EdgeTTS / PiperTTS) và model giọng tương ứng cho từng ngôn ngữ."
         )
         desc.setWordWrap(True)
         desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
         layout.addWidget(desc)
 
-        for code, lang in LANGUAGES.items():
-            row_frame = QFrame()
-            row_frame.setObjectName("LangEngineRow")
-            row_frame.setStyleSheet(
-                f"QFrame#LangEngineRow {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
-            )
-            self.lang_row_frames.append(row_frame)
+        self.lang_status_label = QLabel("")
+        self.lang_status_label.setWordWrap(True)
+        self.lang_status_label.setVisible(False)
+        layout.addWidget(self.lang_status_label)
 
-            row_layout = QHBoxLayout(row_frame)
-            row_layout.setContentsMargins(12, 8, 12, 8)
-            row_layout.setSpacing(12)
-
-            lbl_lang = QLabel(f"{lang['name']} ({code})")
-            lbl_lang.setFixedWidth(180)
-            lbl_lang.setStyleSheet("font-weight: bold; font-size: 11.5px;")
-            row_layout.addWidget(lbl_lang)
-
-            lbl_eng = QLabel("Engine:")
-            lbl_eng.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
-            row_layout.addWidget(lbl_eng)
-
-            eng_combo = QComboBox()
-            eng_combo.setMinimumWidth(140)
-            eng_combo.addItem("H2MTTS", "h2mtts")
-            eng_combo.addItem("EdgeTTS", "edge")
-            eng_combo.addItem("PiperTTS", "piper")
-            default_eng = "h2mtts" if code == "vi" else "edge"
-            eng_idx = eng_combo.findData(default_eng)
-            if eng_idx >= 0:
-                eng_combo.setCurrentIndex(eng_idx)
-            row_layout.addWidget(eng_combo)
-
-            lbl_voice = QLabel("Model / Giọng:")
-            lbl_voice.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
-            row_layout.addWidget(lbl_voice)
-
-            voice_combo = QComboBox()
-            voice_combo.setEditable(True)
-            voice_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-            voice_combo.setMinimumWidth(260)
-            row_layout.addWidget(voice_combo, 1)
-
-            self.lang_engine_combos[code] = eng_combo
-            self.lang_voice_combos[code] = voice_combo
-
-            self._populate_language_voices(code, default_eng)
-            eng_combo.currentIndexChanged.connect(
-                lambda _idx, c=code: self._on_lang_engine_changed(c)
-            )
-            voice_combo.currentIndexChanged.connect(
-                lambda _idx, c=code: self._on_lang_voice_changed(c)
-            )
-            voice_combo.currentTextChanged.connect(
-                lambda _txt, c=code: self._on_lang_voice_changed(c)
-            )
-
-            layout.addWidget(row_frame)
+        self.lang_rows_container = QWidget()
+        self.lang_rows_layout = QVBoxLayout(self.lang_rows_container)
+        self.lang_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.lang_rows_layout.setSpacing(10)
+        layout.addWidget(self.lang_rows_container)
 
         layout.addStretch(1)
+        self.sync_languages()
         return wrap_scroll(page)
+
+    def sync_languages(self, profiles: Optional[List[Any]] = None) -> None:
+        """Rebuild language rows based on source language ('vi') + languages added in Script tab."""
+        if profiles is None:
+            try:
+                profiles = load_profiles()
+            except Exception:
+                profiles = []
+
+        # Preserve current selections in _settings before rebuilding
+        if not getattr(self, "_loading_settings", False) and self._settings is not None and self.lang_engine_combos:
+            self.apply_to(self._settings)
+
+        items: List[tuple[str, str]] = [("vi", "Tiếng Việt (vi)")]
+        seen = {"vi"}
+        if profiles:
+            for prof in profiles:
+                code = normalize_language_code(getattr(prof, "language", "") or "", "")
+                if not code:
+                    continue
+                custom = getattr(prof, "name", "") or language_name(code)
+                label = f"{custom} ({code})" if code not in custom else custom
+                if code in seen:
+                    if getattr(prof, "name", ""):
+                        items = [(c, label if c == code else lbl) for c, lbl in items]
+                    continue
+                seen.add(code)
+                items.append((code, label))
+
+        while self.lang_rows_layout.count():
+            child = self.lang_rows_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        self.lang_engine_combos.clear()
+        self.lang_voice_combos.clear()
+        self.lang_row_frames.clear()
+
+        prev_loading = getattr(self, "_loading_settings", False)
+        self._loading_settings = True
+        try:
+            for code, display_label in items:
+                row_frame = QFrame()
+                row_frame.setObjectName("LangEngineRow")
+                row_frame.setStyleSheet(
+                    f"QFrame#LangEngineRow {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
+                )
+                self.lang_row_frames.append(row_frame)
+
+                row_layout = QHBoxLayout(row_frame)
+                row_layout.setContentsMargins(12, 8, 12, 8)
+                row_layout.setSpacing(12)
+
+                lbl_lang = QLabel(display_label)
+                lbl_lang.setFixedWidth(180)
+                lbl_lang.setStyleSheet("font-weight: bold; font-size: 11.5px;")
+                row_layout.addWidget(lbl_lang)
+
+                lbl_eng = QLabel("Engine:")
+                lbl_eng.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+                row_layout.addWidget(lbl_eng)
+
+                eng_combo = QComboBox()
+                eng_combo.setMinimumWidth(140)
+                eng_combo.addItem("H2MTTS", "h2mtts")
+                eng_combo.addItem("EdgeTTS", "edge")
+                eng_combo.addItem("PiperTTS", "piper")
+                eng_id = resolve_tts_engine_for_language(self._settings, code)
+                eng_idx = eng_combo.findData(eng_id)
+                if eng_idx >= 0:
+                    eng_combo.setCurrentIndex(eng_idx)
+                row_layout.addWidget(eng_combo)
+
+                lbl_voice = QLabel("Model / Giọng:")
+                lbl_voice.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+                row_layout.addWidget(lbl_voice)
+
+                voice_combo = QComboBox()
+                voice_combo.setEditable(True)
+                voice_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+                voice_combo.setMinimumWidth(260)
+                row_layout.addWidget(voice_combo, 1)
+
+                self.lang_engine_combos[code] = eng_combo
+                self.lang_voice_combos[code] = voice_combo
+
+                saved_voice = resolve_voice_for_language_engine(self._settings, code, eng_id)
+                self._populate_language_voices(code, eng_id, saved_voice)
+
+                eng_combo.currentIndexChanged.connect(
+                    lambda _idx, c=code: self._on_lang_engine_changed(c)
+                )
+                voice_combo.currentIndexChanged.connect(
+                    lambda _idx, c=code: self._on_lang_voice_changed(c)
+                )
+                voice_combo.currentTextChanged.connect(
+                    lambda _txt, c=code: self._on_lang_voice_changed(c)
+                )
+
+                self.lang_rows_layout.addWidget(row_frame)
+        finally:
+            self._loading_settings = prev_loading
 
     def _populate_language_voices(
         self, lang_code: str, engine_id: str, selected_voice: str = ""
@@ -498,25 +553,38 @@ class DubbingTab(QWidget):
         voice_combo.clear()
 
         if engine_id == "h2mtts":
-            seen = set()
-            for label, val in H2M_DEFAULT_VOICES:
-                voice_combo.addItem(label, val)
-                seen.add(val)
-            for name in self.tts_page.voice_names():
-                if name and name not in seen:
-                    voice_combo.addItem(name, name)
-                    seen.add(name)
+            if lang_code != "vi":
+                voice_combo.addItem(
+                    "⚠ H2MTTS chỉ hỗ trợ Tiếng Việt (vi) — Hãy chọn EdgeTTS hoặc PiperTTS",
+                    "",
+                )
+            else:
+                seen = set()
+                for label, val in H2M_DEFAULT_VOICES:
+                    voice_combo.addItem(label, val)
+                    seen.add(val)
+                for name in self.tts_page.voice_names():
+                    if name and name not in seen:
+                        voice_combo.addItem(name, name)
+                        seen.add(name)
         elif engine_id == "piper":
-            piper_dir = str((self._settings or {}).get("paths", {}).get("piper") or "")
-            p_engine = PiperTTSEngine(piper_dir)
-            for label, val in p_engine.available_voices(lang_code):
-                voice_combo.addItem(label, val)
+            p_engine = PiperTTSEngine(self._settings)
+            installed = p_engine.installed_voices(lang_code)
+            has_bin = p_engine.find_binary() is not None
+            if has_bin and installed:
+                for label, val in installed:
+                    voice_combo.addItem(label, val)
+            else:
+                voice_combo.addItem(
+                    "⚠ Chưa cài đặt PiperTTS / chưa tải model (Vào Cài đặt → Giọng đọc để tải)",
+                    "",
+                )
         else:
             voices = EDGE_VOICES_BY_LANG.get(lang_code) or EDGE_VOICES_BY_LANG.get("en", [])
             for label, val in voices:
                 voice_combo.addItem(label, val)
 
-        if selected_voice:
+        if selected_voice and voice_combo.itemData(0) != "":
             idx = voice_combo.findData(selected_voice)
             if idx < 0:
                 idx = voice_combo.findText(selected_voice)
@@ -532,9 +600,11 @@ class DubbingTab(QWidget):
     def _get_combo_voice(self, combo: QComboBox) -> str:
         idx = combo.currentIndex()
         txt = combo.currentText().strip()
+        if txt.startswith("⚠"):
+            return ""
         if idx >= 0 and combo.itemText(idx) == txt:
             data = combo.itemData(idx)
-            if data:
+            if data is not None:
                 return str(data)
         return txt
 
@@ -547,8 +617,34 @@ class DubbingTab(QWidget):
         if self._settings:
             saved_voice = resolve_voice_for_language_engine(self._settings, lang_code, engine_id)
         self._populate_language_voices(lang_code, engine_id, saved_voice)
-        if not getattr(self, "_loading_settings", False) and self._settings is not None:
-            self.apply_to(self._settings)
+
+        if not getattr(self, "_loading_settings", False):
+            if engine_id == "piper":
+                p_engine = PiperTTSEngine(self._settings)
+                ok, err_msg = p_engine.check_ready(lang_code)
+                if not ok:
+                    paint_status(self.lang_status_label, "error")
+                    self.lang_status_label.setText(f"⚠ {err_msg}")
+                    self.lang_status_label.setVisible(True)
+                    if self.isVisible():
+                        QMessageBox.warning(self, "Chưa cài đặt PiperTTS", err_msg)
+                else:
+                    self.lang_status_label.setVisible(False)
+            elif engine_id == "h2mtts" and lang_code != "vi":
+                err_msg = (
+                    f"H2MTTS chỉ hỗ trợ giọng đọc Tiếng Việt (vi), không hỗ trợ ngôn ngữ "
+                    f"'{language_name(lang_code)} ({lang_code})'. Vui lòng chọn EdgeTTS hoặc PiperTTS."
+                )
+                paint_status(self.lang_status_label, "error")
+                self.lang_status_label.setText(f"⚠ {err_msg}")
+                self.lang_status_label.setVisible(True)
+                if self.isVisible():
+                    QMessageBox.warning(self, "H2MTTS không hỗ trợ ngôn ngữ này", err_msg)
+            else:
+                self.lang_status_label.setVisible(False)
+
+            if self._settings is not None:
+                self.apply_to(self._settings)
 
     def _on_lang_voice_changed(self, lang_code: str) -> None:
         if getattr(self, "_loading_settings", False) or self._settings is None:
@@ -596,10 +692,7 @@ class DubbingTab(QWidget):
             self._on_split_mode_changed()
 
             # Load per-language engine and voice selections
-            for code in LANGUAGES:
-                eng_combo = self.lang_engine_combos.get(code)
-                if eng_combo is None:
-                    continue
+            for code, eng_combo in list(self.lang_engine_combos.items()):
                 eng_id = resolve_tts_engine_for_language(settings, code)
                 eng_combo.blockSignals(True)
                 idx = eng_combo.findData(eng_id)

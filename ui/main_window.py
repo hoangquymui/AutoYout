@@ -552,6 +552,7 @@ class MainWindow(QMainWindow):
         save_settings(self.settings)
 
     def _on_languages_changed(self, profiles: list) -> None:
+        self.tts_tab.sync_languages(profiles)
         self.automation_tab.sync_languages(profiles)
         self.thumbnail_tab.sync_languages(profiles)
         self.youtube_tab.sync_languages(profiles)

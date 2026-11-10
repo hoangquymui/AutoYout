@@ -406,11 +406,14 @@ def test_h2mtts_and_piper_expand_collapse_and_packages(app, tmp_path: Path) -> N
     assert "Đã cài đủ" in piper_card.status_badge.text()
 
 
-def test_dubbing_language_subtab_and_routing(app) -> None:
+def test_dubbing_language_subtab_and_routing(app, tmp_path: Path) -> None:
+    from core.language_profiles import LanguageProfile
     from core.piper_tts_engine import (
+        PiperTTSEngine,
         resolve_tts_engine_for_language,
         resolve_voice_for_language_engine,
     )
+    from core.tts_engine import TTSError
     from ui.tab_dubbing import DubbingTab
 
     dub_tab = DubbingTab()
@@ -419,26 +422,51 @@ def test_dubbing_language_subtab_and_routing(app) -> None:
     assert dub_tab.inner_tabs.tabText(1) == "Engine && giọng"
     assert dub_tab.inner_tabs.tabText(2) == "Ngôn ngữ"
 
+    # Sync languages from Script tab profiles (only vi + added profiles)
+    custom_profiles = [
+        LanguageProfile("en", "prompt en", name="Tiếng Anh"),
+        LanguageProfile("ja", "prompt ja", name="Tiếng Nhật"),
+    ]
+    dub_tab.sync_languages(custom_profiles)
+    assert list(dub_tab.lang_engine_combos.keys()) == ["vi", "en", "ja"]
+    assert "hi" not in dub_tab.lang_engine_combos
+
     # Check Vietnamese and English have H2MTTS / EdgeTTS / PiperTTS options
     for lang_code in ("vi", "en"):
         combo = dub_tab.lang_engine_combos[lang_code]
         options = [combo.itemData(i) for i in range(combo.count())]
         assert options == ["h2mtts", "edge", "piper"]
 
-    # Set Vietnamese to PiperTTS and English to EdgeTTS
+    # Point to an empty Piper directory so PiperTTS is not installed
+    dub_tab.load_from({"paths": {"piper": str(tmp_path / "empty_piper")}})
+    dub_tab.sync_languages(custom_profiles)
+
+    # Set Vietnamese to PiperTTS -> should NOT crash with AttributeError, and should show warning message
     vi_combo = dub_tab.lang_engine_combos["vi"]
     vi_combo.setCurrentIndex(vi_combo.findData("piper"))
+    assert "Chưa cài đặt" in dub_tab.lang_status_label.text()
+    assert "Chưa cài đặt" in dub_tab.lang_voice_combos["vi"].currentText()
+
     en_combo = dub_tab.lang_engine_combos["en"]
     en_combo.setCurrentIndex(en_combo.findData("edge"))
 
-    settings: dict = {}
+    settings: dict = {"paths": {"piper": str(tmp_path / "empty_piper")}}
     dub_tab.apply_to(settings)
     assert resolve_tts_engine_for_language(settings, "vi") == "piper"
     assert resolve_tts_engine_for_language(settings, "en") == "edge"
     assert resolve_voice_for_language_engine(settings, "vi", "piper") != ""
 
+    # Verify PiperTTSEngine accepts string path or settings dict and raises clear TTSError when missing
+    eng_from_str = PiperTTSEngine(str(tmp_path / "empty_piper"))
+    ok, reason = eng_from_str.check_ready("vi")
+    assert ok is False
+    assert "Chưa cài đặt" in reason
+    with pytest.raises(TTSError, match="Chưa cài đặt PiperTTS"):
+        eng_from_str.synthesize("Xin chào", tmp_path / "out.mp3", language="vi")
+
     # Reload into a fresh DubbingTab
     fresh_dub = DubbingTab()
+    fresh_dub.sync_languages(custom_profiles)
     fresh_dub.load_from(settings)
     assert fresh_dub.lang_engine_combos["vi"].currentData() == "piper"
     assert fresh_dub.lang_engine_combos["en"].currentData() == "edge"

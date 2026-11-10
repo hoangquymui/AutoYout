@@ -135,8 +135,9 @@ H2M_DEFAULT_VOICES: List[Tuple[str, str]] = [
 def resolve_tts_engine_for_language(settings: Optional[Dict[str, Any]], language: str) -> str:
     """Return the configured TTS engine ID ('h2mtts', 'edge', or 'piper') for a language."""
     code = normalize_language(language)
-    tts_cfg = (settings or {}).get("tts") or {}
-    lang_engines = tts_cfg.get("language_engines") or {}
+    cfg = settings if isinstance(settings, dict) else {}
+    tts_cfg = cfg.get("tts") if isinstance(cfg.get("tts"), dict) else {}
+    lang_engines = tts_cfg.get("language_engines") if isinstance(tts_cfg.get("language_engines"), dict) else {}
     chosen = str(lang_engines.get(code) or "").strip().lower()
     if chosen in ("h2mtts", "h2m", "local"):
         return "h2mtts"
@@ -153,19 +154,20 @@ def resolve_voice_for_language_engine(
 ) -> str:
     """Return the configured voice/model name for a (language, engine_id) pair."""
     code = normalize_language(language)
-    tts_cfg = (settings or {}).get("tts") or {}
+    cfg = settings if isinstance(settings, dict) else {}
+    tts_cfg = cfg.get("tts") if isinstance(cfg.get("tts"), dict) else {}
     if engine_id == "h2mtts":
-        lang_voices = tts_cfg.get("h2m_voices") or {}
+        lang_voices = tts_cfg.get("h2m_voices") if isinstance(tts_cfg.get("h2m_voices"), dict) else {}
         return str(lang_voices.get(code) or tts_cfg.get("voice") or "Hải Đăng").strip()
     if engine_id == "piper":
-        piper_voices = tts_cfg.get("piper_voices") or {}
+        piper_voices = tts_cfg.get("piper_voices") if isinstance(tts_cfg.get("piper_voices"), dict) else {}
         return str(
             piper_voices.get(code)
             or PIPER_DEFAULT_VOICES.get(code)
             or "vi_VN-vais1000-medium"
         ).strip()
     # edge
-    edge_voices = tts_cfg.get("edge_voices") or {}
+    edge_voices = tts_cfg.get("edge_voices") if isinstance(tts_cfg.get("edge_voices"), dict) else {}
     from core.languages import edge_voice
 
     return str(edge_voices.get(code) or edge_voice(code)).strip()
@@ -174,10 +176,20 @@ def resolve_voice_for_language_engine(
 class PiperTTSEngine:
     """Offline Piper TTS engine matching TTSEngine and EdgeTTSEngine interfaces."""
 
-    def __init__(self, settings: Optional[Dict[str, Any]] = None) -> None:
-        self.settings = settings or {}
-        paths = self.settings.get("paths") or {}
-        tts = self.settings.get("tts") or {}
+    def __init__(self, settings: Optional[Dict[str, Any] | str | Path] = None) -> None:
+        if isinstance(settings, (str, Path)):
+            self.settings: Dict[str, Any] = {}
+            raw_piper = str(settings).strip()
+            paths: Dict[str, Any] = {"piper": raw_piper}
+            tts: Dict[str, Any] = {}
+        elif isinstance(settings, dict):
+            self.settings = settings
+            paths = self.settings.get("paths") if isinstance(self.settings.get("paths"), dict) else {}
+            tts = self.settings.get("tts") if isinstance(self.settings.get("tts"), dict) else {}
+        else:
+            self.settings = {}
+            paths = {}
+            tts = {}
         self.root = Path(normalize_piper_path(paths.get("piper") or default_piper_path()))
         self.ffmpeg = resolve_tool(str(paths.get("ffmpeg") or "ffmpeg"), "ffmpeg")
         self.bitrate = str(tts.get("bitrate") or "192k")
@@ -185,7 +197,7 @@ class PiperTTSEngine:
             self.default_speed = float(tts.get("speed", 1.0) or 1.0)
         except (TypeError, ValueError):
             self.default_speed = 1.0
-        raw_map = tts.get("piper_voices") or {}
+        raw_map = tts.get("piper_voices") if isinstance(tts.get("piper_voices"), dict) else {}
         self._voice_map: Dict[str, str] = {
             normalize_language(k): str(v).strip()
             for k, v in raw_map.items()
@@ -244,26 +256,73 @@ class PiperTTSEngine:
             for found in folder.rglob(f"{stem}.onnx"):
                 if found.is_file():
                     return found
-        # Fallback: any .onnx in language folder
-        lang_dir = self.root / "voices" / code
-        if lang_dir.is_dir():
-            for found in lang_dir.rglob("*.onnx"):
-                if found.is_file():
+        # Fallback: any .onnx matching language prefix in PiperTTS folder
+        if self.root.is_dir():
+            for found in self.root.rglob("*.onnx"):
+                if found.is_file() and (
+                    found.stem.lower().startswith(f"{code}_")
+                    or found.stem.lower().startswith(f"{code}-")
+                ):
                     return found
         return None
 
+    def installed_voices(self, language: str = "") -> List[Tuple[str, str]]:
+        """Return list of (label, model_id) actually downloaded on disk for a language."""
+        code = normalize_language(language) if language else ""
+        if not self.root.is_dir():
+            return []
+        known_labels = {
+            val: label
+            for lang_list in PIPER_VOICES_BY_LANG.values()
+            for label, val in lang_list
+        }
+        installed: List[Tuple[str, str]] = []
+        seen: set[str] = set()
+        for onnx in self.root.rglob("*.onnx"):
+            if not onnx.is_file():
+                continue
+            stem = onnx.stem
+            if stem in seen:
+                continue
+            if code:
+                stem_lower = stem.lower()
+                in_lang_folder = code in [p.lower() for p in onnx.parts]
+                prefix_match = stem_lower.startswith(f"{code}_") or stem_lower.startswith(f"{code}-")
+                if not (in_lang_folder or prefix_match):
+                    continue
+            seen.add(stem)
+            label = known_labels.get(stem, f"{stem} (Đã tải)")
+            installed.append((label, stem))
+        return installed
+
+    def check_ready(self, language: str = "") -> Tuple[bool, str]:
+        """Verify whether PiperTTS binary and at least one model for `language` are installed."""
+        binary = self.find_binary()
+        if binary is None:
+            return (
+                False,
+                f"Chưa cài đặt bộ chạy PiperTTS (piper.exe) trong thư mục '{self.root}'. "
+                "Vui lòng vào Cài đặt → API → Giọng đọc để tải PiperTTS.",
+            )
+        if language:
+            code = normalize_language(language)
+            models = self.installed_voices(code)
+            if not models:
+                return (
+                    False,
+                    f"Chưa tải model giọng đọc PiperTTS cho ngôn ngữ '{language_name(code)} ({code})'. "
+                    "Vui lòng vào Cài đặt → API → Giọng đọc để tải model.",
+                )
+        return True, "PiperTTS đã sẵn sàng."
+
     def available_voices(self, language: str = "") -> List[Tuple[str, str]]:
         """Return list of (label, model_id) available for a language."""
+        installed = self.installed_voices(language)
+        if installed:
+            return installed
         code = normalize_language(language) if language else ""
         base_list = list(PIPER_VOICES_BY_LANG.get(code, [])) if code else []
         seen = {val for _, val in base_list}
-        if self.root.is_dir():
-            search_root = (self.root / "voices" / code) if (code and (self.root / "voices" / code).is_dir()) else self.root
-            for onnx in search_root.rglob("*.onnx"):
-                stem = onnx.stem
-                if stem not in seen:
-                    seen.add(stem)
-                    base_list.append((f"{stem} (Đã tải)", stem))
         if not base_list:
             for lang_voices in PIPER_VOICES_BY_LANG.values():
                 for label, val in lang_voices:
@@ -295,29 +354,16 @@ class PiperTTSEngine:
         code = normalize_language(language)
         chosen_voice = (voice or self.voice_for(code)).strip()
         binary = self.find_binary()
-        model_path = self.find_model(chosen_voice, code)
-
-        # If Piper binary or model is not installed locally yet, fall back to EdgeTTSEngine so user workflow succeeds
-        if binary is None or model_path is None:
-            logger.warning(
-                "PiperTTS chưa cài đủ binary/model (%s) cho ngôn ngữ %s → tự động fallback sang Edge-TTS.",
-                chosen_voice,
-                code,
+        if binary is None:
+            raise TTSError(
+                f"Chưa cài đặt PiperTTS (không tìm thấy piper.exe tại '{self.root}'). "
+                "Vui lòng vào Cài đặt → API → Giọng đọc để tải PiperTTS."
             )
-            from core.edge_tts_engine import EdgeTTSEngine
-
-            edge = EdgeTTSEngine(self.settings)
-            edge_v = None if (not voice or "_" in str(voice) or str(voice) in dict(H2M_DEFAULT_VOICES).values()) else voice
-            return edge.synthesize(
-                clean_text,
-                out_path,
-                language=code,
-                voice=edge_v,
-                speed=speed or self.default_speed,
-                progress_cb=progress_cb,
-                message_cb=message_cb,
-                pause_cb=pause_cb,
-                cancel_cb=cancel_cb,
+        model_path = self.find_model(chosen_voice, code)
+        if model_path is None:
+            raise TTSError(
+                f"Chưa tải model giọng đọc PiperTTS '{chosen_voice}' cho ngôn ngữ '{language_name(code)} ({code})'. "
+                "Vui lòng vào Cài đặt → API → Giọng đọc để tải model."
             )
 
         chunks = [
