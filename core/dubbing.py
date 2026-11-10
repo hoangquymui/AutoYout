@@ -394,7 +394,7 @@ def fit_plan(audio_dur: float, slot_dur: float, max_tempo: float = 1.30) -> Dict
     return {"tempo": cap, "pad": 0.0, "trim": audio / cap - slot, "natural": False}
 
 
-def natural_timings(durations: Iterable[float], gap: float = 0.15,
+def natural_timings(durations: Iterable[float], gap: float = 0.0,
                     start: float = 0.0) -> List[Tuple[float, float]]:
     """Cumulative ``(start, end)`` pairs for cue-after-cue playback."""
     timings: List[Tuple[float, float]] = []
@@ -420,8 +420,8 @@ class DubbingEngine:
         tts = self.settings.get("tts") or {}
         self.retries = max(0, int(dubbing.get("retries_per_cue", 1) or 0))
         self.edge_parallel = max(1, int(dubbing.get("edge_parallel", 3) or 1))
-        self.gap = float(dubbing.get("gap", 0.15) or 0.0)
-        self.timing_mode = str(dubbing.get("timing_mode") or "timeline")
+        self.gap = float(dubbing.get("gap", 0.0) or 0.0)
+        self.timing_mode = str(dubbing.get("timing_mode") or "natural")
         self.bitrate = str(tts.get("bitrate") or "192k")
         try:
             self.speed = float(tts.get("speed", 1.0) or 1.0)

@@ -591,7 +591,7 @@ class PipelineWorker(QThread):
                                 engine = DubbingEngine(self.settings)
                                 dub_cfg = self.settings.get("dubbing") or {}
                                 mode = str(dub_cfg.get("timing_mode") or "natural")
-                                gap = float(dub_cfg.get("gap", 0.15) or 0.0)
+                                gap = float(dub_cfg.get("gap", 0.0) or 0.0)
                                 engine.join_item(self.manager, item, cues, mode=mode, gap=gap)
                                 logger.info("Đã ghép xuất SRT từ cues có sẵn cho %s.", item.base)
                                 report(100)
@@ -730,7 +730,7 @@ class PipelineWorker(QThread):
                 or (item.text_file is not None and item.text_file.with_suffix(".srt").is_file())
             )
             mode = "timeline" if (user_mode == "timeline" and is_srt_mode) else "natural"
-            gap = float(dubbing.get("gap", 0.15) or 0.0)
+            gap = float(dubbing.get("gap", 0.0) or 0.0)
             mp3, _srt, duration = engine.join_item(
                 self.manager, item, cues, mode=mode, gap=gap)
         except SynthesisCancelled:

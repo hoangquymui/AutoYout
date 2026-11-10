@@ -32,7 +32,7 @@
   },
   "dubbing": {
     "timing_mode": "natural",
-    "gap": 0.15,
+    "gap": 0.0,
     "auto_split": true,
     "split_mode": "words",
     "min_words": 15,

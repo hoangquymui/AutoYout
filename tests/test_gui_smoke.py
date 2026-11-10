@@ -565,6 +565,15 @@ def test_dubbing_tab_ui_layout_and_labels(window) -> None:
     headers = [dub.table.horizontalHeaderItem(i).text() for i in range(5)]
     assert headers == ["STT", "Thời gian", "Nội dung", "Trạng thái", "File xuất"]
     assert "0 đoạn · Xong 0" in dub.stats_label.text()
+    assert dub.gap_label.text() == "Ngắt đoạn:"
+    assert hasattr(dub, "sep_gap")
+    assert dub.gap_spin.value() == 0.0
+    assert dub.gap_spin.suffix() == "s"
+    dub.gap_spin.setValue(0.25)
+    s = {}
+    dub.apply_to(s)
+    assert s["dubbing"]["gap"] == 0.25
+    dub.gap_spin.setValue(0.0)
 
 
 def test_dubbing_tab_resplit_or_reload(window, tmp_path: Path) -> None:

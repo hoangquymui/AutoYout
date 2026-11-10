@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -288,12 +289,6 @@ class DubbingTab(QWidget):
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("Timing tự nhiên", "natural")
         self.mode_combo.addItem("Giữ timing gốc", "timeline")
-        self.gap_spin = QDoubleSpinBox()
-        self.gap_spin.setRange(0.0, 3.0)
-        self.gap_spin.setSingleStep(0.05)
-        self.gap_spin.setDecimals(2)
-        self.gap_spin.setSuffix(" giây")
-        self.gap_spin.setValue(0.15)
 
         row2.addWidget(QLabel("Chia đoạn:"))
 
@@ -328,6 +323,28 @@ class DubbingTab(QWidget):
         self.reload_btn.setToolTip("Chia lại đoạn hoặc tải lại từ file.")
         self.reload_btn.clicked.connect(self._resplit_or_reload)
         row2.addWidget(self.reload_btn)
+
+        row2.addSpacing(4)
+        self.sep_gap = QFrame()
+        self.sep_gap.setFixedWidth(1)
+        self.sep_gap.setFixedHeight(18)
+        self.sep_gap.setStyleSheet(f"background-color: {theme.BORDER}; margin: 0 4px;")
+        row2.addWidget(self.sep_gap)
+        row2.addSpacing(4)
+
+        self.gap_label = QLabel("Ngắt đoạn:")
+        self.gap_label.setToolTip("Thời gian nghỉ/khoảng lặng giữa các đoạn audio khi ghép MP3 (mặc định 0s).")
+        row2.addWidget(self.gap_label)
+
+        self.gap_spin = QDoubleSpinBox()
+        self.gap_spin.setRange(0.0, 5.0)
+        self.gap_spin.setSingleStep(0.05)
+        self.gap_spin.setDecimals(2)
+        self.gap_spin.setSuffix("s")
+        self.gap_spin.setValue(0.0)
+        self.gap_spin.setToolTip("Thời gian nghỉ giữa các đoạn audio khi ghép MP3 (mặc định 0s).")
+        self.gap_spin.valueChanged.connect(self._on_gap_changed)
+        row2.addWidget(self.gap_spin)
 
         # Ban đầu cập nhật ẩn/hiện theo split_mode
         self._on_split_mode_changed()
@@ -393,6 +410,12 @@ class DubbingTab(QWidget):
         if not getattr(self, "_loading_settings", False) and self._manager and self._base and not self._worker:
             self._resplit_or_reload()
 
+    def _on_gap_changed(self, value: float) -> None:
+        if getattr(self, "_loading_settings", False):
+            return
+        if self._settings is not None:
+            self._settings.setdefault("dubbing", {})["gap"] = round(float(value), 2)
+
     # ── settings ─────────────────────────────────────────────────────────────
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._loading_settings = True
@@ -408,10 +431,10 @@ class DubbingTab(QWidget):
             self.min_words_spin.setValue(int(dub.get("min_words", 15) or 15))
             self.max_words_spin.setValue(int(dub.get("max_words", 30) or 30))
             self.merge_chk.setChecked(bool(dub.get("merge_short", False)))
-            index = self.mode_combo.findData(str(dub.get("timing_mode") or "timeline"))
+            index = self.mode_combo.findData(str(dub.get("timing_mode") or "natural"))
             if index >= 0:
                 self.mode_combo.setCurrentIndex(index)
-            self.gap_spin.setValue(float(dub.get("gap", 0.15) or 0.0))
+            self.gap_spin.setValue(float(dub.get("gap", 0.0) if dub.get("gap") is not None else 0.0))
             self._on_split_mode_changed()
         finally:
             self._loading_settings = False
@@ -419,7 +442,7 @@ class DubbingTab(QWidget):
     def apply_to(self, settings: Dict[str, Any]) -> None:
         self.tts_page.apply_to(settings)
         dub = settings.setdefault("dubbing", {})
-        dub["timing_mode"] = self.mode_combo.currentData() or "timeline"
+        dub["timing_mode"] = self.mode_combo.currentData() or "natural"
         dub["gap"] = round(float(self.gap_spin.value()), 2)
         dub["auto_split"] = self.auto_split_chk.isChecked()
         dub["split_mode"] = str(self.split_mode_combo.currentData() or "words")
@@ -431,6 +454,8 @@ class DubbingTab(QWidget):
     def apply_theme(self) -> None:
         self.tts_page.apply_theme()
         self.audio_preview.apply_theme()
+        if hasattr(self, "sep_gap"):
+            self.sep_gap.setStyleSheet(f"background-color: {theme.BORDER}; margin: 0 4px;")
         self._paint_rows()
         paint_status(self.status_label, self._status_level)
 
@@ -924,7 +949,7 @@ class DubbingTab(QWidget):
         if self._external_busy:
             self._set_status("Pipeline đang chạy, hãy dừng hoặc chờ xong.", "warning")
             return
-        mode = str(self.mode_combo.currentData() or "timeline")
+        mode = str(self.mode_combo.currentData() or "natural")
         gap = float(self.gap_spin.value())
         snapshot = copy.deepcopy(self._settings)
         self.apply_to(snapshot)
