@@ -486,6 +486,8 @@ def test_full_edge_piper_catalog_search_and_tts_config_tab(app, tmp_path: Path) 
     assert len(PIPER_PACKAGES) >= 151
     piper_card = PiperTTSCard()
     assert hasattr(piper_card, "search_edit")
+    assert not hasattr(piper_card, "btn_dl_all")
+    assert "bắt buộc" in piper_card.btn_install.text()
     piper_card.search_edit.setText("vais1000")
     visible_rows = [
         pid for pid, w in piper_card.pkg_widgets.items()

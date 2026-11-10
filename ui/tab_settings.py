@@ -1435,16 +1435,11 @@ class H2MTTSCard(QFrame):
         btn_bar = QHBoxLayout()
         btn_bar.setSpacing(8)
 
-        self.btn_install = QPushButton("🚀 Tải trọn bộ model (~385 MB)")
+        self.btn_install = QPushButton("🚀 Tải các phần bắt buộc (~385 MB)")
         self.btn_install.setObjectName("primaryButton")
         set_icon(self.btn_install, "download", "white", 13)
-        self.btn_install.clicked.connect(self._download_recommended_clicked)
+        self.btn_install.clicked.connect(self._download_required_clicked)
         btn_bar.addWidget(self.btn_install)
-
-        self.btn_dl_all = QPushButton("📦 Tải tất cả gói (~385 MB)")
-        set_icon(self.btn_dl_all, "download", "accent", 13)
-        self.btn_dl_all.clicked.connect(self._download_all_clicked)
-        btn_bar.addWidget(self.btn_dl_all)
 
         self.btn_check_engine = QPushButton("🔄 Quét lại")
         set_icon(self.btn_check_engine, "check-circle", "muted", 12)
@@ -1639,21 +1634,21 @@ class H2MTTSCard(QFrame):
                 f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
-            self.btn_install.setText("🚀 Đã cài đủ gói khuyên dùng")
+            self.btn_install.setText("🚀 Đã cài đủ phần bắt buộc")
         elif path.exists() and has_any:
             self.status_badge.setText("Thiếu gói")
             self.status_badge.setStyleSheet(
                 f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
-            self.btn_install.setText("🚀 Tải trọn bộ model (~385 MB)")
+            self.btn_install.setText("🚀 Tải các phần bắt buộc (~385 MB)")
         else:
             self.status_badge.setText("Chưa cài")
             self.status_badge.setStyleSheet(
                 f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
-            self.btn_install.setText("🚀 Tải trọn bộ model (~385 MB)")
+            self.btn_install.setText("🚀 Tải các phần bắt buộc (~385 MB)")
 
     @staticmethod
     def _is_pkg_installed(root: Path, pkg: Dict[str, Any]) -> bool:
@@ -1670,12 +1665,9 @@ class H2MTTSCard(QFrame):
     def _download_single_clicked(self, pkg: Dict[str, Any]) -> None:
         self._start_download([pkg])
 
-    def _download_recommended_clicked(self) -> None:
-        recommended = [p for p in H2M_PACKAGES if p.get("core")]
-        self._start_download(recommended)
-
-    def _download_all_clicked(self) -> None:
-        self._start_download(H2M_PACKAGES)
+    def _download_required_clicked(self) -> None:
+        required = [p for p in H2M_PACKAGES if p.get("core")]
+        self._start_download(required)
 
     def _start_download(self, pkgs: List[Dict[str, Any]]) -> None:
         if self._downloader is not None and self._downloader.isRunning():
@@ -1692,7 +1684,6 @@ class H2MTTSCard(QFrame):
         self.btn_cancel_dl.setText("Hủy")
         self.btn_cancel_dl.setEnabled(True)
         self.btn_install.setEnabled(False)
-        self.btn_dl_all.setEnabled(False)
         logger.info("Bắt đầu tác vụ tải %d gói tài nguyên H2MTTS vào thư mục: %s", len(pkgs), root_path)
 
         self._downloader = H2MDownloadWorker(root_path, pkgs, parent=self)
@@ -1734,7 +1725,6 @@ class H2MTTSCard(QFrame):
         errors = dict(getattr(self._downloader, "errors", {})) if self._downloader else {}
         self._downloader = None
         self.btn_install.setEnabled(True)
-        self.btn_dl_all.setEnabled(True)
         self.btn_cancel_dl.setText("Đóng")
         self.btn_cancel_dl.setEnabled(True)
         self.lbl_progress.setText(message)
@@ -1801,9 +1791,9 @@ def _build_piper_packages() -> List[Dict[str, Any]]:
             "target_subpath": ".",
             "check_files": ["piper.exe", "piper/piper.exe"],
             "core": True,
+            "required": True,
         }
     ]
-    core_keys = {"vi_VN-vais1000-medium", "en_US-lessac-medium"}
     for m in ALL_PIPER_MODELS:
         key = str(m.get("key") or "").strip()
         onnx_rel = str(m.get("onnx_rel") or "").strip()
@@ -1818,12 +1808,8 @@ def _build_piper_packages() -> List[Dict[str, Any]]:
         quality = str(m.get("quality") or "medium")
         speakers = int(m.get("num_speakers") or 1)
         size_mb = m.get("size_mb", 60)
-        is_core = key in core_keys
 
-        if is_core:
-            tag_color = theme.SUCCESS
-            tag_text = f"Khuyên dùng · {native} ({locale})"
-        elif lang_code in ("vi", "en", "zh", "fr", "es", "de", "ru"):
+        if lang_code in ("vi", "en", "zh", "fr", "es", "de", "ru"):
             tag_color = theme.BLUE
             tag_text = f"{native} ({locale})"
         else:
@@ -1848,7 +1834,8 @@ def _build_piper_packages() -> List[Dict[str, Any]]:
                 "desc": f"Model Piper ONNX: {key} ({en_name} - {country}{spk_str}).",
                 "target_subpath": "models",
                 "check_files": [f"{key}.onnx", f"voices/{lang_code}/{key}.onnx"],
-                "core": is_core,
+                "core": False,
+                "required": False,
             }
         )
     return pkgs
@@ -2058,16 +2045,11 @@ class PiperTTSCard(QFrame):
         btn_bar = QHBoxLayout()
         btn_bar.setSpacing(8)
 
-        self.btn_install = QPushButton("🚀 Tải gói khuyên dùng (~145 MB)")
+        self.btn_install = QPushButton("🚀 Tải các phần bắt buộc (~20 MB)")
         self.btn_install.setObjectName("primaryButton")
         set_icon(self.btn_install, "download", "white", 13)
-        self.btn_install.clicked.connect(self._download_recommended_clicked)
+        self.btn_install.clicked.connect(self._download_required_clicked)
         btn_bar.addWidget(self.btn_install)
-
-        self.btn_dl_all = QPushButton("📦 Tải tất cả gói (~210 MB)")
-        set_icon(self.btn_dl_all, "download", "accent", 13)
-        self.btn_dl_all.clicked.connect(self._download_all_clicked)
-        btn_bar.addWidget(self.btn_dl_all)
 
         self.btn_check_engine = QPushButton("🔄 Quét lại")
         set_icon(self.btn_check_engine, "check-circle", "muted", 12)
@@ -2296,31 +2278,28 @@ class PiperTTSCard(QFrame):
                 f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
-            self.btn_install.setText("🚀 Đã cài đủ gói khuyên dùng")
+            self.btn_install.setText("🚀 Đã cài đủ phần bắt buộc")
         elif path.exists() and has_any:
             self.status_badge.setText("Thiếu gói")
             self.status_badge.setStyleSheet(
                 f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
-            self.btn_install.setText("🚀 Tải gói khuyên dùng (~145 MB)")
+            self.btn_install.setText("🚀 Tải các phần bắt buộc (~20 MB)")
         else:
             self.status_badge.setText("Chưa cài")
             self.status_badge.setStyleSheet(
                 f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
                 "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
             )
-            self.btn_install.setText("🚀 Tải gói khuyên dùng (~145 MB)")
+            self.btn_install.setText("🚀 Tải các phần bắt buộc (~20 MB)")
 
     def _download_single_clicked(self, pkg: Dict[str, Any]) -> None:
         self._start_download([pkg])
 
-    def _download_recommended_clicked(self) -> None:
-        recommended = [p for p in PIPER_PACKAGES if p.get("core")]
-        self._start_download(recommended)
-
-    def _download_all_clicked(self) -> None:
-        self._start_download(PIPER_PACKAGES)
+    def _download_required_clicked(self) -> None:
+        required = [p for p in PIPER_PACKAGES if p.get("core")]
+        self._start_download(required)
 
     def _start_download(self, pkgs: List[Dict[str, Any]]) -> None:
         if self._downloader is not None and self._downloader.isRunning():
@@ -2337,7 +2316,6 @@ class PiperTTSCard(QFrame):
         self.btn_cancel_dl.setText("Hủy")
         self.btn_cancel_dl.setEnabled(True)
         self.btn_install.setEnabled(False)
-        self.btn_dl_all.setEnabled(False)
 
         self._downloader = PiperDownloadWorker(root_path, pkgs, parent=self)
         self._downloader.progress.connect(self._on_download_progress)
@@ -2376,7 +2354,6 @@ class PiperTTSCard(QFrame):
         errors = dict(getattr(self._downloader, "errors", {})) if self._downloader else {}
         self._downloader = None
         self.btn_install.setEnabled(True)
-        self.btn_dl_all.setEnabled(True)
         self.btn_cancel_dl.setText("Đóng")
         self.btn_cancel_dl.setEnabled(True)
         self.lbl_progress.setText(message)
