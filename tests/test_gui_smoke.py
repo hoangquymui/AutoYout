@@ -145,6 +145,8 @@ def test_youtube_tab_has_upload_and_thumbnail_pages(window) -> None:
     assert hasattr(window.thumbnail_tab, "preview_gallery_combo")
     assert hasattr(window.thumbnail_tab, "translate_btn")
     assert hasattr(window.thumbnail_tab, "preview_lang_combo")
+    assert hasattr(window.thumbnail_tab, "edit_prompt_btn")
+    assert hasattr(window.thumbnail_tab, "cancel_thumb_btn")
     thumb = window.thumbnail_tab
     # Base language edit exists
     assert "vi" in thumb._title_edits
@@ -157,6 +159,15 @@ def test_youtube_tab_has_upload_and_thumbnail_pages(window) -> None:
         thumb._on_translate_done({"en": "Hello World"})
         assert thumb.get_title_for_lang("en") == "Hello World"
         assert thumb._title_edits["en"].toPlainText() == "Hello World"
+    # Prompt preservation test ("vẫn giữ im prompt hiện tại")
+    thumb.prompt_edit.setPlainText("Custom Prompt Keep")
+    thumb.title_edit.setPlainText("Changed Title")
+    thumb._auto_fill_prompt()
+    assert thumb.prompt_edit.toPlainText() == "Custom Prompt Keep"
+    # Test cancel thumbnail button
+    thumb._bg_path = Path("fake.jpg")
+    thumb._reset_or_cancel_thumbnail()
+    assert thumb._bg_path is None
     assert hasattr(tab, "acc_table")
     assert tab.acc_table.columnCount() == 7
     assert hasattr(tab, "acc_add_btn")

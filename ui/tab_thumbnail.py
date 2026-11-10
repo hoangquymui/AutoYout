@@ -13,6 +13,7 @@ from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -144,6 +145,71 @@ class ImageWorker(QThread):
             self.failed.emit("Đã huỷ tạo ảnh nền.")
             return
         self.done.emit(str(path))
+
+
+class PromptEditDialog(QDialog):
+    """Dialog chỉnh sửa prompt tạo ảnh thumbnail, cho phép giữ nguyên hoặc tái tạo."""
+
+    def __init__(self, current_prompt: str, on_generate_ai=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Sửa Prompt tạo ảnh")
+        self.setMinimumSize(560, 320)
+        self.resize(620, 360)
+        self._on_generate_ai = on_generate_ai
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        header_lbl = QLabel("Prompt tạo ảnh nền (AI):")
+        header_lbl.setStyleSheet("font-weight: 600; font-size: 13px;")
+        layout.addWidget(header_lbl)
+
+        desc_lbl = QLabel(
+            "Bạn có thể tùy chỉnh hoặc bổ sung mô tả cảnh cho ảnh nền thumbnail. "
+            "Prompt hiện tại được giữ nguyên."
+        )
+        desc_lbl.setObjectName("MutedLabel")
+        desc_lbl.setWordWrap(True)
+        layout.addWidget(desc_lbl)
+
+        self.edit = QPlainTextEdit(self)
+        self.edit.setPlainText(current_prompt)
+        self.edit.setPlaceholderText("Nhập prompt mô tả cảnh ảnh nền...")
+        layout.addWidget(self.edit, 1)
+
+        bottom = QHBoxLayout()
+        bottom.setSpacing(8)
+
+        if on_generate_ai is not None:
+            self.gen_btn = QPushButton("⚡ Tạo lại prompt từ tiêu đề")
+            set_icon(self.gen_btn, "zap", "accent", 13)
+            self.gen_btn.setToolTip("Dùng AI tự động tạo lại prompt dựa trên tiêu đề và kịch bản hiện tại.")
+            self.gen_btn.clicked.connect(self._do_generate)
+            bottom.addWidget(self.gen_btn)
+
+        bottom.addStretch(1)
+
+        self.cancel_btn = QPushButton("Huỷ")
+        self.cancel_btn.clicked.connect(self.reject)
+        bottom.addWidget(self.cancel_btn)
+
+        self.save_btn = QPushButton("Lưu prompt")
+        self.save_btn.setObjectName("primaryButton")
+        set_icon(self.save_btn, "check", "white", 13)
+        self.save_btn.clicked.connect(self.accept)
+        bottom.addWidget(self.save_btn)
+
+        layout.addLayout(bottom)
+
+    def _do_generate(self) -> None:
+        if self._on_generate_ai:
+            new_prompt = self._on_generate_ai()
+            if new_prompt:
+                self.edit.setPlainText(new_prompt)
+
+    def get_prompt(self) -> str:
+        return self.edit.toPlainText().strip()
 
 
 class ThumbnailPanel(QWidget):
@@ -434,6 +500,13 @@ class ThumbnailPanel(QWidget):
         set_icon(self.suggest_btn, "zap", "accent", 14)
         self.suggest_btn.clicked.connect(self._suggest_titles)
 
+        self.edit_prompt_btn = QPushButton()
+        self.edit_prompt_btn.setObjectName("iconButton")
+        self.edit_prompt_btn.setFixedSize(30, 30)
+        set_icon(self.edit_prompt_btn, "edit", "accent", 15)
+        self.edit_prompt_btn.setToolTip("Sửa prompt tạo ảnh (vẫn giữ im prompt hiện tại)")
+        self.edit_prompt_btn.clicked.connect(self._open_edit_prompt_dialog)
+
         self.translate_btn = QPushButton("Dịch sang các thứ tiếng")
         set_icon(self.translate_btn, "globe", "accent", 13)
         self.translate_btn.setToolTip("Dịch tiêu đề gốc sang tất cả các ngôn ngữ đã chọn.")
@@ -443,6 +516,7 @@ class ThumbnailPanel(QWidget):
         self.transcript_label.setObjectName("MutedLabel")
         self.transcript_label.setWordWrap(True)
         row2.addWidget(self.suggest_btn)
+        row2.addWidget(self.edit_prompt_btn)
         row2.addWidget(self.translate_btn)
         row2.addWidget(self.transcript_label, 1)
         layout.addLayout(row2)
@@ -640,11 +714,16 @@ class ThumbnailPanel(QWidget):
         self.save_btn.setObjectName("primaryButton")
         set_icon(self.save_btn, "check", "white", 14)
         self.save_btn.clicked.connect(self._save)
+        self.cancel_thumb_btn = QPushButton("Huỷ")
+        set_icon(self.cancel_thumb_btn, "x", "muted", 14)
+        self.cancel_thumb_btn.setToolTip("Huỷ ảnh hiện tại để tạo lại ảnh mới.")
+        self.cancel_thumb_btn.clicked.connect(self._reset_or_cancel_thumbnail)
         self.open_btn = QPushButton("Mở file")
         set_icon(self.open_btn, "folder-open", "muted", 14)
         self.open_btn.clicked.connect(self._open_thumbnail)
         buttons.addWidget(self.preview_btn)
         buttons.addWidget(self.save_btn)
+        buttons.addWidget(self.cancel_thumb_btn)
         buttons.addWidget(self.open_btn)
         layout.addLayout(buttons)
 
@@ -944,6 +1023,26 @@ class ThumbnailPanel(QWidget):
             worker.deleteLater()
         self.suggest_btn.setEnabled(True)
 
+    def _open_edit_prompt_dialog(self) -> None:
+        if not self._base:
+            self._set_status("Hãy chọn file trước.", "warning")
+            return
+        current_prompt = self.prompt_edit.toPlainText().strip()
+
+        def _generate_from_title() -> str:
+            title = self.title_edit.toPlainText().strip()
+            excerpt = self._transcript[:600]
+            return build_image_prompt(
+                title, excerpt, self.style_edit.text().strip(), self._current_template_id()
+            )
+
+        dlg = PromptEditDialog(current_prompt, on_generate_ai=_generate_from_title, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            new_prompt = dlg.get_prompt()
+            self.prompt_edit.setPlainText(new_prompt)
+            self._auto_prompt = new_prompt
+            self._set_status("Đã cập nhật prompt tạo ảnh.", "success")
+
     def _apply_suggestion(self, item: QListWidgetItem) -> None:
         chosen_title = item.text().strip()
         self.title_edit.setPlainText(chosen_title)
@@ -1189,9 +1288,9 @@ class ThumbnailPanel(QWidget):
         if getattr(self, "_preview_lang", "") == base_lang or not getattr(self, "_preview_lang", ""):
             self._schedule_preview()
 
-    def _auto_fill_prompt(self) -> None:
+    def _auto_fill_prompt(self, force: bool = False) -> None:
         current = self.prompt_edit.toPlainText().strip()
-        if current and current != self._auto_prompt:
+        if current and not force:
             return
         title = self.title_edit.toPlainText().strip()
         if not title:
@@ -1359,6 +1458,23 @@ class ThumbnailPanel(QWidget):
         thumbs_dir.mkdir(parents=True, exist_ok=True)
         open_in_explorer(thumbs_dir)
 
+    def _reset_or_cancel_thumbnail(self) -> None:
+        if self._image_worker is not None:
+            self._cancel_background()
+            self._set_status("Đang huỷ tạo ảnh nền…", "muted")
+            return
+        self._bg_path = None
+        self._preview_file = None
+        self._pixmap = None
+        paint_status(self.image_status, "muted")
+        self.image_status.setText("Chưa có ảnh nền.")
+        self._show_placeholder("Đã huỷ ảnh hiện tại — bấm “Tạo ảnh nền” để tạo lại.")
+        self._set_status(
+            "Đã huỷ ảnh hiện tại. Bạn có thể chỉnh sửa prompt và bấm “Tạo ảnh nền” để tạo lại.",
+            "muted",
+        )
+        self._refresh_buttons()
+
     # ── helpers ──────────────────────────────────────────────────────────────
     def _api_key(self) -> str:
         settings = self._settings or {}
@@ -1388,9 +1504,13 @@ class ThumbnailPanel(QWidget):
         if hasattr(self, "pick_image_btn"):
             self.pick_image_btn.setEnabled(not busy and has_item)
         self.suggest_btn.setEnabled(not busy and has_item)
+        if hasattr(self, "edit_prompt_btn"):
+            self.edit_prompt_btn.setEnabled(has_item)
         if hasattr(self, "translate_btn"):
             self.translate_btn.setEnabled(not busy and has_item)
         self.save_btn.setEnabled(has_item)
+        if hasattr(self, "cancel_thumb_btn"):
+            self.cancel_thumb_btn.setEnabled(has_item)
 
     def _set_status(self, message: str, level: str = "muted") -> None:
         self._status_level = level
