@@ -29,7 +29,7 @@ from core.ai_images import (
     GeminiImageProvider,
     ImagenProvider,
 )
-from core.languages import language_name
+from core.languages import language_name, normalize_language_code
 
 IMAGEN_MODEL = GEMINI_IMAGE_MODEL
 from utils.files import load_json, write_json_atomic
@@ -139,6 +139,52 @@ def suggest_titles(
     if not titles:
         raise AIError("Gemini không trả về tiêu đề hợp lệ.")
     return titles
+
+
+def translate_thumbnail_titles(
+    title: str,
+    target_languages: Sequence[str],
+    api_key: str,
+    source_language: str = "vi",
+    model: str = DEFAULT_MODEL,
+    generate_fn: Optional[Callable[[str, str, str], str]] = None,
+) -> Dict[str, str]:
+    """Translate a thumbnail hook title into multiple languages via Gemini JSON output."""
+    clean_title = str(title or "").strip()
+    if not clean_title:
+        return {}
+    targets = [
+        normalize_language_code(l)
+        for l in target_languages
+        if normalize_language_code(l) != normalize_language_code(source_language)
+    ]
+    if not targets:
+        return {}
+    generator = generate_fn or gemini_generate
+    if generate_fn is None and not str(api_key or "").strip():
+        raise AIError("Thiếu API key Gemini để dịch tiêu đề.")
+
+    prompt = (
+        f"Bạn là chuyên gia tối ưu tiêu đề video YouTube giật gân, cuốn hút trên Thumbnail.\n"
+        f"Hãy dịch tiêu đề sau sang các ngôn ngữ: {', '.join(targets)}.\n"
+        f"Tiêu đề gốc ({source_language}): \"{clean_title}\"\n\n"
+        f"Yêu cầu:\n"
+        f"- Ngắn gọn, súc tích, giật tít thu hút người xem trên Thumbnail\n"
+        f"- Giữ đúng ý nghĩa nhưng tự nhiên theo văn hóa từng ngôn ngữ\n"
+        f"- Trả về DUY NHẤT một JSON map dạng: "
+        + json.dumps({l: f"Tiêu đề {l}" for l in targets}, ensure_ascii=False)
+        + "\nKhông thêm bất kỳ giải thích, markdown hay ký tự nào ngoài JSON."
+    )
+    raw = generator(prompt, api_key, model)
+    try:
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group(0))
+            if isinstance(parsed, dict):
+                return {normalize_language_code(k): str(v).strip() for k, v in parsed.items()}
+    except Exception as exc:
+        logger.warning("Không phân tích được JSON dịch tiêu đề: %s", exc)
+    return {}
 
 
 # ── image prompts ────────────────────────────────────────────────────────────

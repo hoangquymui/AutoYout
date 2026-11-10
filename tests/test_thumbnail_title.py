@@ -8,6 +8,7 @@ from core.thumbnail import (
     build_image_prompt,
     parse_title_suggestions,
     suggest_titles,
+    translate_thumbnail_titles,
 )
 
 
@@ -79,3 +80,40 @@ def test_build_image_prompt_has_safety_tail_and_subject() -> None:
     other = build_image_prompt("Bí mật", "", "", "top_center")
     assert "main subject on the RIGHT" not in other
     assert "no text" in other
+
+
+def test_translate_thumbnail_titles_uses_generator() -> None:
+    def fake(prompt: str, key: str, model: str) -> str:
+        return '{"en": "Scam Games at School", "ja": "学校前の詐欺ゲーム", "zh": "校门前骗局"}'
+
+    res = translate_thumbnail_titles(
+        "Trò chơi cổng trường",
+        ["vi", "en", "ja", "zh"],
+        "test-key",
+        source_language="vi",
+        generate_fn=fake,
+    )
+    assert res == {
+        "en": "Scam Games at School",
+        "ja": "学校前の詐欺ゲーム",
+        "zh": "校门前骗局",
+    }
+
+
+def test_translate_thumbnail_titles_empty_or_same_language() -> None:
+    assert translate_thumbnail_titles("", ["en"], "key") == {}
+    assert translate_thumbnail_titles("Tiêu đề", ["vi"], "key", source_language="vi") == {}
+
+
+def test_translate_thumbnail_titles_markdown_block() -> None:
+    def fake(prompt: str, key: str, model: str) -> str:
+        return '```json\n{"en": "Translated Title"}\n```'
+
+    res = translate_thumbnail_titles(
+        "Tiêu đề gốc",
+        ["en"],
+        "test-key",
+        generate_fn=fake,
+    )
+    assert res == {"en": "Translated Title"}
+

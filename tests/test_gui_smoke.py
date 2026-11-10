@@ -143,6 +143,20 @@ def test_youtube_tab_has_upload_and_thumbnail_pages(window) -> None:
     assert window.thumbnail_tab.provider_combo.currentData() == "pollinations"
     assert hasattr(window.thumbnail_tab, "lang_checks")
     assert hasattr(window.thumbnail_tab, "preview_gallery_combo")
+    assert hasattr(window.thumbnail_tab, "translate_btn")
+    assert hasattr(window.thumbnail_tab, "preview_lang_combo")
+    thumb = window.thumbnail_tab
+    # Base language edit exists
+    assert "vi" in thumb._title_edits
+    assert thumb._title_edits["vi"] is thumb.title_edit
+    # Check that when en is checked, edit exists for en
+    if "en" in thumb.lang_checks:
+        thumb.lang_checks["en"].setChecked(True)
+        assert "en" in thumb._title_edits
+        # Simulate translation arrival
+        thumb._on_translate_done({"en": "Hello World"})
+        assert thumb.get_title_for_lang("en") == "Hello World"
+        assert thumb._title_edits["en"].toPlainText() == "Hello World"
     assert hasattr(tab, "acc_table")
     assert tab.acc_table.columnCount() == 7
     assert hasattr(tab, "acc_add_btn")

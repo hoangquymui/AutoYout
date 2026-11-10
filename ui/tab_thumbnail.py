@@ -40,6 +40,7 @@ from core.thumbnail import (
     generate_image,
     render_thumbnail,
     suggest_titles,
+    translate_thumbnail_titles,
 )
 from ui import theme
 from ui.components.icons import set_icon
@@ -77,6 +78,34 @@ class TitleWorker(QThread):
             self.done.emit(list(titles))
         except Exception as exc:
             logger.error("Gợi ý tiêu đề lỗi: %s", exc)
+            self.failed.emit(str(exc))
+
+
+class TranslateWorker(QThread):
+    done = Signal(dict)
+    failed = Signal(str)
+
+    def __init__(self, title: str, target_langs: List[str], api_key: str,
+                 source_lang: str = "vi", model: str = DEFAULT_MODEL, parent=None) -> None:
+        super().__init__(parent)
+        self._title = title
+        self._target_langs = target_langs
+        self._api_key = api_key
+        self._source_lang = source_lang
+        self._model = model
+
+    def run(self) -> None:
+        try:
+            res = translate_thumbnail_titles(
+                self._title,
+                self._target_langs,
+                self._api_key,
+                source_language=self._source_lang,
+                model=self._model,
+            )
+            self.done.emit(res)
+        except Exception as exc:
+            logger.error("Dịch tiêu đề thumbnail lỗi: %s", exc)
             self.failed.emit(str(exc))
 
 
@@ -133,8 +162,12 @@ class ThumbnailPanel(QWidget):
         self._highlights: List[Tuple[str, str]] = []
         self._title_worker: Optional[TitleWorker] = None
         self._image_worker: Optional[ImageWorker] = None
+        self._translate_worker: Optional[TranslateWorker] = None
         self._status_level = "muted"
         self.lang_checks: Dict[str, QCheckBox] = {}
+        self._titles_by_lang: Dict[str, str] = {}
+        self._title_edits: Dict[str, QPlainTextEdit] = {}
+        self._preview_lang: str = "vi"
         self._gallery_entries: List[Tuple[str, Path]] = []
 
         outer = QVBoxLayout(self)
@@ -244,13 +277,136 @@ class ThumbnailPanel(QWidget):
                 cb.setChecked(code in saved_langs)
             else:
                 cb.setChecked(True)
+            cb.toggled.connect(self._on_languages_changed)
             self.lang_checks[code] = cb
             self._lang_checks_layout.addWidget(cb, idx // cols_per_row, idx % cols_per_row)
         self._lang_checks_layout.setColumnStretch(cols_per_row, 1)
+        self._on_languages_changed()
 
     def get_selected_languages(self) -> List[str]:
         selected = [code for code, cb in self.lang_checks.items() if cb.isChecked()]
         return selected or ["vi"]
+
+    def _on_languages_changed(self) -> None:
+        self._update_language_title_fields()
+
+    def _update_language_title_fields(self) -> None:
+        if not hasattr(self, "titles_container_layout"):
+            return
+        selected_langs = self.get_selected_languages()
+        current_item = self._manager.get_item(self._base) if (self._manager and self._base) else None
+        base_lang = normalize_language_code(getattr(current_item, "language", "") or "vi")
+        langs_ordered = [base_lang] + [l for l in selected_langs if l != base_lang]
+
+        # Preserve any text from existing edits
+        for code, edit in list(self._title_edits.items()):
+            txt = edit.toPlainText().strip()
+            if txt:
+                self._titles_by_lang[code] = txt
+
+        # Detach self.title_edit before deleting child widgets
+        if self.title_edit.parent() is not None:
+            self.title_edit.setParent(None)
+
+        # Clear layout
+        while self.titles_container_layout.count():
+            child = self.titles_container_layout.takeAt(0)
+            w = child.widget()
+            if w is not None:
+                w.deleteLater()
+
+        self._title_edits.clear()
+        for code in langs_ordered:
+            lang_label_text = f"{language_name(code)} ({code})"
+            wrapper = QWidget()
+            w_layout = QVBoxLayout(wrapper)
+            w_layout.setContentsMargins(0, 2, 0, 4)
+            w_layout.setSpacing(3)
+
+            header = QHBoxLayout()
+            header.setSpacing(6)
+            is_base = (code == base_lang)
+            prefix = "Tiêu đề gốc" if is_base else "Tiêu đề"
+            lbl = QLabel(f"{prefix} ({lang_label_text}):")
+            lbl.setStyleSheet("font-weight: 600; font-size: 11px;")
+            header.addWidget(lbl)
+            header.addStretch(1)
+
+            btn_preview = QPushButton("👁 Xem trước")
+            btn_preview.setFixedHeight(22)
+            btn_preview.setStyleSheet("padding: 1px 8px; font-size: 11px;")
+            btn_preview.clicked.connect(lambda _, c=code: self._preview_for_language(c))
+            header.addWidget(btn_preview)
+            w_layout.addLayout(header)
+
+            if is_base:
+                self.title_edit.setParent(wrapper)
+                self.title_edit.setFixedHeight(48)
+                self.title_edit.setPlaceholderText(f"Nhập tiêu đề {lang_label_text}...")
+                val = self._titles_by_lang.get(code, "")
+                if val and self.title_edit.toPlainText().strip() != val:
+                    self.title_edit.blockSignals(True)
+                    self.title_edit.setPlainText(val)
+                    self.title_edit.blockSignals(False)
+                w_layout.addWidget(self.title_edit)
+                self._title_edits[code] = self.title_edit
+            else:
+                edit = QPlainTextEdit()
+                edit.setFixedHeight(48)
+                edit.setPlaceholderText(f"Tiêu đề {lang_label_text} (tự dịch khi chọn gợi ý hoặc bấm Dịch)...")
+                val = self._titles_by_lang.get(code, "")
+                edit.setPlainText(val)
+                edit.textChanged.connect(lambda c=code, ed=edit: self._on_sub_title_changed(c, ed))
+                w_layout.addWidget(edit)
+                self._title_edits[code] = edit
+
+            self.titles_container_layout.addWidget(wrapper)
+
+        self._update_preview_lang_combo(langs_ordered)
+
+    def _on_sub_title_changed(self, code: str, edit: QPlainTextEdit) -> None:
+        self._titles_by_lang[code] = edit.toPlainText().strip()
+        if getattr(self, "_preview_lang", "") == code:
+            self._schedule_preview()
+
+    def _preview_for_language(self, code: str) -> None:
+        self._preview_lang = code
+        if hasattr(self, "preview_lang_combo"):
+            idx = self.preview_lang_combo.findData(code)
+            if idx >= 0:
+                self.preview_lang_combo.blockSignals(True)
+                self.preview_lang_combo.setCurrentIndex(idx)
+                self.preview_lang_combo.blockSignals(False)
+        self._render_preview()
+
+    def _update_preview_lang_combo(self, langs: List[str]) -> None:
+        if not hasattr(self, "preview_lang_combo"):
+            return
+        cur_code = str(self.preview_lang_combo.currentData() or "")
+        self.preview_lang_combo.blockSignals(True)
+        self.preview_lang_combo.clear()
+        for code in langs:
+            self.preview_lang_combo.addItem(f"{language_name(code)} ({code})", code)
+        idx = self.preview_lang_combo.findData(cur_code)
+        if idx < 0 and langs:
+            idx = 0
+        if idx >= 0:
+            self.preview_lang_combo.setCurrentIndex(idx)
+            self._preview_lang = str(self.preview_lang_combo.currentData() or "vi")
+        self.preview_lang_combo.blockSignals(False)
+
+    def _on_preview_lang_changed(self, _index: int = -1) -> None:
+        self._preview_lang = str(self.preview_lang_combo.currentData() or "vi")
+        self._render_preview()
+
+    def get_title_for_lang(self, code: str) -> str:
+        code_norm = normalize_language_code(code)
+        if code_norm in self._titles_by_lang and self._titles_by_lang[code_norm]:
+            return self._titles_by_lang[code_norm]
+        if code_norm in self._title_edits:
+            return self._title_edits[code_norm].toPlainText().strip()
+        return self.title_edit.toPlainText().strip()
+
     def _build_info_group(self) -> QGroupBox:
         box = QGroupBox("Nội dung && tiêu đề")
         layout = QVBoxLayout(box)
@@ -272,27 +428,39 @@ class ThumbnailPanel(QWidget):
         row.addWidget(refresh)
         layout.addLayout(row)
 
-        self.title_edit = QPlainTextEdit()
-        self.title_edit.setPlaceholderText("Tiêu đề hiển thị trên thumbnail (in hoa khi render).")
-        self.title_edit.setFixedHeight(70)
-        layout.addWidget(self.title_edit)
-
         row2 = QHBoxLayout()
         row2.setSpacing(6)
         self.suggest_btn = QPushButton("Gợi ý tiêu đề")
         set_icon(self.suggest_btn, "zap", "accent", 14)
         self.suggest_btn.clicked.connect(self._suggest_titles)
+
+        self.translate_btn = QPushButton("Dịch sang các thứ tiếng")
+        set_icon(self.translate_btn, "globe", "accent", 13)
+        self.translate_btn.setToolTip("Dịch tiêu đề gốc sang tất cả các ngôn ngữ đã chọn.")
+        self.translate_btn.clicked.connect(lambda: self._translate_titles())
+
         self.transcript_label = QLabel("Chưa có transcript.")
         self.transcript_label.setObjectName("MutedLabel")
         self.transcript_label.setWordWrap(True)
         row2.addWidget(self.suggest_btn)
+        row2.addWidget(self.translate_btn)
         row2.addWidget(self.transcript_label, 1)
         layout.addLayout(row2)
 
         self.suggest_list = QListWidget()
-        self.suggest_list.setFixedHeight(90)
+        self.suggest_list.setFixedHeight(85)
         self.suggest_list.itemClicked.connect(self._apply_suggestion)
         layout.addWidget(self.suggest_list)
+
+        self.title_edit = QPlainTextEdit()
+        self.title_edit.setPlaceholderText("Tiêu đề hiển thị trên thumbnail (in hoa khi render).")
+        self.title_edit.setFixedHeight(48)
+
+        self.titles_container = QWidget()
+        self.titles_container_layout = QVBoxLayout(self.titles_container)
+        self.titles_container_layout.setContentsMargins(0, 4, 0, 0)
+        self.titles_container_layout.setSpacing(6)
+        layout.addWidget(self.titles_container)
         return box
 
     def _build_highlight_group(self) -> QGroupBox:
@@ -429,6 +597,14 @@ class ThumbnailPanel(QWidget):
         box = QGroupBox("Xem trước")
         layout = QVBoxLayout(box)
         layout.setSpacing(8)
+
+        preview_lang_row = QHBoxLayout()
+        preview_lang_row.setSpacing(6)
+        preview_lang_row.addWidget(QLabel("Ngôn ngữ xem trước:"))
+        self.preview_lang_combo = QComboBox()
+        self.preview_lang_combo.currentIndexChanged.connect(self._on_preview_lang_changed)
+        preview_lang_row.addWidget(self.preview_lang_combo, 1)
+        layout.addLayout(preview_lang_row)
 
         gallery_row = QHBoxLayout()
         gallery_row.setSpacing(6)
@@ -582,6 +758,8 @@ class ThumbnailPanel(QWidget):
             self.title_edit.blockSignals(True)
             self.title_edit.setPlainText("")
             self.title_edit.blockSignals(False)
+            self._titles_by_lang.clear()
+            self._update_language_title_fields()
             self.prompt_edit.clear()
             self._transcript = ""
             self.transcript_label.setText("Chưa chọn file.")
@@ -592,6 +770,19 @@ class ThumbnailPanel(QWidget):
         self.title_edit.blockSignals(True)
         self.title_edit.setPlainText(title)
         self.title_edit.blockSignals(False)
+
+        self._titles_by_lang.clear()
+        item_lang = normalize_language_code(getattr(item, "language", "") or "vi")
+        self._titles_by_lang[item_lang] = title
+        if self._manager is not None:
+            root_stem = re.sub(r"_[a-zA-Z]{2,5}$", "", self._base)
+            for it in self._manager.get_items():
+                it_root = re.sub(r"_[a-zA-Z]{2,5}$", "", it.base)
+                if it_root == root_stem:
+                    it_l = normalize_language_code(getattr(it, "language", "") or "")
+                    if it_l and it.metadata.get("title"):
+                        self._titles_by_lang[it_l] = str(it.metadata["title"])
+        self._update_language_title_fields()
         self._transcript = self._load_transcript(self._base, item)
         self.transcript_label.setText(
             f"Transcript: {len(self._transcript):,} ký tự.".replace(",", ".")
@@ -733,7 +924,15 @@ class ThumbnailPanel(QWidget):
             self.suggest_list.addItem(str(title))
         self._set_status(f"Đã gợi ý {len(titles)} tiêu đề.", "success")
         if titles:
-            self.title_edit.setPlainText(str(titles[0]))
+            first_title = str(titles[0]).strip()
+            self.title_edit.setPlainText(first_title)
+            current_item = self._manager.get_item(self._base) if (self._manager and self._base) else None
+            base_lang = normalize_language_code(getattr(current_item, "language", "") or "vi")
+            self._titles_by_lang[base_lang] = first_title
+            selected_langs = self.get_selected_languages()
+            other_langs = [l for l in selected_langs if l != base_lang]
+            if other_langs and self._api_key():
+                self._translate_titles(first_title)
 
     def _on_titles_failed(self, message: str) -> None:
         self._set_status(message, "error")
@@ -746,7 +945,72 @@ class ThumbnailPanel(QWidget):
         self.suggest_btn.setEnabled(True)
 
     def _apply_suggestion(self, item: QListWidgetItem) -> None:
-        self.title_edit.setPlainText(item.text())
+        chosen_title = item.text().strip()
+        self.title_edit.setPlainText(chosen_title)
+        current_item = self._manager.get_item(self._base) if (self._manager and self._base) else None
+        base_lang = normalize_language_code(getattr(current_item, "language", "") or "vi")
+        self._titles_by_lang[base_lang] = chosen_title
+
+        selected_langs = self.get_selected_languages()
+        other_langs = [l for l in selected_langs if l != base_lang]
+        if other_langs and self._api_key():
+            self._translate_titles(chosen_title)
+        else:
+            self._schedule_preview()
+
+    def _translate_titles(self, title_override: str = "") -> None:
+        title = (title_override or self.title_edit.toPlainText()).strip()
+        if not title:
+            self._set_status("Chưa có tiêu đề để dịch.", "warning")
+            return
+        selected_langs = self.get_selected_languages()
+        current_item = self._manager.get_item(self._base) if (self._manager and self._base) else None
+        base_lang = normalize_language_code(getattr(current_item, "language", "") or "vi")
+        targets = [l for l in selected_langs if l != base_lang]
+        if not targets:
+            self._set_status("Chưa tick thêm ngôn ngữ nào khác để dịch.", "warning")
+            return
+        key = self._api_key()
+        if not key:
+            self._set_status("Chưa có API key Gemini để dịch tiêu đề. Hãy cấu hình ở tab Cài đặt.", "warning")
+            return
+        if self._translate_worker is not None:
+            return
+
+        self._set_status(f"Đang dịch tiêu đề sang: {', '.join(targets)}…", "running")
+        if hasattr(self, "translate_btn"):
+            self.translate_btn.setEnabled(False)
+        self._translate_worker = TranslateWorker(
+            title, targets, key, source_lang=base_lang, parent=self
+        )
+        self._translate_worker.done.connect(self._on_translate_done)
+        self._translate_worker.failed.connect(self._on_translate_failed)
+        self._translate_worker.finished.connect(self._on_translate_finished)
+        self._translate_worker.start()
+
+    def _on_translate_done(self, results: dict) -> None:
+        for code, trans in results.items():
+            if not trans:
+                continue
+            self._titles_by_lang[code] = trans
+            if code in self._title_edits and self._title_edits[code] != self.title_edit:
+                self._title_edits[code].blockSignals(True)
+                self._title_edits[code].setPlainText(trans)
+                self._title_edits[code].blockSignals(False)
+        self._set_status(f"Đã dịch tiêu đề sang: {', '.join(results.keys())}.", "success")
+        self._schedule_preview()
+
+    def _on_translate_failed(self, error: str) -> None:
+        self._set_status(f"Dịch tiêu đề lỗi: {error}", "error")
+
+    def _on_translate_finished(self) -> None:
+        worker = self._translate_worker
+        self._translate_worker = None
+        if worker is not None:
+            worker.deleteLater()
+        if hasattr(self, "translate_btn"):
+            self.translate_btn.setEnabled(True)
+        self._refresh_buttons()
 
     # ── highlights ───────────────────────────────────────────────────────────
     def _add_highlight(self) -> None:
@@ -918,8 +1182,12 @@ class ThumbnailPanel(QWidget):
 
     # ── prompt ───────────────────────────────────────────────────────────────
     def _on_title_changed(self) -> None:
+        current_item = self._manager.get_item(self._base) if (self._manager and self._base) else None
+        base_lang = normalize_language_code(getattr(current_item, "language", "") or "vi")
+        self._titles_by_lang[base_lang] = self.title_edit.toPlainText().strip()
         self._auto_fill_prompt()
-        self._schedule_preview()
+        if getattr(self, "_preview_lang", "") == base_lang or not getattr(self, "_preview_lang", ""):
+            self._schedule_preview()
 
     def _auto_fill_prompt(self) -> None:
         current = self.prompt_edit.toPlainText().strip()
@@ -967,13 +1235,14 @@ class ThumbnailPanel(QWidget):
         if self._bg_path is None or not self._bg_path.is_file():
             self._show_placeholder("Chưa có ảnh nền — bấm “Tạo ảnh nền”.")
             return
-        title = self.title_edit.toPlainText().strip()
+        lang = getattr(self, "_preview_lang", "") or "vi"
+        title = self.get_title_for_lang(lang) or self.title_edit.toPlainText().strip()
         if not title:
-            self._set_status("Hãy nhập tiêu đề thumbnail.", "warning")
+            self._set_status(f"Chưa có tiêu đề ({lang}) để xem trước.", "warning")
             return
         out_dir = Path(tempfile.gettempdir()) / "AutoYout" / "preview"
         out_dir.mkdir(parents=True, exist_ok=True)
-        out = out_dir / f"thumb_{(self._base or 'item')}.jpg"
+        out = out_dir / f"thumb_{(self._base or 'item')}_{lang}.jpg"
         try:
             render_thumbnail(
                 self._bg_path, title, self._highlights, self._current_template_id(),
@@ -985,7 +1254,7 @@ class ThumbnailPanel(QWidget):
         self._preview_file = out
         self._pixmap = QPixmap(str(out))
         self._show_pixmap()
-        self._set_status("Đã cập nhật xem trước.", "success")
+        self._set_status(f"Đã cập nhật xem trước ({language_name(lang)} - {lang}).", "success")
 
     def _show_pixmap(self) -> None:
         if self._pixmap is None or self._pixmap.isNull():
@@ -1011,8 +1280,8 @@ class ThumbnailPanel(QWidget):
         if self._bg_path is None or not self._bg_path.is_file():
             self._set_status("Hãy tạo hoặc chọn ảnh nền trước khi lưu.", "warning")
             return
-        title = self.title_edit.toPlainText().strip()
-        if not title:
+        base_title = self.title_edit.toPlainText().strip()
+        if not base_title:
             self._set_status("Hãy nhập tiêu đề thumbnail.", "warning")
             return
         selected_langs = self.get_selected_languages()
@@ -1027,6 +1296,7 @@ class ThumbnailPanel(QWidget):
         try:
             for lang_code in selected_langs:
                 lang_norm = normalize_language_code(lang_code)
+                lang_title = self.get_title_for_lang(lang_norm) or base_title
                 thumbs_lang_dir = (
                     self._manager.lang_dir("thumbs", lang_norm, create=True)
                     if hasattr(self._manager, "lang_dir")
@@ -1047,17 +1317,13 @@ class ThumbnailPanel(QWidget):
                         target_name = f"{root_stem}_{lang_norm}.jpg" if root_stem else f"{self._base}_{lang_norm}.jpg"
                         target = thumbs_lang_dir / target_name
                         render_thumbnail(
-                            self._bg_path, title, self._highlights, self._current_template_id(),
+                            self._bg_path, lang_title, self._highlights, self._current_template_id(),
                             self._palette(), target, font_size=int(self.font_spin.value()))
                         saved_targets.append(target)
                         continue
 
                 for it in lang_items:
-                    item_title = (
-                        title
-                        if (it.base == self._base or len(selected_langs) == 1)
-                        else str(it.metadata.get("title") or title or it.base)
-                    )
+                    item_title = lang_title or str(it.metadata.get("title") or base_title or it.base)
                     draft = thumbs_lang_dir / f"{it.base}_draft.jpg"
                     render_thumbnail(
                         self._bg_path, item_title, self._highlights, self._current_template_id(),
@@ -1071,7 +1337,8 @@ class ThumbnailPanel(QWidget):
             return
         if not saved_targets:
             return
-        last_target = saved_targets[0]
+        matching_preview = [p for p in saved_targets if f"_{self._preview_lang}." in p.name]
+        last_target = matching_preview[0] if matching_preview else saved_targets[0]
         self._preview_file = last_target
         self._pixmap = QPixmap(str(last_target))
         self._show_pixmap()
@@ -1111,12 +1378,18 @@ class ThumbnailPanel(QWidget):
         return str(key).strip()
 
     def _refresh_buttons(self) -> None:
-        busy = self._image_worker is not None or self._title_worker is not None
+        busy = (
+            self._image_worker is not None
+            or self._title_worker is not None
+            or self._translate_worker is not None
+        )
         has_item = bool(self._base)
         self.image_btn.setEnabled(not busy and has_item)
         if hasattr(self, "pick_image_btn"):
             self.pick_image_btn.setEnabled(not busy and has_item)
         self.suggest_btn.setEnabled(not busy and has_item)
+        if hasattr(self, "translate_btn"):
+            self.translate_btn.setEnabled(not busy and has_item)
         self.save_btn.setEnabled(has_item)
 
     def _set_status(self, message: str, level: str = "muted") -> None:
@@ -1130,3 +1403,5 @@ class ThumbnailPanel(QWidget):
             self._image_worker.wait(timeout_ms)
         if self._title_worker is not None:
             self._title_worker.wait(timeout_ms)
+        if self._translate_worker is not None:
+            self._translate_worker.wait(timeout_ms)

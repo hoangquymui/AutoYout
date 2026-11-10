@@ -725,12 +725,11 @@ class PipelineWorker(QThread):
             )
             dubbing = self.settings.get("dubbing") or {}
             user_mode = str(dubbing.get("timing_mode") or "").lower()
-            has_real_srt = (
+            is_srt_mode = (
                 getattr(item, "dub_mode", "text") == "srt"
-                and item.text_file is not None
-                and item.text_file.with_suffix(".srt").is_file()
+                or (item.text_file is not None and item.text_file.with_suffix(".srt").is_file())
             )
-            mode = "timeline" if (user_mode == "timeline" and has_real_srt) else "natural"
+            mode = "timeline" if (user_mode == "timeline" and is_srt_mode) else "natural"
             gap = float(dubbing.get("gap", 0.15) or 0.0)
             mp3, _srt, duration = engine.join_item(
                 self.manager, item, cues, mode=mode, gap=gap)
