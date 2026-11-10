@@ -1,0 +1,4780 @@
+{
+  "edge_voices": [
+    {
+      "short_name": "vi-VN-HoaiMyNeural",
+      "locale": "vi-VN",
+      "lang": "vi",
+      "gender": "Nữ",
+      "label": "[vi-VN] HoaiMy — Nữ (Vietnamese (Vietnam)) [vi-VN-HoaiMyNeural]"
+    },
+    {
+      "short_name": "vi-VN-NamMinhNeural",
+      "locale": "vi-VN",
+      "lang": "vi",
+      "gender": "Nam",
+      "label": "[vi-VN] NamMinh — Nam (Vietnamese (Vietnam)) [vi-VN-NamMinhNeural]"
+    },
+    {
+      "short_name": "en-AU-NatashaNeural",
+      "locale": "en-AU",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-AU] Natasha — Nữ (English (Australia)) [en-AU-NatashaNeural]"
+    },
+    {
+      "short_name": "en-AU-WilliamMultilingualNeural",
+      "locale": "en-AU",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-AU] WilliamMultilingual — Nam (English (Australia)) [en-AU-WilliamMultilingualNeural]"
+    },
+    {
+      "short_name": "en-CA-ClaraNeural",
+      "locale": "en-CA",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-CA] Clara — Nữ (English (Canada)) [en-CA-ClaraNeural]"
+    },
+    {
+      "short_name": "en-CA-LiamNeural",
+      "locale": "en-CA",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-CA] Liam — Nam (English (Canada)) [en-CA-LiamNeural]"
+    },
+    {
+      "short_name": "en-GB-LibbyNeural",
+      "locale": "en-GB",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-GB] Libby — Nữ (English (United Kingdom)) [en-GB-LibbyNeural]"
+    },
+    {
+      "short_name": "en-GB-MaisieNeural",
+      "locale": "en-GB",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-GB] Maisie — Nữ (English (United Kingdom)) [en-GB-MaisieNeural]"
+    },
+    {
+      "short_name": "en-GB-RyanNeural",
+      "locale": "en-GB",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-GB] Ryan — Nam (English (United Kingdom)) [en-GB-RyanNeural]"
+    },
+    {
+      "short_name": "en-GB-SoniaNeural",
+      "locale": "en-GB",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-GB] Sonia — Nữ (English (United Kingdom)) [en-GB-SoniaNeural]"
+    },
+    {
+      "short_name": "en-GB-ThomasNeural",
+      "locale": "en-GB",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-GB] Thomas — Nam (English (United Kingdom)) [en-GB-ThomasNeural]"
+    },
+    {
+      "short_name": "en-HK-SamNeural",
+      "locale": "en-HK",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-HK] Sam — Nam (English (Hongkong)) [en-HK-SamNeural]"
+    },
+    {
+      "short_name": "en-HK-YanNeural",
+      "locale": "en-HK",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-HK] Yan — Nữ (English (Hong Kong SAR)) [en-HK-YanNeural]"
+    },
+    {
+      "short_name": "en-IE-ConnorNeural",
+      "locale": "en-IE",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-IE] Connor — Nam (English (Ireland)) [en-IE-ConnorNeural]"
+    },
+    {
+      "short_name": "en-IE-EmilyNeural",
+      "locale": "en-IE",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-IE] Emily — Nữ (English (Ireland)) [en-IE-EmilyNeural]"
+    },
+    {
+      "short_name": "en-IN-NeerjaExpressiveNeural",
+      "locale": "en-IN",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-IN] NeerjaExpressive — Nữ (English (India) (Preview)) [en-IN-NeerjaExpressiveNeural]"
+    },
+    {
+      "short_name": "en-IN-NeerjaNeural",
+      "locale": "en-IN",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-IN] Neerja — Nữ (English (India)) [en-IN-NeerjaNeural]"
+    },
+    {
+      "short_name": "en-IN-PrabhatNeural",
+      "locale": "en-IN",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-IN] Prabhat — Nam (English (India)) [en-IN-PrabhatNeural]"
+    },
+    {
+      "short_name": "en-KE-AsiliaNeural",
+      "locale": "en-KE",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-KE] Asilia — Nữ (English (Kenya)) [en-KE-AsiliaNeural]"
+    },
+    {
+      "short_name": "en-KE-ChilembaNeural",
+      "locale": "en-KE",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-KE] Chilemba — Nam (English (Kenya)) [en-KE-ChilembaNeural]"
+    },
+    {
+      "short_name": "en-NG-AbeoNeural",
+      "locale": "en-NG",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-NG] Abeo — Nam (English (Nigeria)) [en-NG-AbeoNeural]"
+    },
+    {
+      "short_name": "en-NG-EzinneNeural",
+      "locale": "en-NG",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-NG] Ezinne — Nữ (English (Nigeria)) [en-NG-EzinneNeural]"
+    },
+    {
+      "short_name": "en-NZ-MitchellNeural",
+      "locale": "en-NZ",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-NZ] Mitchell — Nam (English (New Zealand)) [en-NZ-MitchellNeural]"
+    },
+    {
+      "short_name": "en-NZ-MollyNeural",
+      "locale": "en-NZ",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-NZ] Molly — Nữ (English (New Zealand)) [en-NZ-MollyNeural]"
+    },
+    {
+      "short_name": "en-PH-JamesNeural",
+      "locale": "en-PH",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-PH] James — Nam (English (Philippines)) [en-PH-JamesNeural]"
+    },
+    {
+      "short_name": "en-PH-RosaNeural",
+      "locale": "en-PH",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-PH] Rosa — Nữ (English (Philippines)) [en-PH-RosaNeural]"
+    },
+    {
+      "short_name": "en-SG-LunaNeural",
+      "locale": "en-SG",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-SG] Luna — Nữ (English (Singapore)) [en-SG-LunaNeural]"
+    },
+    {
+      "short_name": "en-SG-WayneNeural",
+      "locale": "en-SG",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-SG] Wayne — Nam (English (Singapore)) [en-SG-WayneNeural]"
+    },
+    {
+      "short_name": "en-TZ-ElimuNeural",
+      "locale": "en-TZ",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-TZ] Elimu — Nam (English (Tanzania)) [en-TZ-ElimuNeural]"
+    },
+    {
+      "short_name": "en-TZ-ImaniNeural",
+      "locale": "en-TZ",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-TZ] Imani — Nữ (English (Tanzania)) [en-TZ-ImaniNeural]"
+    },
+    {
+      "short_name": "en-US-AnaNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-US] Ana — Nữ (English (United States)) [en-US-AnaNeural]"
+    },
+    {
+      "short_name": "en-US-AndrewMultilingualNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-US] AndrewMultilingual — Nam (English (United States)) [en-US-AndrewMultilingualNeural]"
+    },
+    {
+      "short_name": "en-US-AndrewNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-US] Andrew — Nam (English (United States)) [en-US-AndrewNeural]"
+    },
+    {
+      "short_name": "en-US-AriaNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-US] Aria — Nữ (English (United States)) [en-US-AriaNeural]"
+    },
+    {
+      "short_name": "en-US-AvaMultilingualNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-US] AvaMultilingual — Nữ (English (United States)) [en-US-AvaMultilingualNeural]"
+    },
+    {
+      "short_name": "en-US-AvaNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-US] Ava — Nữ (English (United States)) [en-US-AvaNeural]"
+    },
+    {
+      "short_name": "en-US-BrianMultilingualNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-US] BrianMultilingual — Nam (English (United States)) [en-US-BrianMultilingualNeural]"
+    },
+    {
+      "short_name": "en-US-BrianNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-US] Brian — Nam (English (United States)) [en-US-BrianNeural]"
+    },
+    {
+      "short_name": "en-US-ChristopherNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-US] Christopher — Nam (English (United States)) [en-US-ChristopherNeural]"
+    },
+    {
+      "short_name": "en-US-EmmaMultilingualNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-US] EmmaMultilingual — Nữ (English (United States)) [en-US-EmmaMultilingualNeural]"
+    },
+    {
+      "short_name": "en-US-EmmaNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-US] Emma — Nữ (English (United States)) [en-US-EmmaNeural]"
+    },
+    {
+      "short_name": "en-US-EricNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-US] Eric — Nam (English (United States)) [en-US-EricNeural]"
+    },
+    {
+      "short_name": "en-US-GuyNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-US] Guy — Nam (English (United States)) [en-US-GuyNeural]"
+    },
+    {
+      "short_name": "en-US-JennyNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-US] Jenny — Nữ (English (United States)) [en-US-JennyNeural]"
+    },
+    {
+      "short_name": "en-US-MichelleNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-US] Michelle — Nữ (English (United States)) [en-US-MichelleNeural]"
+    },
+    {
+      "short_name": "en-US-RogerNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-US] Roger — Nam (English (United States)) [en-US-RogerNeural]"
+    },
+    {
+      "short_name": "en-US-SteffanNeural",
+      "locale": "en-US",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-US] Steffan — Nam (English (United States)) [en-US-SteffanNeural]"
+    },
+    {
+      "short_name": "en-ZA-LeahNeural",
+      "locale": "en-ZA",
+      "lang": "en",
+      "gender": "Nữ",
+      "label": "[en-ZA] Leah — Nữ (English (South Africa)) [en-ZA-LeahNeural]"
+    },
+    {
+      "short_name": "en-ZA-LukeNeural",
+      "locale": "en-ZA",
+      "lang": "en",
+      "gender": "Nam",
+      "label": "[en-ZA] Luke — Nam (English (South Africa)) [en-ZA-LukeNeural]"
+    },
+    {
+      "short_name": "zh-CN-XiaoxiaoNeural",
+      "locale": "zh-CN",
+      "lang": "zh",
+      "gender": "Nữ",
+      "label": "[zh-CN] Xiaoxiao — Nữ (Chinese (Mainland)) [zh-CN-XiaoxiaoNeural]"
+    },
+    {
+      "short_name": "zh-CN-XiaoyiNeural",
+      "locale": "zh-CN",
+      "lang": "zh",
+      "gender": "Nữ",
+      "label": "[zh-CN] Xiaoyi — Nữ (Chinese (Mainland)) [zh-CN-XiaoyiNeural]"
+    },
+    {
+      "short_name": "zh-CN-YunjianNeural",
+      "locale": "zh-CN",
+      "lang": "zh",
+      "gender": "Nam",
+      "label": "[zh-CN] Yunjian — Nam (Chinese (Mainland)) [zh-CN-YunjianNeural]"
+    },
+    {
+      "short_name": "zh-CN-YunxiNeural",
+      "locale": "zh-CN",
+      "lang": "zh",
+      "gender": "Nam",
+      "label": "[zh-CN] Yunxi — Nam (Chinese (Mainland)) [zh-CN-YunxiNeural]"
+    },
+    {
+      "short_name": "zh-CN-YunxiaNeural",
+      "locale": "zh-CN",
+      "lang": "zh",
+      "gender": "Nam",
+      "label": "[zh-CN] Yunxia — Nam (Chinese (Mainland)) [zh-CN-YunxiaNeural]"
+    },
+    {
+      "short_name": "zh-CN-YunyangNeural",
+      "locale": "zh-CN",
+      "lang": "zh",
+      "gender": "Nam",
+      "label": "[zh-CN] Yunyang — Nam (Chinese (Mainland)) [zh-CN-YunyangNeural]"
+    },
+    {
+      "short_name": "zh-CN-liaoning-XiaobeiNeural",
+      "locale": "zh-CN-liaoning",
+      "lang": "zh",
+      "gender": "Nữ",
+      "label": "[zh-CN-liaoning] Xiaobei — Nữ (Chinese (Northeastern Mandarin)) [zh-CN-liaoning-XiaobeiNeural]"
+    },
+    {
+      "short_name": "zh-CN-shaanxi-XiaoniNeural",
+      "locale": "zh-CN-shaanxi",
+      "lang": "zh",
+      "gender": "Nữ",
+      "label": "[zh-CN-shaanxi] Xiaoni — Nữ (Chinese (Zhongyuan Mandarin Shaanxi)) [zh-CN-shaanxi-XiaoniNeural]"
+    },
+    {
+      "short_name": "zh-HK-HiuGaaiNeural",
+      "locale": "zh-HK",
+      "lang": "zh",
+      "gender": "Nữ",
+      "label": "[zh-HK] HiuGaai — Nữ (Chinese (Cantonese Traditional)) [zh-HK-HiuGaaiNeural]"
+    },
+    {
+      "short_name": "zh-HK-HiuMaanNeural",
+      "locale": "zh-HK",
+      "lang": "zh",
+      "gender": "Nữ",
+      "label": "[zh-HK] HiuMaan — Nữ (Chinese (Hong Kong SAR)) [zh-HK-HiuMaanNeural]"
+    },
+    {
+      "short_name": "zh-HK-WanLungNeural",
+      "locale": "zh-HK",
+      "lang": "zh",
+      "gender": "Nam",
+      "label": "[zh-HK] WanLung — Nam (Chinese (Hong Kong SAR)) [zh-HK-WanLungNeural]"
+    },
+    {
+      "short_name": "zh-TW-HsiaoChenNeural",
+      "locale": "zh-TW",
+      "lang": "zh",
+      "gender": "Nữ",
+      "label": "[zh-TW] HsiaoChen — Nữ (Chinese (Taiwan)) [zh-TW-HsiaoChenNeural]"
+    },
+    {
+      "short_name": "zh-TW-HsiaoYuNeural",
+      "locale": "zh-TW",
+      "lang": "zh",
+      "gender": "Nữ",
+      "label": "[zh-TW] HsiaoYu — Nữ (Chinese (Taiwanese Mandarin)) [zh-TW-HsiaoYuNeural]"
+    },
+    {
+      "short_name": "zh-TW-YunJheNeural",
+      "locale": "zh-TW",
+      "lang": "zh",
+      "gender": "Nam",
+      "label": "[zh-TW] YunJhe — Nam (Chinese (Taiwan)) [zh-TW-YunJheNeural]"
+    },
+    {
+      "short_name": "ja-JP-KeitaNeural",
+      "locale": "ja-JP",
+      "lang": "ja",
+      "gender": "Nam",
+      "label": "[ja-JP] Keita — Nam (Japanese (Japan)) [ja-JP-KeitaNeural]"
+    },
+    {
+      "short_name": "ja-JP-NanamiNeural",
+      "locale": "ja-JP",
+      "lang": "ja",
+      "gender": "Nữ",
+      "label": "[ja-JP] Nanami — Nữ (Japanese (Japan)) [ja-JP-NanamiNeural]"
+    },
+    {
+      "short_name": "ko-KR-HyunsuMultilingualNeural",
+      "locale": "ko-KR",
+      "lang": "ko",
+      "gender": "Nam",
+      "label": "[ko-KR] HyunsuMultilingual — Nam (Korean (Korea)) [ko-KR-HyunsuMultilingualNeural]"
+    },
+    {
+      "short_name": "ko-KR-InJoonNeural",
+      "locale": "ko-KR",
+      "lang": "ko",
+      "gender": "Nam",
+      "label": "[ko-KR] InJoon — Nam (Korean (Korea)) [ko-KR-InJoonNeural]"
+    },
+    {
+      "short_name": "ko-KR-SunHiNeural",
+      "locale": "ko-KR",
+      "lang": "ko",
+      "gender": "Nữ",
+      "label": "[ko-KR] SunHi — Nữ (Korean (Korea)) [ko-KR-SunHiNeural]"
+    },
+    {
+      "short_name": "fr-BE-CharlineNeural",
+      "locale": "fr-BE",
+      "lang": "fr",
+      "gender": "Nữ",
+      "label": "[fr-BE] Charline — Nữ (French (Belgium)) [fr-BE-CharlineNeural]"
+    },
+    {
+      "short_name": "fr-BE-GerardNeural",
+      "locale": "fr-BE",
+      "lang": "fr",
+      "gender": "Nam",
+      "label": "[fr-BE] Gerard — Nam (French (Belgium)) [fr-BE-GerardNeural]"
+    },
+    {
+      "short_name": "fr-CA-AntoineNeural",
+      "locale": "fr-CA",
+      "lang": "fr",
+      "gender": "Nam",
+      "label": "[fr-CA] Antoine — Nam (French (Canada)) [fr-CA-AntoineNeural]"
+    },
+    {
+      "short_name": "fr-CA-JeanNeural",
+      "locale": "fr-CA",
+      "lang": "fr",
+      "gender": "Nam",
+      "label": "[fr-CA] Jean — Nam (French (Canada)) [fr-CA-JeanNeural]"
+    },
+    {
+      "short_name": "fr-CA-SylvieNeural",
+      "locale": "fr-CA",
+      "lang": "fr",
+      "gender": "Nữ",
+      "label": "[fr-CA] Sylvie — Nữ (French (Canada)) [fr-CA-SylvieNeural]"
+    },
+    {
+      "short_name": "fr-CA-ThierryNeural",
+      "locale": "fr-CA",
+      "lang": "fr",
+      "gender": "Nam",
+      "label": "[fr-CA] Thierry — Nam (French (Canada)) [fr-CA-ThierryNeural]"
+    },
+    {
+      "short_name": "fr-CH-ArianeNeural",
+      "locale": "fr-CH",
+      "lang": "fr",
+      "gender": "Nữ",
+      "label": "[fr-CH] Ariane — Nữ (French (Switzerland)) [fr-CH-ArianeNeural]"
+    },
+    {
+      "short_name": "fr-CH-FabriceNeural",
+      "locale": "fr-CH",
+      "lang": "fr",
+      "gender": "Nam",
+      "label": "[fr-CH] Fabrice — Nam (French (Switzerland)) [fr-CH-FabriceNeural]"
+    },
+    {
+      "short_name": "fr-FR-DeniseNeural",
+      "locale": "fr-FR",
+      "lang": "fr",
+      "gender": "Nữ",
+      "label": "[fr-FR] Denise — Nữ (French (France)) [fr-FR-DeniseNeural]"
+    },
+    {
+      "short_name": "fr-FR-EloiseNeural",
+      "locale": "fr-FR",
+      "lang": "fr",
+      "gender": "Nữ",
+      "label": "[fr-FR] Eloise — Nữ (French (France)) [fr-FR-EloiseNeural]"
+    },
+    {
+      "short_name": "fr-FR-HenriNeural",
+      "locale": "fr-FR",
+      "lang": "fr",
+      "gender": "Nam",
+      "label": "[fr-FR] Henri — Nam (French (France)) [fr-FR-HenriNeural]"
+    },
+    {
+      "short_name": "fr-FR-RemyMultilingualNeural",
+      "locale": "fr-FR",
+      "lang": "fr",
+      "gender": "Nam",
+      "label": "[fr-FR] RemyMultilingual — Nam (French (France)) [fr-FR-RemyMultilingualNeural]"
+    },
+    {
+      "short_name": "fr-FR-VivienneMultilingualNeural",
+      "locale": "fr-FR",
+      "lang": "fr",
+      "gender": "Nữ",
+      "label": "[fr-FR] VivienneMultilingual — Nữ (French (France)) [fr-FR-VivienneMultilingualNeural]"
+    },
+    {
+      "short_name": "es-AR-ElenaNeural",
+      "locale": "es-AR",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-AR] Elena — Nữ (Spanish (Argentina)) [es-AR-ElenaNeural]"
+    },
+    {
+      "short_name": "es-AR-TomasNeural",
+      "locale": "es-AR",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-AR] Tomas — Nam (Spanish (Argentina)) [es-AR-TomasNeural]"
+    },
+    {
+      "short_name": "es-BO-MarceloNeural",
+      "locale": "es-BO",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-BO] Marcelo — Nam (Spanish (Bolivia)) [es-BO-MarceloNeural]"
+    },
+    {
+      "short_name": "es-BO-SofiaNeural",
+      "locale": "es-BO",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-BO] Sofia — Nữ (Spanish (Bolivia)) [es-BO-SofiaNeural]"
+    },
+    {
+      "short_name": "es-CL-CatalinaNeural",
+      "locale": "es-CL",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-CL] Catalina — Nữ (Spanish (Chile)) [es-CL-CatalinaNeural]"
+    },
+    {
+      "short_name": "es-CL-LorenzoNeural",
+      "locale": "es-CL",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-CL] Lorenzo — Nam (Spanish (Chile)) [es-CL-LorenzoNeural]"
+    },
+    {
+      "short_name": "es-CO-GonzaloNeural",
+      "locale": "es-CO",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-CO] Gonzalo — Nam (Spanish (Colombia)) [es-CO-GonzaloNeural]"
+    },
+    {
+      "short_name": "es-CO-SalomeNeural",
+      "locale": "es-CO",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-CO] Salome — Nữ (Spanish (Colombia)) [es-CO-SalomeNeural]"
+    },
+    {
+      "short_name": "es-CR-JuanNeural",
+      "locale": "es-CR",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-CR] Juan — Nam (Spanish (Costa Rica)) [es-CR-JuanNeural]"
+    },
+    {
+      "short_name": "es-CR-MariaNeural",
+      "locale": "es-CR",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-CR] Maria — Nữ (Spanish (Costa Rica)) [es-CR-MariaNeural]"
+    },
+    {
+      "short_name": "es-CU-BelkysNeural",
+      "locale": "es-CU",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-CU] Belkys — Nữ (Spanish (Cuba)) [es-CU-BelkysNeural]"
+    },
+    {
+      "short_name": "es-CU-ManuelNeural",
+      "locale": "es-CU",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-CU] Manuel — Nam (Spanish (Cuba)) [es-CU-ManuelNeural]"
+    },
+    {
+      "short_name": "es-DO-EmilioNeural",
+      "locale": "es-DO",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-DO] Emilio — Nam (Spanish (Dominican Republic)) [es-DO-EmilioNeural]"
+    },
+    {
+      "short_name": "es-DO-RamonaNeural",
+      "locale": "es-DO",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-DO] Ramona — Nữ (Spanish (Dominican Republic)) [es-DO-RamonaNeural]"
+    },
+    {
+      "short_name": "es-EC-AndreaNeural",
+      "locale": "es-EC",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-EC] Andrea — Nữ (Spanish (Ecuador)) [es-EC-AndreaNeural]"
+    },
+    {
+      "short_name": "es-EC-LuisNeural",
+      "locale": "es-EC",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-EC] Luis — Nam (Spanish (Ecuador)) [es-EC-LuisNeural]"
+    },
+    {
+      "short_name": "es-ES-AlvaroNeural",
+      "locale": "es-ES",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-ES] Alvaro — Nam (Spanish (Spain)) [es-ES-AlvaroNeural]"
+    },
+    {
+      "short_name": "es-ES-ElviraNeural",
+      "locale": "es-ES",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-ES] Elvira — Nữ (Spanish (Spain)) [es-ES-ElviraNeural]"
+    },
+    {
+      "short_name": "es-ES-XimenaNeural",
+      "locale": "es-ES",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-ES] Ximena — Nữ (Spanish (Colombia)) [es-ES-XimenaNeural]"
+    },
+    {
+      "short_name": "es-GQ-JavierNeural",
+      "locale": "es-GQ",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-GQ] Javier — Nam (Spanish (Equatorial Guinea)) [es-GQ-JavierNeural]"
+    },
+    {
+      "short_name": "es-GQ-TeresaNeural",
+      "locale": "es-GQ",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-GQ] Teresa — Nữ (Spanish (Equatorial Guinea)) [es-GQ-TeresaNeural]"
+    },
+    {
+      "short_name": "es-GT-AndresNeural",
+      "locale": "es-GT",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-GT] Andres — Nam (Spanish (Guatemala)) [es-GT-AndresNeural]"
+    },
+    {
+      "short_name": "es-GT-MartaNeural",
+      "locale": "es-GT",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-GT] Marta — Nữ (Spanish (Guatemala)) [es-GT-MartaNeural]"
+    },
+    {
+      "short_name": "es-HN-CarlosNeural",
+      "locale": "es-HN",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-HN] Carlos — Nam (Spanish (Honduras)) [es-HN-CarlosNeural]"
+    },
+    {
+      "short_name": "es-HN-KarlaNeural",
+      "locale": "es-HN",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-HN] Karla — Nữ (Spanish (Honduras)) [es-HN-KarlaNeural]"
+    },
+    {
+      "short_name": "es-MX-DaliaNeural",
+      "locale": "es-MX",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-MX] Dalia — Nữ (Spanish (Mexico)) [es-MX-DaliaNeural]"
+    },
+    {
+      "short_name": "es-MX-JorgeNeural",
+      "locale": "es-MX",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-MX] Jorge — Nam (Spanish (Mexico)) [es-MX-JorgeNeural]"
+    },
+    {
+      "short_name": "es-NI-FedericoNeural",
+      "locale": "es-NI",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-NI] Federico — Nam (Spanish (Nicaragua)) [es-NI-FedericoNeural]"
+    },
+    {
+      "short_name": "es-NI-YolandaNeural",
+      "locale": "es-NI",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-NI] Yolanda — Nữ (Spanish (Nicaragua)) [es-NI-YolandaNeural]"
+    },
+    {
+      "short_name": "es-PA-MargaritaNeural",
+      "locale": "es-PA",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-PA] Margarita — Nữ (Spanish (Panama)) [es-PA-MargaritaNeural]"
+    },
+    {
+      "short_name": "es-PA-RobertoNeural",
+      "locale": "es-PA",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-PA] Roberto — Nam (Spanish (Panama)) [es-PA-RobertoNeural]"
+    },
+    {
+      "short_name": "es-PE-AlexNeural",
+      "locale": "es-PE",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-PE] Alex — Nam (Spanish (Peru)) [es-PE-AlexNeural]"
+    },
+    {
+      "short_name": "es-PE-CamilaNeural",
+      "locale": "es-PE",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-PE] Camila — Nữ (Spanish (Peru)) [es-PE-CamilaNeural]"
+    },
+    {
+      "short_name": "es-PR-KarinaNeural",
+      "locale": "es-PR",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-PR] Karina — Nữ (Spanish (Puerto Rico)) [es-PR-KarinaNeural]"
+    },
+    {
+      "short_name": "es-PR-VictorNeural",
+      "locale": "es-PR",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-PR] Victor — Nam (Spanish (Puerto Rico)) [es-PR-VictorNeural]"
+    },
+    {
+      "short_name": "es-PY-MarioNeural",
+      "locale": "es-PY",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-PY] Mario — Nam (Spanish (Paraguay)) [es-PY-MarioNeural]"
+    },
+    {
+      "short_name": "es-PY-TaniaNeural",
+      "locale": "es-PY",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-PY] Tania — Nữ (Spanish (Paraguay)) [es-PY-TaniaNeural]"
+    },
+    {
+      "short_name": "es-SV-LorenaNeural",
+      "locale": "es-SV",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-SV] Lorena — Nữ (Spanish (El Salvador)) [es-SV-LorenaNeural]"
+    },
+    {
+      "short_name": "es-SV-RodrigoNeural",
+      "locale": "es-SV",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-SV] Rodrigo — Nam (Spanish (El Salvador)) [es-SV-RodrigoNeural]"
+    },
+    {
+      "short_name": "es-US-AlonsoNeural",
+      "locale": "es-US",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-US] Alonso — Nam (Spanish (United States)) [es-US-AlonsoNeural]"
+    },
+    {
+      "short_name": "es-US-PalomaNeural",
+      "locale": "es-US",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-US] Paloma — Nữ (Spanish (United States)) [es-US-PalomaNeural]"
+    },
+    {
+      "short_name": "es-UY-MateoNeural",
+      "locale": "es-UY",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-UY] Mateo — Nam (Spanish (Uruguay)) [es-UY-MateoNeural]"
+    },
+    {
+      "short_name": "es-UY-ValentinaNeural",
+      "locale": "es-UY",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-UY] Valentina — Nữ (Spanish (Uruguay)) [es-UY-ValentinaNeural]"
+    },
+    {
+      "short_name": "es-VE-PaolaNeural",
+      "locale": "es-VE",
+      "lang": "es",
+      "gender": "Nữ",
+      "label": "[es-VE] Paola — Nữ (Spanish (Venezuela)) [es-VE-PaolaNeural]"
+    },
+    {
+      "short_name": "es-VE-SebastianNeural",
+      "locale": "es-VE",
+      "lang": "es",
+      "gender": "Nam",
+      "label": "[es-VE] Sebastian — Nam (Spanish (Venezuela)) [es-VE-SebastianNeural]"
+    },
+    {
+      "short_name": "th-TH-NiwatNeural",
+      "locale": "th-TH",
+      "lang": "th",
+      "gender": "Nam",
+      "label": "[th-TH] Niwat — Nam (Thai (Thailand)) [th-TH-NiwatNeural]"
+    },
+    {
+      "short_name": "th-TH-PremwadeeNeural",
+      "locale": "th-TH",
+      "lang": "th",
+      "gender": "Nữ",
+      "label": "[th-TH] Premwadee — Nữ (Thai (Thailand)) [th-TH-PremwadeeNeural]"
+    },
+    {
+      "short_name": "id-ID-ArdiNeural",
+      "locale": "id-ID",
+      "lang": "id",
+      "gender": "Nam",
+      "label": "[id-ID] Ardi — Nam (Indonesian (Indonesia)) [id-ID-ArdiNeural]"
+    },
+    {
+      "short_name": "id-ID-GadisNeural",
+      "locale": "id-ID",
+      "lang": "id",
+      "gender": "Nữ",
+      "label": "[id-ID] Gadis — Nữ (Indonesian (Indonesia)) [id-ID-GadisNeural]"
+    },
+    {
+      "short_name": "hi-IN-MadhurNeural",
+      "locale": "hi-IN",
+      "lang": "hi",
+      "gender": "Nam",
+      "label": "[hi-IN] Madhur — Nam (Hindi (India)) [hi-IN-MadhurNeural]"
+    },
+    {
+      "short_name": "hi-IN-SwaraNeural",
+      "locale": "hi-IN",
+      "lang": "hi",
+      "gender": "Nữ",
+      "label": "[hi-IN] Swara — Nữ (Hindi (India)) [hi-IN-SwaraNeural]"
+    },
+    {
+      "short_name": "de-AT-IngridNeural",
+      "locale": "de-AT",
+      "lang": "de",
+      "gender": "Nữ",
+      "label": "[de-AT] Ingrid — Nữ (German (Austria)) [de-AT-IngridNeural]"
+    },
+    {
+      "short_name": "de-AT-JonasNeural",
+      "locale": "de-AT",
+      "lang": "de",
+      "gender": "Nam",
+      "label": "[de-AT] Jonas — Nam (German (Austria)) [de-AT-JonasNeural]"
+    },
+    {
+      "short_name": "de-CH-JanNeural",
+      "locale": "de-CH",
+      "lang": "de",
+      "gender": "Nam",
+      "label": "[de-CH] Jan — Nam (German (Switzerland)) [de-CH-JanNeural]"
+    },
+    {
+      "short_name": "de-CH-LeniNeural",
+      "locale": "de-CH",
+      "lang": "de",
+      "gender": "Nữ",
+      "label": "[de-CH] Leni — Nữ (German (Switzerland)) [de-CH-LeniNeural]"
+    },
+    {
+      "short_name": "de-DE-AmalaNeural",
+      "locale": "de-DE",
+      "lang": "de",
+      "gender": "Nữ",
+      "label": "[de-DE] Amala — Nữ (German (Germany)) [de-DE-AmalaNeural]"
+    },
+    {
+      "short_name": "de-DE-ConradNeural",
+      "locale": "de-DE",
+      "lang": "de",
+      "gender": "Nam",
+      "label": "[de-DE] Conrad — Nam (German (Germany)) [de-DE-ConradNeural]"
+    },
+    {
+      "short_name": "de-DE-FlorianMultilingualNeural",
+      "locale": "de-DE",
+      "lang": "de",
+      "gender": "Nam",
+      "label": "[de-DE] FlorianMultilingual — Nam (German (Germany)) [de-DE-FlorianMultilingualNeural]"
+    },
+    {
+      "short_name": "de-DE-KatjaNeural",
+      "locale": "de-DE",
+      "lang": "de",
+      "gender": "Nữ",
+      "label": "[de-DE] Katja — Nữ (German (Germany)) [de-DE-KatjaNeural]"
+    },
+    {
+      "short_name": "de-DE-KillianNeural",
+      "locale": "de-DE",
+      "lang": "de",
+      "gender": "Nam",
+      "label": "[de-DE] Killian — Nam (German (Germany)) [de-DE-KillianNeural]"
+    },
+    {
+      "short_name": "de-DE-SeraphinaMultilingualNeural",
+      "locale": "de-DE",
+      "lang": "de",
+      "gender": "Nữ",
+      "label": "[de-DE] SeraphinaMultilingual — Nữ (German (Germany)) [de-DE-SeraphinaMultilingualNeural]"
+    },
+    {
+      "short_name": "ru-RU-DmitryNeural",
+      "locale": "ru-RU",
+      "lang": "ru",
+      "gender": "Nam",
+      "label": "[ru-RU] Dmitry — Nam (Russian (Russia)) [ru-RU-DmitryNeural]"
+    },
+    {
+      "short_name": "ru-RU-SvetlanaNeural",
+      "locale": "ru-RU",
+      "lang": "ru",
+      "gender": "Nữ",
+      "label": "[ru-RU] Svetlana — Nữ (Russian (Russia)) [ru-RU-SvetlanaNeural]"
+    },
+    {
+      "short_name": "pt-BR-AntonioNeural",
+      "locale": "pt-BR",
+      "lang": "pt",
+      "gender": "Nam",
+      "label": "[pt-BR] Antonio — Nam (Portuguese (Brazil)) [pt-BR-AntonioNeural]"
+    },
+    {
+      "short_name": "pt-BR-FranciscaNeural",
+      "locale": "pt-BR",
+      "lang": "pt",
+      "gender": "Nữ",
+      "label": "[pt-BR] Francisca — Nữ (Portuguese (Brazil)) [pt-BR-FranciscaNeural]"
+    },
+    {
+      "short_name": "pt-BR-ThalitaMultilingualNeural",
+      "locale": "pt-BR",
+      "lang": "pt",
+      "gender": "Nữ",
+      "label": "[pt-BR] ThalitaMultilingual — Nữ (Portuguese (Brazil)) [pt-BR-ThalitaMultilingualNeural]"
+    },
+    {
+      "short_name": "pt-PT-DuarteNeural",
+      "locale": "pt-PT",
+      "lang": "pt",
+      "gender": "Nam",
+      "label": "[pt-PT] Duarte — Nam (Portuguese (Portugal)) [pt-PT-DuarteNeural]"
+    },
+    {
+      "short_name": "pt-PT-RaquelNeural",
+      "locale": "pt-PT",
+      "lang": "pt",
+      "gender": "Nữ",
+      "label": "[pt-PT] Raquel — Nữ (Portuguese (Portugal)) [pt-PT-RaquelNeural]"
+    },
+    {
+      "short_name": "it-IT-DiegoNeural",
+      "locale": "it-IT",
+      "lang": "it",
+      "gender": "Nam",
+      "label": "[it-IT] Diego — Nam (Italian (Italy)) [it-IT-DiegoNeural]"
+    },
+    {
+      "short_name": "it-IT-ElsaNeural",
+      "locale": "it-IT",
+      "lang": "it",
+      "gender": "Nữ",
+      "label": "[it-IT] Elsa — Nữ (Italian (Italy)) [it-IT-ElsaNeural]"
+    },
+    {
+      "short_name": "it-IT-GiuseppeMultilingualNeural",
+      "locale": "it-IT",
+      "lang": "it",
+      "gender": "Nam",
+      "label": "[it-IT] GiuseppeMultilingual — Nam (Italian (Italy)) [it-IT-GiuseppeMultilingualNeural]"
+    },
+    {
+      "short_name": "it-IT-IsabellaNeural",
+      "locale": "it-IT",
+      "lang": "it",
+      "gender": "Nữ",
+      "label": "[it-IT] Isabella — Nữ (Italian (Italy)) [it-IT-IsabellaNeural]"
+    },
+    {
+      "short_name": "af-ZA-AdriNeural",
+      "locale": "af-ZA",
+      "lang": "af",
+      "gender": "Nữ",
+      "label": "[af-ZA] Adri — Nữ (Afrikaans (South Africa)) [af-ZA-AdriNeural]"
+    },
+    {
+      "short_name": "af-ZA-WillemNeural",
+      "locale": "af-ZA",
+      "lang": "af",
+      "gender": "Nam",
+      "label": "[af-ZA] Willem — Nam (Afrikaans (South Africa)) [af-ZA-WillemNeural]"
+    },
+    {
+      "short_name": "am-ET-AmehaNeural",
+      "locale": "am-ET",
+      "lang": "am",
+      "gender": "Nam",
+      "label": "[am-ET] Ameha — Nam (Amharic (Ethiopia)) [am-ET-AmehaNeural]"
+    },
+    {
+      "short_name": "am-ET-MekdesNeural",
+      "locale": "am-ET",
+      "lang": "am",
+      "gender": "Nữ",
+      "label": "[am-ET] Mekdes — Nữ (Amharic (Ethiopia)) [am-ET-MekdesNeural]"
+    },
+    {
+      "short_name": "ar-AE-FatimaNeural",
+      "locale": "ar-AE",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-AE] Fatima — Nữ (Arabic (United Arab Emirates)) [ar-AE-FatimaNeural]"
+    },
+    {
+      "short_name": "ar-AE-HamdanNeural",
+      "locale": "ar-AE",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-AE] Hamdan — Nam (Arabic (United Arab Emirates)) [ar-AE-HamdanNeural]"
+    },
+    {
+      "short_name": "ar-BH-AliNeural",
+      "locale": "ar-BH",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-BH] Ali — Nam (Arabic (Bahrain)) [ar-BH-AliNeural]"
+    },
+    {
+      "short_name": "ar-BH-LailaNeural",
+      "locale": "ar-BH",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-BH] Laila — Nữ (Arabic (Bahrain)) [ar-BH-LailaNeural]"
+    },
+    {
+      "short_name": "ar-DZ-AminaNeural",
+      "locale": "ar-DZ",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-DZ] Amina — Nữ (Arabic (Algeria)) [ar-DZ-AminaNeural]"
+    },
+    {
+      "short_name": "ar-DZ-IsmaelNeural",
+      "locale": "ar-DZ",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-DZ] Ismael — Nam (Arabic (Algeria)) [ar-DZ-IsmaelNeural]"
+    },
+    {
+      "short_name": "ar-EG-SalmaNeural",
+      "locale": "ar-EG",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-EG] Salma — Nữ (Arabic (Egypt)) [ar-EG-SalmaNeural]"
+    },
+    {
+      "short_name": "ar-EG-ShakirNeural",
+      "locale": "ar-EG",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-EG] Shakir — Nam (Arabic (Egypt)) [ar-EG-ShakirNeural]"
+    },
+    {
+      "short_name": "ar-IQ-BasselNeural",
+      "locale": "ar-IQ",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-IQ] Bassel — Nam (Arabic (Iraq)) [ar-IQ-BasselNeural]"
+    },
+    {
+      "short_name": "ar-IQ-RanaNeural",
+      "locale": "ar-IQ",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-IQ] Rana — Nữ (Arabic (Iraq)) [ar-IQ-RanaNeural]"
+    },
+    {
+      "short_name": "ar-JO-SanaNeural",
+      "locale": "ar-JO",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-JO] Sana — Nữ (Arabic (Jordan)) [ar-JO-SanaNeural]"
+    },
+    {
+      "short_name": "ar-JO-TaimNeural",
+      "locale": "ar-JO",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-JO] Taim — Nam (Arabic (Jordan)) [ar-JO-TaimNeural]"
+    },
+    {
+      "short_name": "ar-KW-FahedNeural",
+      "locale": "ar-KW",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-KW] Fahed — Nam (Arabic (Kuwait)) [ar-KW-FahedNeural]"
+    },
+    {
+      "short_name": "ar-KW-NouraNeural",
+      "locale": "ar-KW",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-KW] Noura — Nữ (Arabic (Kuwait)) [ar-KW-NouraNeural]"
+    },
+    {
+      "short_name": "ar-LB-LaylaNeural",
+      "locale": "ar-LB",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-LB] Layla — Nữ (Arabic (Lebanon)) [ar-LB-LaylaNeural]"
+    },
+    {
+      "short_name": "ar-LB-RamiNeural",
+      "locale": "ar-LB",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-LB] Rami — Nam (Arabic (Lebanon)) [ar-LB-RamiNeural]"
+    },
+    {
+      "short_name": "ar-LY-ImanNeural",
+      "locale": "ar-LY",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-LY] Iman — Nữ (Arabic (Libya)) [ar-LY-ImanNeural]"
+    },
+    {
+      "short_name": "ar-LY-OmarNeural",
+      "locale": "ar-LY",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-LY] Omar — Nam (Arabic (Libya)) [ar-LY-OmarNeural]"
+    },
+    {
+      "short_name": "ar-MA-JamalNeural",
+      "locale": "ar-MA",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-MA] Jamal — Nam (Arabic (Morocco)) [ar-MA-JamalNeural]"
+    },
+    {
+      "short_name": "ar-MA-MounaNeural",
+      "locale": "ar-MA",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-MA] Mouna — Nữ (Arabic (Morocco)) [ar-MA-MounaNeural]"
+    },
+    {
+      "short_name": "ar-OM-AbdullahNeural",
+      "locale": "ar-OM",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-OM] Abdullah — Nam (Arabic (Oman)) [ar-OM-AbdullahNeural]"
+    },
+    {
+      "short_name": "ar-OM-AyshaNeural",
+      "locale": "ar-OM",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-OM] Aysha — Nữ (Arabic (Oman)) [ar-OM-AyshaNeural]"
+    },
+    {
+      "short_name": "ar-QA-AmalNeural",
+      "locale": "ar-QA",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-QA] Amal — Nữ (Arabic (Qatar)) [ar-QA-AmalNeural]"
+    },
+    {
+      "short_name": "ar-QA-MoazNeural",
+      "locale": "ar-QA",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-QA] Moaz — Nam (Arabic (Qatar)) [ar-QA-MoazNeural]"
+    },
+    {
+      "short_name": "ar-SA-HamedNeural",
+      "locale": "ar-SA",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-SA] Hamed — Nam (Arabic (Saudi Arabia)) [ar-SA-HamedNeural]"
+    },
+    {
+      "short_name": "ar-SA-ZariyahNeural",
+      "locale": "ar-SA",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-SA] Zariyah — Nữ (Arabic (Saudi Arabia)) [ar-SA-ZariyahNeural]"
+    },
+    {
+      "short_name": "ar-SY-AmanyNeural",
+      "locale": "ar-SY",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-SY] Amany — Nữ (Arabic (Syria)) [ar-SY-AmanyNeural]"
+    },
+    {
+      "short_name": "ar-SY-LaithNeural",
+      "locale": "ar-SY",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-SY] Laith — Nam (Arabic (Syria)) [ar-SY-LaithNeural]"
+    },
+    {
+      "short_name": "ar-TN-HediNeural",
+      "locale": "ar-TN",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-TN] Hedi — Nam (Arabic (Tunisia)) [ar-TN-HediNeural]"
+    },
+    {
+      "short_name": "ar-TN-ReemNeural",
+      "locale": "ar-TN",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-TN] Reem — Nữ (Arabic (Tunisia)) [ar-TN-ReemNeural]"
+    },
+    {
+      "short_name": "ar-YE-MaryamNeural",
+      "locale": "ar-YE",
+      "lang": "ar",
+      "gender": "Nữ",
+      "label": "[ar-YE] Maryam — Nữ (Arabic (Yemen)) [ar-YE-MaryamNeural]"
+    },
+    {
+      "short_name": "ar-YE-SalehNeural",
+      "locale": "ar-YE",
+      "lang": "ar",
+      "gender": "Nam",
+      "label": "[ar-YE] Saleh — Nam (Arabic (Yemen)) [ar-YE-SalehNeural]"
+    },
+    {
+      "short_name": "az-AZ-BabekNeural",
+      "locale": "az-AZ",
+      "lang": "az",
+      "gender": "Nam",
+      "label": "[az-AZ] Babek — Nam (Azerbaijani (Azerbaijan)) [az-AZ-BabekNeural]"
+    },
+    {
+      "short_name": "az-AZ-BanuNeural",
+      "locale": "az-AZ",
+      "lang": "az",
+      "gender": "Nữ",
+      "label": "[az-AZ] Banu — Nữ (Azerbaijani (Azerbaijan)) [az-AZ-BanuNeural]"
+    },
+    {
+      "short_name": "bg-BG-BorislavNeural",
+      "locale": "bg-BG",
+      "lang": "bg",
+      "gender": "Nam",
+      "label": "[bg-BG] Borislav — Nam (Bulgarian (Bulgaria)) [bg-BG-BorislavNeural]"
+    },
+    {
+      "short_name": "bg-BG-KalinaNeural",
+      "locale": "bg-BG",
+      "lang": "bg",
+      "gender": "Nữ",
+      "label": "[bg-BG] Kalina — Nữ (Bulgarian (Bulgaria)) [bg-BG-KalinaNeural]"
+    },
+    {
+      "short_name": "bn-BD-NabanitaNeural",
+      "locale": "bn-BD",
+      "lang": "bn",
+      "gender": "Nữ",
+      "label": "[bn-BD] Nabanita — Nữ (Bangla (Bangladesh)) [bn-BD-NabanitaNeural]"
+    },
+    {
+      "short_name": "bn-BD-PradeepNeural",
+      "locale": "bn-BD",
+      "lang": "bn",
+      "gender": "Nam",
+      "label": "[bn-BD] Pradeep — Nam (Bangla (Bangladesh)) [bn-BD-PradeepNeural]"
+    },
+    {
+      "short_name": "bn-IN-BashkarNeural",
+      "locale": "bn-IN",
+      "lang": "bn",
+      "gender": "Nam",
+      "label": "[bn-IN] Bashkar — Nam (Bangla (India)) [bn-IN-BashkarNeural]"
+    },
+    {
+      "short_name": "bn-IN-TanishaaNeural",
+      "locale": "bn-IN",
+      "lang": "bn",
+      "gender": "Nữ",
+      "label": "[bn-IN] Tanishaa — Nữ (Bengali (India)) [bn-IN-TanishaaNeural]"
+    },
+    {
+      "short_name": "bs-BA-GoranNeural",
+      "locale": "bs-BA",
+      "lang": "bs",
+      "gender": "Nam",
+      "label": "[bs-BA] Goran — Nam (Bosnian (Bosnia)) [bs-BA-GoranNeural]"
+    },
+    {
+      "short_name": "bs-BA-VesnaNeural",
+      "locale": "bs-BA",
+      "lang": "bs",
+      "gender": "Nữ",
+      "label": "[bs-BA] Vesna — Nữ (Bosnian (Bosnia and Herzegovina)) [bs-BA-VesnaNeural]"
+    },
+    {
+      "short_name": "ca-ES-EnricNeural",
+      "locale": "ca-ES",
+      "lang": "ca",
+      "gender": "Nam",
+      "label": "[ca-ES] Enric — Nam (Catalan) [ca-ES-EnricNeural]"
+    },
+    {
+      "short_name": "ca-ES-JoanaNeural",
+      "locale": "ca-ES",
+      "lang": "ca",
+      "gender": "Nữ",
+      "label": "[ca-ES] Joana — Nữ (Catalan) [ca-ES-JoanaNeural]"
+    },
+    {
+      "short_name": "cs-CZ-AntoninNeural",
+      "locale": "cs-CZ",
+      "lang": "cs",
+      "gender": "Nam",
+      "label": "[cs-CZ] Antonin — Nam (Czech (Czech)) [cs-CZ-AntoninNeural]"
+    },
+    {
+      "short_name": "cs-CZ-VlastaNeural",
+      "locale": "cs-CZ",
+      "lang": "cs",
+      "gender": "Nữ",
+      "label": "[cs-CZ] Vlasta — Nữ (Czech (Czech)) [cs-CZ-VlastaNeural]"
+    },
+    {
+      "short_name": "cy-GB-AledNeural",
+      "locale": "cy-GB",
+      "lang": "cy",
+      "gender": "Nam",
+      "label": "[cy-GB] Aled — Nam (Welsh (United Kingdom)) [cy-GB-AledNeural]"
+    },
+    {
+      "short_name": "cy-GB-NiaNeural",
+      "locale": "cy-GB",
+      "lang": "cy",
+      "gender": "Nữ",
+      "label": "[cy-GB] Nia — Nữ (Welsh (United Kingdom)) [cy-GB-NiaNeural]"
+    },
+    {
+      "short_name": "da-DK-ChristelNeural",
+      "locale": "da-DK",
+      "lang": "da",
+      "gender": "Nữ",
+      "label": "[da-DK] Christel — Nữ (Danish (Denmark)) [da-DK-ChristelNeural]"
+    },
+    {
+      "short_name": "da-DK-JeppeNeural",
+      "locale": "da-DK",
+      "lang": "da",
+      "gender": "Nam",
+      "label": "[da-DK] Jeppe — Nam (Danish (Denmark)) [da-DK-JeppeNeural]"
+    },
+    {
+      "short_name": "el-GR-AthinaNeural",
+      "locale": "el-GR",
+      "lang": "el",
+      "gender": "Nữ",
+      "label": "[el-GR] Athina — Nữ (Greek (Greece)) [el-GR-AthinaNeural]"
+    },
+    {
+      "short_name": "el-GR-NestorasNeural",
+      "locale": "el-GR",
+      "lang": "el",
+      "gender": "Nam",
+      "label": "[el-GR] Nestoras — Nam (Greek (Greece)) [el-GR-NestorasNeural]"
+    },
+    {
+      "short_name": "et-EE-AnuNeural",
+      "locale": "et-EE",
+      "lang": "et",
+      "gender": "Nữ",
+      "label": "[et-EE] Anu — Nữ (Estonian (Estonia)) [et-EE-AnuNeural]"
+    },
+    {
+      "short_name": "et-EE-KertNeural",
+      "locale": "et-EE",
+      "lang": "et",
+      "gender": "Nam",
+      "label": "[et-EE] Kert — Nam (Estonian (Estonia)) [et-EE-KertNeural]"
+    },
+    {
+      "short_name": "fa-IR-DilaraNeural",
+      "locale": "fa-IR",
+      "lang": "fa",
+      "gender": "Nữ",
+      "label": "[fa-IR] Dilara — Nữ (Persian (Iran)) [fa-IR-DilaraNeural]"
+    },
+    {
+      "short_name": "fa-IR-FaridNeural",
+      "locale": "fa-IR",
+      "lang": "fa",
+      "gender": "Nam",
+      "label": "[fa-IR] Farid — Nam (Persian (Iran)) [fa-IR-FaridNeural]"
+    },
+    {
+      "short_name": "fi-FI-HarriNeural",
+      "locale": "fi-FI",
+      "lang": "fi",
+      "gender": "Nam",
+      "label": "[fi-FI] Harri — Nam (Finnish (Finland)) [fi-FI-HarriNeural]"
+    },
+    {
+      "short_name": "fi-FI-NooraNeural",
+      "locale": "fi-FI",
+      "lang": "fi",
+      "gender": "Nữ",
+      "label": "[fi-FI] Noora — Nữ (Finnish (Finland)) [fi-FI-NooraNeural]"
+    },
+    {
+      "short_name": "fil-PH-AngeloNeural",
+      "locale": "fil-PH",
+      "lang": "fil",
+      "gender": "Nam",
+      "label": "[fil-PH] Angelo — Nam (Filipino (Philippines)) [fil-PH-AngeloNeural]"
+    },
+    {
+      "short_name": "fil-PH-BlessicaNeural",
+      "locale": "fil-PH",
+      "lang": "fil",
+      "gender": "Nữ",
+      "label": "[fil-PH] Blessica — Nữ (Filipino (Philippines)) [fil-PH-BlessicaNeural]"
+    },
+    {
+      "short_name": "ga-IE-ColmNeural",
+      "locale": "ga-IE",
+      "lang": "ga",
+      "gender": "Nam",
+      "label": "[ga-IE] Colm — Nam (Irish (Ireland)) [ga-IE-ColmNeural]"
+    },
+    {
+      "short_name": "ga-IE-OrlaNeural",
+      "locale": "ga-IE",
+      "lang": "ga",
+      "gender": "Nữ",
+      "label": "[ga-IE] Orla — Nữ (Irish (Ireland)) [ga-IE-OrlaNeural]"
+    },
+    {
+      "short_name": "gl-ES-RoiNeural",
+      "locale": "gl-ES",
+      "lang": "gl",
+      "gender": "Nam",
+      "label": "[gl-ES] Roi — Nam (Galician) [gl-ES-RoiNeural]"
+    },
+    {
+      "short_name": "gl-ES-SabelaNeural",
+      "locale": "gl-ES",
+      "lang": "gl",
+      "gender": "Nữ",
+      "label": "[gl-ES] Sabela — Nữ (Galician) [gl-ES-SabelaNeural]"
+    },
+    {
+      "short_name": "gu-IN-DhwaniNeural",
+      "locale": "gu-IN",
+      "lang": "gu",
+      "gender": "Nữ",
+      "label": "[gu-IN] Dhwani — Nữ (Gujarati (India)) [gu-IN-DhwaniNeural]"
+    },
+    {
+      "short_name": "gu-IN-NiranjanNeural",
+      "locale": "gu-IN",
+      "lang": "gu",
+      "gender": "Nam",
+      "label": "[gu-IN] Niranjan — Nam (Gujarati (India)) [gu-IN-NiranjanNeural]"
+    },
+    {
+      "short_name": "he-IL-AvriNeural",
+      "locale": "he-IL",
+      "lang": "he",
+      "gender": "Nam",
+      "label": "[he-IL] Avri — Nam (Hebrew (Israel)) [he-IL-AvriNeural]"
+    },
+    {
+      "short_name": "he-IL-HilaNeural",
+      "locale": "he-IL",
+      "lang": "he",
+      "gender": "Nữ",
+      "label": "[he-IL] Hila — Nữ (Hebrew (Israel)) [he-IL-HilaNeural]"
+    },
+    {
+      "short_name": "hr-HR-GabrijelaNeural",
+      "locale": "hr-HR",
+      "lang": "hr",
+      "gender": "Nữ",
+      "label": "[hr-HR] Gabrijela — Nữ (Croatian (Croatia)) [hr-HR-GabrijelaNeural]"
+    },
+    {
+      "short_name": "hr-HR-SreckoNeural",
+      "locale": "hr-HR",
+      "lang": "hr",
+      "gender": "Nam",
+      "label": "[hr-HR] Srecko — Nam (Croatian (Croatia)) [hr-HR-SreckoNeural]"
+    },
+    {
+      "short_name": "hu-HU-NoemiNeural",
+      "locale": "hu-HU",
+      "lang": "hu",
+      "gender": "Nữ",
+      "label": "[hu-HU] Noemi — Nữ (Hungarian (Hungary)) [hu-HU-NoemiNeural]"
+    },
+    {
+      "short_name": "hu-HU-TamasNeural",
+      "locale": "hu-HU",
+      "lang": "hu",
+      "gender": "Nam",
+      "label": "[hu-HU] Tamas — Nam (Hungarian (Hungary)) [hu-HU-TamasNeural]"
+    },
+    {
+      "short_name": "is-IS-GudrunNeural",
+      "locale": "is-IS",
+      "lang": "is",
+      "gender": "Nữ",
+      "label": "[is-IS] Gudrun — Nữ (Icelandic (Iceland)) [is-IS-GudrunNeural]"
+    },
+    {
+      "short_name": "is-IS-GunnarNeural",
+      "locale": "is-IS",
+      "lang": "is",
+      "gender": "Nam",
+      "label": "[is-IS] Gunnar — Nam (Icelandic (Iceland)) [is-IS-GunnarNeural]"
+    },
+    {
+      "short_name": "iu-Cans-CA-SiqiniqNeural",
+      "locale": "iu-Cans-CA",
+      "lang": "iu",
+      "gender": "Nữ",
+      "label": "[iu-Cans-CA] Siqiniq — Nữ (Inuktitut (Syllabics, Canada)) [iu-Cans-CA-SiqiniqNeural]"
+    },
+    {
+      "short_name": "iu-Cans-CA-TaqqiqNeural",
+      "locale": "iu-Cans-CA",
+      "lang": "iu",
+      "gender": "Nam",
+      "label": "[iu-Cans-CA] Taqqiq — Nam (Inuktitut (Syllabics, Canada)) [iu-Cans-CA-TaqqiqNeural]"
+    },
+    {
+      "short_name": "iu-Latn-CA-SiqiniqNeural",
+      "locale": "iu-Latn-CA",
+      "lang": "iu",
+      "gender": "Nữ",
+      "label": "[iu-Latn-CA] Siqiniq — Nữ (Inuktitut (Latin, Canada)) [iu-Latn-CA-SiqiniqNeural]"
+    },
+    {
+      "short_name": "iu-Latn-CA-TaqqiqNeural",
+      "locale": "iu-Latn-CA",
+      "lang": "iu",
+      "gender": "Nam",
+      "label": "[iu-Latn-CA] Taqqiq — Nam (Inuktitut (Latin, Canada)) [iu-Latn-CA-TaqqiqNeural]"
+    },
+    {
+      "short_name": "jv-ID-DimasNeural",
+      "locale": "jv-ID",
+      "lang": "jv",
+      "gender": "Nam",
+      "label": "[jv-ID] Dimas — Nam (Javanese (Indonesia)) [jv-ID-DimasNeural]"
+    },
+    {
+      "short_name": "jv-ID-SitiNeural",
+      "locale": "jv-ID",
+      "lang": "jv",
+      "gender": "Nữ",
+      "label": "[jv-ID] Siti — Nữ (Javanese (Indonesia)) [jv-ID-SitiNeural]"
+    },
+    {
+      "short_name": "ka-GE-EkaNeural",
+      "locale": "ka-GE",
+      "lang": "ka",
+      "gender": "Nữ",
+      "label": "[ka-GE] Eka — Nữ (Georgian (Georgia)) [ka-GE-EkaNeural]"
+    },
+    {
+      "short_name": "ka-GE-GiorgiNeural",
+      "locale": "ka-GE",
+      "lang": "ka",
+      "gender": "Nam",
+      "label": "[ka-GE] Giorgi — Nam (Georgian (Georgia)) [ka-GE-GiorgiNeural]"
+    },
+    {
+      "short_name": "kk-KZ-AigulNeural",
+      "locale": "kk-KZ",
+      "lang": "kk",
+      "gender": "Nữ",
+      "label": "[kk-KZ] Aigul — Nữ (Kazakh (Kazakhstan)) [kk-KZ-AigulNeural]"
+    },
+    {
+      "short_name": "kk-KZ-DauletNeural",
+      "locale": "kk-KZ",
+      "lang": "kk",
+      "gender": "Nam",
+      "label": "[kk-KZ] Daulet — Nam (Kazakh (Kazakhstan)) [kk-KZ-DauletNeural]"
+    },
+    {
+      "short_name": "km-KH-PisethNeural",
+      "locale": "km-KH",
+      "lang": "km",
+      "gender": "Nam",
+      "label": "[km-KH] Piseth — Nam (Khmer (Cambodia)) [km-KH-PisethNeural]"
+    },
+    {
+      "short_name": "km-KH-SreymomNeural",
+      "locale": "km-KH",
+      "lang": "km",
+      "gender": "Nữ",
+      "label": "[km-KH] Sreymom — Nữ (Khmer (Cambodia)) [km-KH-SreymomNeural]"
+    },
+    {
+      "short_name": "kn-IN-GaganNeural",
+      "locale": "kn-IN",
+      "lang": "kn",
+      "gender": "Nam",
+      "label": "[kn-IN] Gagan — Nam (Kannada (India)) [kn-IN-GaganNeural]"
+    },
+    {
+      "short_name": "kn-IN-SapnaNeural",
+      "locale": "kn-IN",
+      "lang": "kn",
+      "gender": "Nữ",
+      "label": "[kn-IN] Sapna — Nữ (Kannada (India)) [kn-IN-SapnaNeural]"
+    },
+    {
+      "short_name": "lo-LA-ChanthavongNeural",
+      "locale": "lo-LA",
+      "lang": "lo",
+      "gender": "Nam",
+      "label": "[lo-LA] Chanthavong — Nam (Lao (Laos)) [lo-LA-ChanthavongNeural]"
+    },
+    {
+      "short_name": "lo-LA-KeomanyNeural",
+      "locale": "lo-LA",
+      "lang": "lo",
+      "gender": "Nữ",
+      "label": "[lo-LA] Keomany — Nữ (Lao (Laos)) [lo-LA-KeomanyNeural]"
+    },
+    {
+      "short_name": "lt-LT-LeonasNeural",
+      "locale": "lt-LT",
+      "lang": "lt",
+      "gender": "Nam",
+      "label": "[lt-LT] Leonas — Nam (Lithuanian (Lithuania)) [lt-LT-LeonasNeural]"
+    },
+    {
+      "short_name": "lt-LT-OnaNeural",
+      "locale": "lt-LT",
+      "lang": "lt",
+      "gender": "Nữ",
+      "label": "[lt-LT] Ona — Nữ (Lithuanian (Lithuania)) [lt-LT-OnaNeural]"
+    },
+    {
+      "short_name": "lv-LV-EveritaNeural",
+      "locale": "lv-LV",
+      "lang": "lv",
+      "gender": "Nữ",
+      "label": "[lv-LV] Everita — Nữ (Latvian (Latvia)) [lv-LV-EveritaNeural]"
+    },
+    {
+      "short_name": "lv-LV-NilsNeural",
+      "locale": "lv-LV",
+      "lang": "lv",
+      "gender": "Nam",
+      "label": "[lv-LV] Nils — Nam (Latvian (Latvia)) [lv-LV-NilsNeural]"
+    },
+    {
+      "short_name": "mk-MK-AleksandarNeural",
+      "locale": "mk-MK",
+      "lang": "mk",
+      "gender": "Nam",
+      "label": "[mk-MK] Aleksandar — Nam (Macedonian (North Macedonia)) [mk-MK-AleksandarNeural]"
+    },
+    {
+      "short_name": "mk-MK-MarijaNeural",
+      "locale": "mk-MK",
+      "lang": "mk",
+      "gender": "Nữ",
+      "label": "[mk-MK] Marija — Nữ (Macedonian (North Macedonia)) [mk-MK-MarijaNeural]"
+    },
+    {
+      "short_name": "ml-IN-MidhunNeural",
+      "locale": "ml-IN",
+      "lang": "ml",
+      "gender": "Nam",
+      "label": "[ml-IN] Midhun — Nam (Malayalam (India)) [ml-IN-MidhunNeural]"
+    },
+    {
+      "short_name": "ml-IN-SobhanaNeural",
+      "locale": "ml-IN",
+      "lang": "ml",
+      "gender": "Nữ",
+      "label": "[ml-IN] Sobhana — Nữ (Malayalam (India)) [ml-IN-SobhanaNeural]"
+    },
+    {
+      "short_name": "mn-MN-BataaNeural",
+      "locale": "mn-MN",
+      "lang": "mn",
+      "gender": "Nam",
+      "label": "[mn-MN] Bataa — Nam (Mongolian (Mongolia)) [mn-MN-BataaNeural]"
+    },
+    {
+      "short_name": "mn-MN-YesuiNeural",
+      "locale": "mn-MN",
+      "lang": "mn",
+      "gender": "Nữ",
+      "label": "[mn-MN] Yesui — Nữ (Mongolian (Mongolia)) [mn-MN-YesuiNeural]"
+    },
+    {
+      "short_name": "mr-IN-AarohiNeural",
+      "locale": "mr-IN",
+      "lang": "mr",
+      "gender": "Nữ",
+      "label": "[mr-IN] Aarohi — Nữ (Marathi (India)) [mr-IN-AarohiNeural]"
+    },
+    {
+      "short_name": "mr-IN-ManoharNeural",
+      "locale": "mr-IN",
+      "lang": "mr",
+      "gender": "Nam",
+      "label": "[mr-IN] Manohar — Nam (Marathi (India)) [mr-IN-ManoharNeural]"
+    },
+    {
+      "short_name": "ms-MY-OsmanNeural",
+      "locale": "ms-MY",
+      "lang": "ms",
+      "gender": "Nam",
+      "label": "[ms-MY] Osman — Nam (Malay (Malaysia)) [ms-MY-OsmanNeural]"
+    },
+    {
+      "short_name": "ms-MY-YasminNeural",
+      "locale": "ms-MY",
+      "lang": "ms",
+      "gender": "Nữ",
+      "label": "[ms-MY] Yasmin — Nữ (Malay (Malaysia)) [ms-MY-YasminNeural]"
+    },
+    {
+      "short_name": "mt-MT-GraceNeural",
+      "locale": "mt-MT",
+      "lang": "mt",
+      "gender": "Nữ",
+      "label": "[mt-MT] Grace — Nữ (Maltese (Malta)) [mt-MT-GraceNeural]"
+    },
+    {
+      "short_name": "mt-MT-JosephNeural",
+      "locale": "mt-MT",
+      "lang": "mt",
+      "gender": "Nam",
+      "label": "[mt-MT] Joseph — Nam (Maltese (Malta)) [mt-MT-JosephNeural]"
+    },
+    {
+      "short_name": "my-MM-NilarNeural",
+      "locale": "my-MM",
+      "lang": "my",
+      "gender": "Nữ",
+      "label": "[my-MM] Nilar — Nữ (Burmese (Myanmar)) [my-MM-NilarNeural]"
+    },
+    {
+      "short_name": "my-MM-ThihaNeural",
+      "locale": "my-MM",
+      "lang": "my",
+      "gender": "Nam",
+      "label": "[my-MM] Thiha — Nam (Burmese (Myanmar)) [my-MM-ThihaNeural]"
+    },
+    {
+      "short_name": "nb-NO-FinnNeural",
+      "locale": "nb-NO",
+      "lang": "nb",
+      "gender": "Nam",
+      "label": "[nb-NO] Finn — Nam (Norwegian (Bokmål Norway)) [nb-NO-FinnNeural]"
+    },
+    {
+      "short_name": "nb-NO-PernilleNeural",
+      "locale": "nb-NO",
+      "lang": "nb",
+      "gender": "Nữ",
+      "label": "[nb-NO] Pernille — Nữ (Norwegian (Bokmål, Norway)) [nb-NO-PernilleNeural]"
+    },
+    {
+      "short_name": "ne-NP-HemkalaNeural",
+      "locale": "ne-NP",
+      "lang": "ne",
+      "gender": "Nữ",
+      "label": "[ne-NP] Hemkala — Nữ (Nepali (Nepal)) [ne-NP-HemkalaNeural]"
+    },
+    {
+      "short_name": "ne-NP-SagarNeural",
+      "locale": "ne-NP",
+      "lang": "ne",
+      "gender": "Nam",
+      "label": "[ne-NP] Sagar — Nam (Nepali (Nepal)) [ne-NP-SagarNeural]"
+    },
+    {
+      "short_name": "nl-BE-ArnaudNeural",
+      "locale": "nl-BE",
+      "lang": "nl",
+      "gender": "Nam",
+      "label": "[nl-BE] Arnaud — Nam (Dutch (Belgium)) [nl-BE-ArnaudNeural]"
+    },
+    {
+      "short_name": "nl-BE-DenaNeural",
+      "locale": "nl-BE",
+      "lang": "nl",
+      "gender": "Nữ",
+      "label": "[nl-BE] Dena — Nữ (Dutch (Belgium)) [nl-BE-DenaNeural]"
+    },
+    {
+      "short_name": "nl-NL-ColetteNeural",
+      "locale": "nl-NL",
+      "lang": "nl",
+      "gender": "Nữ",
+      "label": "[nl-NL] Colette — Nữ (Dutch (Netherlands)) [nl-NL-ColetteNeural]"
+    },
+    {
+      "short_name": "nl-NL-FennaNeural",
+      "locale": "nl-NL",
+      "lang": "nl",
+      "gender": "Nữ",
+      "label": "[nl-NL] Fenna — Nữ (Dutch (Netherlands)) [nl-NL-FennaNeural]"
+    },
+    {
+      "short_name": "nl-NL-MaartenNeural",
+      "locale": "nl-NL",
+      "lang": "nl",
+      "gender": "Nam",
+      "label": "[nl-NL] Maarten — Nam (Dutch (Netherlands)) [nl-NL-MaartenNeural]"
+    },
+    {
+      "short_name": "pl-PL-MarekNeural",
+      "locale": "pl-PL",
+      "lang": "pl",
+      "gender": "Nam",
+      "label": "[pl-PL] Marek — Nam (Polish (Poland)) [pl-PL-MarekNeural]"
+    },
+    {
+      "short_name": "pl-PL-ZofiaNeural",
+      "locale": "pl-PL",
+      "lang": "pl",
+      "gender": "Nữ",
+      "label": "[pl-PL] Zofia — Nữ (Polish (Poland)) [pl-PL-ZofiaNeural]"
+    },
+    {
+      "short_name": "ps-AF-GulNawazNeural",
+      "locale": "ps-AF",
+      "lang": "ps",
+      "gender": "Nam",
+      "label": "[ps-AF] GulNawaz — Nam (Pashto (Afghanistan)) [ps-AF-GulNawazNeural]"
+    },
+    {
+      "short_name": "ps-AF-LatifaNeural",
+      "locale": "ps-AF",
+      "lang": "ps",
+      "gender": "Nữ",
+      "label": "[ps-AF] Latifa — Nữ (Pashto (Afghanistan)) [ps-AF-LatifaNeural]"
+    },
+    {
+      "short_name": "ro-RO-AlinaNeural",
+      "locale": "ro-RO",
+      "lang": "ro",
+      "gender": "Nữ",
+      "label": "[ro-RO] Alina — Nữ (Romanian (Romania)) [ro-RO-AlinaNeural]"
+    },
+    {
+      "short_name": "ro-RO-EmilNeural",
+      "locale": "ro-RO",
+      "lang": "ro",
+      "gender": "Nam",
+      "label": "[ro-RO] Emil — Nam (Romanian (Romania)) [ro-RO-EmilNeural]"
+    },
+    {
+      "short_name": "si-LK-SameeraNeural",
+      "locale": "si-LK",
+      "lang": "si",
+      "gender": "Nam",
+      "label": "[si-LK] Sameera — Nam (Sinhala (Sri Lanka)) [si-LK-SameeraNeural]"
+    },
+    {
+      "short_name": "si-LK-ThiliniNeural",
+      "locale": "si-LK",
+      "lang": "si",
+      "gender": "Nữ",
+      "label": "[si-LK] Thilini — Nữ (Sinhala (Sri Lanka)) [si-LK-ThiliniNeural]"
+    },
+    {
+      "short_name": "sk-SK-LukasNeural",
+      "locale": "sk-SK",
+      "lang": "sk",
+      "gender": "Nam",
+      "label": "[sk-SK] Lukas — Nam (Slovak (Slovakia)) [sk-SK-LukasNeural]"
+    },
+    {
+      "short_name": "sk-SK-ViktoriaNeural",
+      "locale": "sk-SK",
+      "lang": "sk",
+      "gender": "Nữ",
+      "label": "[sk-SK] Viktoria — Nữ (Slovak (Slovakia)) [sk-SK-ViktoriaNeural]"
+    },
+    {
+      "short_name": "sl-SI-PetraNeural",
+      "locale": "sl-SI",
+      "lang": "sl",
+      "gender": "Nữ",
+      "label": "[sl-SI] Petra — Nữ (Slovenian (Slovenia)) [sl-SI-PetraNeural]"
+    },
+    {
+      "short_name": "sl-SI-RokNeural",
+      "locale": "sl-SI",
+      "lang": "sl",
+      "gender": "Nam",
+      "label": "[sl-SI] Rok — Nam (Slovenian (Slovenia)) [sl-SI-RokNeural]"
+    },
+    {
+      "short_name": "so-SO-MuuseNeural",
+      "locale": "so-SO",
+      "lang": "so",
+      "gender": "Nam",
+      "label": "[so-SO] Muuse — Nam (Somali (Somalia)) [so-SO-MuuseNeural]"
+    },
+    {
+      "short_name": "so-SO-UbaxNeural",
+      "locale": "so-SO",
+      "lang": "so",
+      "gender": "Nữ",
+      "label": "[so-SO] Ubax — Nữ (Somali (Somalia)) [so-SO-UbaxNeural]"
+    },
+    {
+      "short_name": "sq-AL-AnilaNeural",
+      "locale": "sq-AL",
+      "lang": "sq",
+      "gender": "Nữ",
+      "label": "[sq-AL] Anila — Nữ (Albanian (Albania)) [sq-AL-AnilaNeural]"
+    },
+    {
+      "short_name": "sq-AL-IlirNeural",
+      "locale": "sq-AL",
+      "lang": "sq",
+      "gender": "Nam",
+      "label": "[sq-AL] Ilir — Nam (Albanian (Albania)) [sq-AL-IlirNeural]"
+    },
+    {
+      "short_name": "sr-RS-NicholasNeural",
+      "locale": "sr-RS",
+      "lang": "sr",
+      "gender": "Nam",
+      "label": "[sr-RS] Nicholas — Nam (Serbian (Serbia)) [sr-RS-NicholasNeural]"
+    },
+    {
+      "short_name": "sr-RS-SophieNeural",
+      "locale": "sr-RS",
+      "lang": "sr",
+      "gender": "Nữ",
+      "label": "[sr-RS] Sophie — Nữ (Serbian (Serbia)) [sr-RS-SophieNeural]"
+    },
+    {
+      "short_name": "su-ID-JajangNeural",
+      "locale": "su-ID",
+      "lang": "su",
+      "gender": "Nam",
+      "label": "[su-ID] Jajang — Nam (Sundanese (Indonesia)) [su-ID-JajangNeural]"
+    },
+    {
+      "short_name": "su-ID-TutiNeural",
+      "locale": "su-ID",
+      "lang": "su",
+      "gender": "Nữ",
+      "label": "[su-ID] Tuti — Nữ (Sundanese (Indonesia)) [su-ID-TutiNeural]"
+    },
+    {
+      "short_name": "sv-SE-MattiasNeural",
+      "locale": "sv-SE",
+      "lang": "sv",
+      "gender": "Nam",
+      "label": "[sv-SE] Mattias — Nam (Swedish (Sweden)) [sv-SE-MattiasNeural]"
+    },
+    {
+      "short_name": "sv-SE-SofieNeural",
+      "locale": "sv-SE",
+      "lang": "sv",
+      "gender": "Nữ",
+      "label": "[sv-SE] Sofie — Nữ (Swedish (Sweden)) [sv-SE-SofieNeural]"
+    },
+    {
+      "short_name": "sw-KE-RafikiNeural",
+      "locale": "sw-KE",
+      "lang": "sw",
+      "gender": "Nam",
+      "label": "[sw-KE] Rafiki — Nam (Swahili (Kenya)) [sw-KE-RafikiNeural]"
+    },
+    {
+      "short_name": "sw-KE-ZuriNeural",
+      "locale": "sw-KE",
+      "lang": "sw",
+      "gender": "Nữ",
+      "label": "[sw-KE] Zuri — Nữ (Swahili (Kenya)) [sw-KE-ZuriNeural]"
+    },
+    {
+      "short_name": "sw-TZ-DaudiNeural",
+      "locale": "sw-TZ",
+      "lang": "sw",
+      "gender": "Nam",
+      "label": "[sw-TZ] Daudi — Nam (Swahili (Tanzania)) [sw-TZ-DaudiNeural]"
+    },
+    {
+      "short_name": "sw-TZ-RehemaNeural",
+      "locale": "sw-TZ",
+      "lang": "sw",
+      "gender": "Nữ",
+      "label": "[sw-TZ] Rehema — Nữ (Swahili (Tanzania)) [sw-TZ-RehemaNeural]"
+    },
+    {
+      "short_name": "ta-IN-PallaviNeural",
+      "locale": "ta-IN",
+      "lang": "ta",
+      "gender": "Nữ",
+      "label": "[ta-IN] Pallavi — Nữ (Tamil (India)) [ta-IN-PallaviNeural]"
+    },
+    {
+      "short_name": "ta-IN-ValluvarNeural",
+      "locale": "ta-IN",
+      "lang": "ta",
+      "gender": "Nam",
+      "label": "[ta-IN] Valluvar — Nam (Tamil (India)) [ta-IN-ValluvarNeural]"
+    },
+    {
+      "short_name": "ta-LK-KumarNeural",
+      "locale": "ta-LK",
+      "lang": "ta",
+      "gender": "Nam",
+      "label": "[ta-LK] Kumar — Nam (Tamil (Sri Lanka)) [ta-LK-KumarNeural]"
+    },
+    {
+      "short_name": "ta-LK-SaranyaNeural",
+      "locale": "ta-LK",
+      "lang": "ta",
+      "gender": "Nữ",
+      "label": "[ta-LK] Saranya — Nữ (Tamil (Sri Lanka)) [ta-LK-SaranyaNeural]"
+    },
+    {
+      "short_name": "ta-MY-KaniNeural",
+      "locale": "ta-MY",
+      "lang": "ta",
+      "gender": "Nữ",
+      "label": "[ta-MY] Kani — Nữ (Tamil (Malaysia)) [ta-MY-KaniNeural]"
+    },
+    {
+      "short_name": "ta-MY-SuryaNeural",
+      "locale": "ta-MY",
+      "lang": "ta",
+      "gender": "Nam",
+      "label": "[ta-MY] Surya — Nam (Tamil (Malaysia)) [ta-MY-SuryaNeural]"
+    },
+    {
+      "short_name": "ta-SG-AnbuNeural",
+      "locale": "ta-SG",
+      "lang": "ta",
+      "gender": "Nam",
+      "label": "[ta-SG] Anbu — Nam (Tamil (Singapore)) [ta-SG-AnbuNeural]"
+    },
+    {
+      "short_name": "ta-SG-VenbaNeural",
+      "locale": "ta-SG",
+      "lang": "ta",
+      "gender": "Nữ",
+      "label": "[ta-SG] Venba — Nữ (Tamil (Singapore)) [ta-SG-VenbaNeural]"
+    },
+    {
+      "short_name": "te-IN-MohanNeural",
+      "locale": "te-IN",
+      "lang": "te",
+      "gender": "Nam",
+      "label": "[te-IN] Mohan — Nam (Telugu (India)) [te-IN-MohanNeural]"
+    },
+    {
+      "short_name": "te-IN-ShrutiNeural",
+      "locale": "te-IN",
+      "lang": "te",
+      "gender": "Nữ",
+      "label": "[te-IN] Shruti — Nữ (Telugu (India)) [te-IN-ShrutiNeural]"
+    },
+    {
+      "short_name": "tr-TR-AhmetNeural",
+      "locale": "tr-TR",
+      "lang": "tr",
+      "gender": "Nam",
+      "label": "[tr-TR] Ahmet — Nam (Turkish (Türkiye)) [tr-TR-AhmetNeural]"
+    },
+    {
+      "short_name": "tr-TR-EmelNeural",
+      "locale": "tr-TR",
+      "lang": "tr",
+      "gender": "Nữ",
+      "label": "[tr-TR] Emel — Nữ (Turkish (Turkey)) [tr-TR-EmelNeural]"
+    },
+    {
+      "short_name": "uk-UA-OstapNeural",
+      "locale": "uk-UA",
+      "lang": "uk",
+      "gender": "Nam",
+      "label": "[uk-UA] Ostap — Nam (Ukrainian (Ukraine)) [uk-UA-OstapNeural]"
+    },
+    {
+      "short_name": "uk-UA-PolinaNeural",
+      "locale": "uk-UA",
+      "lang": "uk",
+      "gender": "Nữ",
+      "label": "[uk-UA] Polina — Nữ (Ukrainian (Ukraine)) [uk-UA-PolinaNeural]"
+    },
+    {
+      "short_name": "ur-IN-GulNeural",
+      "locale": "ur-IN",
+      "lang": "ur",
+      "gender": "Nữ",
+      "label": "[ur-IN] Gul — Nữ (Urdu (India)) [ur-IN-GulNeural]"
+    },
+    {
+      "short_name": "ur-IN-SalmanNeural",
+      "locale": "ur-IN",
+      "lang": "ur",
+      "gender": "Nam",
+      "label": "[ur-IN] Salman — Nam (Urdu (India)) [ur-IN-SalmanNeural]"
+    },
+    {
+      "short_name": "ur-PK-AsadNeural",
+      "locale": "ur-PK",
+      "lang": "ur",
+      "gender": "Nam",
+      "label": "[ur-PK] Asad — Nam (Urdu (Pakistan)) [ur-PK-AsadNeural]"
+    },
+    {
+      "short_name": "ur-PK-UzmaNeural",
+      "locale": "ur-PK",
+      "lang": "ur",
+      "gender": "Nữ",
+      "label": "[ur-PK] Uzma — Nữ (Urdu (Pakistan)) [ur-PK-UzmaNeural]"
+    },
+    {
+      "short_name": "uz-UZ-MadinaNeural",
+      "locale": "uz-UZ",
+      "lang": "uz",
+      "gender": "Nữ",
+      "label": "[uz-UZ] Madina — Nữ (Uzbek (Uzbekistan)) [uz-UZ-MadinaNeural]"
+    },
+    {
+      "short_name": "uz-UZ-SardorNeural",
+      "locale": "uz-UZ",
+      "lang": "uz",
+      "gender": "Nam",
+      "label": "[uz-UZ] Sardor — Nam (Uzbek (Uzbekistan)) [uz-UZ-SardorNeural]"
+    },
+    {
+      "short_name": "zu-ZA-ThandoNeural",
+      "locale": "zu-ZA",
+      "lang": "zu",
+      "gender": "Nữ",
+      "label": "[zu-ZA] Thando — Nữ (Zulu (South Africa)) [zu-ZA-ThandoNeural]"
+    },
+    {
+      "short_name": "zu-ZA-ThembaNeural",
+      "locale": "zu-ZA",
+      "lang": "zu",
+      "gender": "Nam",
+      "label": "[zu-ZA] Themba — Nam (Zulu (South Africa)) [zu-ZA-ThembaNeural]"
+    }
+  ],
+  "piper_voices": [
+    {
+      "key": "vi_VN-25hours_single-low",
+      "name": "25hours_single",
+      "lang": "vi",
+      "locale": "vi_VN",
+      "name_native": "Tiếng Việt",
+      "name_english": "Vietnamese",
+      "country": "Vietnam",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "vi/vi_VN/25hours_single/low/vi_VN-25hours_single-low.onnx",
+      "json_rel": "vi/vi_VN/25hours_single/low/vi_VN-25hours_single-low.onnx.json"
+    },
+    {
+      "key": "vi_VN-vais1000-medium",
+      "name": "vais1000",
+      "lang": "vi",
+      "locale": "vi_VN",
+      "name_native": "Tiếng Việt",
+      "name_english": "Vietnamese",
+      "country": "Vietnam",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium.onnx",
+      "json_rel": "vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium.onnx.json"
+    },
+    {
+      "key": "vi_VN-vivos-x_low",
+      "name": "vivos",
+      "lang": "vi",
+      "locale": "vi_VN",
+      "name_native": "Tiếng Việt",
+      "name_english": "Vietnamese",
+      "country": "Vietnam",
+      "quality": "x_low",
+      "num_speakers": 65,
+      "size_mb": 27,
+      "onnx_rel": "vi/vi_VN/vivos/x_low/vi_VN-vivos-x_low.onnx",
+      "json_rel": "vi/vi_VN/vivos/x_low/vi_VN-vivos-x_low.onnx.json"
+    },
+    {
+      "key": "en_GB-alan-low",
+      "name": "alan",
+      "lang": "en",
+      "locale": "en_GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "Great Britain",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_GB/alan/low/en_GB-alan-low.onnx",
+      "json_rel": "en/en_GB/alan/low/en_GB-alan-low.onnx.json"
+    },
+    {
+      "key": "en_GB-alan-medium",
+      "name": "alan",
+      "lang": "en",
+      "locale": "en_GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "Great Britain",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_GB/alan/medium/en_GB-alan-medium.onnx",
+      "json_rel": "en/en_GB/alan/medium/en_GB-alan-medium.onnx.json"
+    },
+    {
+      "key": "en_GB-alba-medium",
+      "name": "alba",
+      "lang": "en",
+      "locale": "en_GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "Great Britain",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_GB/alba/medium/en_GB-alba-medium.onnx",
+      "json_rel": "en/en_GB/alba/medium/en_GB-alba-medium.onnx.json"
+    },
+    {
+      "key": "en_GB-aru-medium",
+      "name": "aru",
+      "lang": "en",
+      "locale": "en_GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "Great Britain",
+      "quality": "medium",
+      "num_speakers": 12,
+      "size_mb": 73,
+      "onnx_rel": "en/en_GB/aru/medium/en_GB-aru-medium.onnx",
+      "json_rel": "en/en_GB/aru/medium/en_GB-aru-medium.onnx.json"
+    },
+    {
+      "key": "en_GB-cori-high",
+      "name": "cori",
+      "lang": "en",
+      "locale": "en_GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "Great Britain",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 109,
+      "onnx_rel": "en/en_GB/cori/high/en_GB-cori-high.onnx",
+      "json_rel": "en/en_GB/cori/high/en_GB-cori-high.onnx.json"
+    },
+    {
+      "key": "en_GB-cori-medium",
+      "name": "cori",
+      "lang": "en",
+      "locale": "en_GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "Great Britain",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_GB/cori/medium/en_GB-cori-medium.onnx",
+      "json_rel": "en/en_GB/cori/medium/en_GB-cori-medium.onnx.json"
+    },
+    {
+      "key": "en_GB-jenny_dioco-medium",
+      "name": "jenny_dioco",
+      "lang": "en",
+      "locale": "en_GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "Great Britain",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx",
+      "json_rel": "en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx.json"
+    },
+    {
+      "key": "en_GB-northern_english_male-medium",
+      "name": "northern_english_male",
+      "lang": "en",
+      "locale": "en_GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "Great Britain",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_GB/northern_english_male/medium/en_GB-northern_english_male-medium.onnx",
+      "json_rel": "en/en_GB/northern_english_male/medium/en_GB-northern_english_male-medium.onnx.json"
+    },
+    {
+      "key": "en_GB-semaine-medium",
+      "name": "semaine",
+      "lang": "en",
+      "locale": "en_GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "Great Britain",
+      "quality": "medium",
+      "num_speakers": 4,
+      "size_mb": 73,
+      "onnx_rel": "en/en_GB/semaine/medium/en_GB-semaine-medium.onnx",
+      "json_rel": "en/en_GB/semaine/medium/en_GB-semaine-medium.onnx.json"
+    },
+    {
+      "key": "en_GB-southern_english_female-low",
+      "name": "southern_english_female",
+      "lang": "en",
+      "locale": "en_GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "Great Britain",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_GB/southern_english_female/low/en_GB-southern_english_female-low.onnx",
+      "json_rel": "en/en_GB/southern_english_female/low/en_GB-southern_english_female-low.onnx.json"
+    },
+    {
+      "key": "en_GB-vctk-medium",
+      "name": "vctk",
+      "lang": "en",
+      "locale": "en_GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "Great Britain",
+      "quality": "medium",
+      "num_speakers": 109,
+      "size_mb": 73,
+      "onnx_rel": "en/en_GB/vctk/medium/en_GB-vctk-medium.onnx",
+      "json_rel": "en/en_GB/vctk/medium/en_GB-vctk-medium.onnx.json"
+    },
+    {
+      "key": "en_US-amy-low",
+      "name": "amy",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/amy/low/en_US-amy-low.onnx",
+      "json_rel": "en/en_US/amy/low/en_US-amy-low.onnx.json"
+    },
+    {
+      "key": "en_US-amy-medium",
+      "name": "amy",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/amy/medium/en_US-amy-medium.onnx",
+      "json_rel": "en/en_US/amy/medium/en_US-amy-medium.onnx.json"
+    },
+    {
+      "key": "en_US-arctic-medium",
+      "name": "arctic",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 18,
+      "size_mb": 73,
+      "onnx_rel": "en/en_US/arctic/medium/en_US-arctic-medium.onnx",
+      "json_rel": "en/en_US/arctic/medium/en_US-arctic-medium.onnx.json"
+    },
+    {
+      "key": "en_US-bryce-medium",
+      "name": "bryce",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "en/en_US/bryce/medium/en_US-bryce-medium.onnx",
+      "json_rel": "en/en_US/bryce/medium/en_US-bryce-medium.onnx.json"
+    },
+    {
+      "key": "en_US-danny-low",
+      "name": "danny",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/danny/low/en_US-danny-low.onnx",
+      "json_rel": "en/en_US/danny/low/en_US-danny-low.onnx.json"
+    },
+    {
+      "key": "en_US-hfc_female-medium",
+      "name": "hfc_female",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx",
+      "json_rel": "en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx.json"
+    },
+    {
+      "key": "en_US-hfc_male-medium",
+      "name": "hfc_male",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/hfc_male/medium/en_US-hfc_male-medium.onnx",
+      "json_rel": "en/en_US/hfc_male/medium/en_US-hfc_male-medium.onnx.json"
+    },
+    {
+      "key": "en_US-hifi_tts_92-medium",
+      "name": "hifi_tts_92",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/hifi_tts_92/medium/en_US-hifi_tts_92-medium.onnx",
+      "json_rel": "en/en_US/hifi_tts_92/medium/en_US-hifi_tts_92-medium.onnx.json"
+    },
+    {
+      "key": "en_US-joe-medium",
+      "name": "joe",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/joe/medium/en_US-joe-medium.onnx",
+      "json_rel": "en/en_US/joe/medium/en_US-joe-medium.onnx.json"
+    },
+    {
+      "key": "en_US-john-medium",
+      "name": "john",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "en/en_US/john/medium/en_US-john-medium.onnx",
+      "json_rel": "en/en_US/john/medium/en_US-john-medium.onnx.json"
+    },
+    {
+      "key": "en_US-kathleen-low",
+      "name": "kathleen",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/kathleen/low/en_US-kathleen-low.onnx",
+      "json_rel": "en/en_US/kathleen/low/en_US-kathleen-low.onnx.json"
+    },
+    {
+      "key": "en_US-kristin-medium",
+      "name": "kristin",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "en/en_US/kristin/medium/en_US-kristin-medium.onnx",
+      "json_rel": "en/en_US/kristin/medium/en_US-kristin-medium.onnx.json"
+    },
+    {
+      "key": "en_US-kusal-medium",
+      "name": "kusal",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/kusal/medium/en_US-kusal-medium.onnx",
+      "json_rel": "en/en_US/kusal/medium/en_US-kusal-medium.onnx.json"
+    },
+    {
+      "key": "en_US-l2arctic-medium",
+      "name": "l2arctic",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 24,
+      "size_mb": 73,
+      "onnx_rel": "en/en_US/l2arctic/medium/en_US-l2arctic-medium.onnx",
+      "json_rel": "en/en_US/l2arctic/medium/en_US-l2arctic-medium.onnx.json"
+    },
+    {
+      "key": "en_US-lessac-high",
+      "name": "lessac",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 109,
+      "onnx_rel": "en/en_US/lessac/high/en_US-lessac-high.onnx",
+      "json_rel": "en/en_US/lessac/high/en_US-lessac-high.onnx.json"
+    },
+    {
+      "key": "en_US-lessac-low",
+      "name": "lessac",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/lessac/low/en_US-lessac-low.onnx",
+      "json_rel": "en/en_US/lessac/low/en_US-lessac-low.onnx.json"
+    },
+    {
+      "key": "en_US-lessac-medium",
+      "name": "lessac",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/lessac/medium/en_US-lessac-medium.onnx",
+      "json_rel": "en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
+    },
+    {
+      "key": "en_US-libritts-high",
+      "name": "libritts",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "high",
+      "num_speakers": 904,
+      "size_mb": 130,
+      "onnx_rel": "en/en_US/libritts/high/en_US-libritts-high.onnx",
+      "json_rel": "en/en_US/libritts/high/en_US-libritts-high.onnx.json"
+    },
+    {
+      "key": "en_US-libritts_r-medium",
+      "name": "libritts_r",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 904,
+      "size_mb": 75,
+      "onnx_rel": "en/en_US/libritts_r/medium/en_US-libritts_r-medium.onnx",
+      "json_rel": "en/en_US/libritts_r/medium/en_US-libritts_r-medium.onnx.json"
+    },
+    {
+      "key": "en_US-ljspeech-high",
+      "name": "ljspeech",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 109,
+      "onnx_rel": "en/en_US/ljspeech/high/en_US-ljspeech-high.onnx",
+      "json_rel": "en/en_US/ljspeech/high/en_US-ljspeech-high.onnx.json"
+    },
+    {
+      "key": "en_US-ljspeech-medium",
+      "name": "ljspeech",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx",
+      "json_rel": "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json"
+    },
+    {
+      "key": "en_US-mike-medium",
+      "name": "mike",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/mike/medium/en_US-mike-medium.onnx",
+      "json_rel": "en/en_US/mike/medium/en_US-mike-medium.onnx.json"
+    },
+    {
+      "key": "en_US-norman-medium",
+      "name": "norman",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "en/en_US/norman/medium/en_US-norman-medium.onnx",
+      "json_rel": "en/en_US/norman/medium/en_US-norman-medium.onnx.json"
+    },
+    {
+      "key": "en_US-reza_ibrahim-medium",
+      "name": "reza_ibrahim",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "en/en_US/reza_ibrahim/medium/en_US-reza_ibrahim-medium.onnx",
+      "json_rel": "en/en_US/reza_ibrahim/medium/en_US-reza_ibrahim-medium.onnx.json"
+    },
+    {
+      "key": "en_US-ryan-high",
+      "name": "ryan",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 115,
+      "onnx_rel": "en/en_US/ryan/high/en_US-ryan-high.onnx",
+      "json_rel": "en/en_US/ryan/high/en_US-ryan-high.onnx.json"
+    },
+    {
+      "key": "en_US-ryan-low",
+      "name": "ryan",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/ryan/low/en_US-ryan-low.onnx",
+      "json_rel": "en/en_US/ryan/low/en_US-ryan-low.onnx.json"
+    },
+    {
+      "key": "en_US-ryan-medium",
+      "name": "ryan",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/ryan/medium/en_US-ryan-medium.onnx",
+      "json_rel": "en/en_US/ryan/medium/en_US-ryan-medium.onnx.json"
+    },
+    {
+      "key": "en_US-sam-medium",
+      "name": "sam",
+      "lang": "en",
+      "locale": "en_US",
+      "name_native": "English",
+      "name_english": "English",
+      "country": "United States",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "en/en_US/sam/medium/en_US-sam-medium.onnx",
+      "json_rel": "en/en_US/sam/medium/en_US-sam-medium.onnx.json"
+    },
+    {
+      "key": "zh_CN-chaowen-medium",
+      "name": "chaowen",
+      "lang": "zh",
+      "locale": "zh_CN",
+      "name_native": "简体中文",
+      "name_english": "Chinese",
+      "country": "China",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "zh/zh_CN/chaowen/medium/zh_CN-chaowen-medium.onnx",
+      "json_rel": "zh/zh_CN/chaowen/medium/zh_CN-chaowen-medium.onnx.json"
+    },
+    {
+      "key": "zh_CN-huayan-medium",
+      "name": "huayan",
+      "lang": "zh",
+      "locale": "zh_CN",
+      "name_native": "简体中文",
+      "name_english": "Chinese",
+      "country": "China",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx",
+      "json_rel": "zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx.json"
+    },
+    {
+      "key": "zh_CN-huayan-x_low",
+      "name": "huayan",
+      "lang": "zh",
+      "locale": "zh_CN",
+      "name_native": "简体中文",
+      "name_english": "Chinese",
+      "country": "China",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 20,
+      "onnx_rel": "zh/zh_CN/huayan/x_low/zh_CN-huayan-x_low.onnx",
+      "json_rel": "zh/zh_CN/huayan/x_low/zh_CN-huayan-x_low.onnx.json"
+    },
+    {
+      "key": "zh_CN-xiao_ya-medium",
+      "name": "xiao_ya",
+      "lang": "zh",
+      "locale": "zh_CN",
+      "name_native": "简体中文",
+      "name_english": "Chinese",
+      "country": "China",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "zh/zh_CN/xiao_ya/medium/zh_CN-xiao_ya-medium.onnx",
+      "json_rel": "zh/zh_CN/xiao_ya/medium/zh_CN-xiao_ya-medium.onnx.json"
+    },
+    {
+      "key": "ja_JP-hi_fi_captain-medium",
+      "name": "hi_fi_captain",
+      "lang": "ja",
+      "locale": "ja_JP",
+      "name_native": "日本語",
+      "name_english": "Japanese",
+      "country": "Japan",
+      "quality": "medium",
+      "num_speakers": 2,
+      "size_mb": 73,
+      "onnx_rel": "ja/ja_JP/hi_fi_captain/medium/ja_JP-hi_fi_captain-medium.onnx",
+      "json_rel": "ja/ja_JP/hi_fi_captain/medium/ja_JP-hi_fi_captain-medium.onnx.json"
+    },
+    {
+      "key": "ko_KR-kss-medium",
+      "name": "kss",
+      "lang": "ko",
+      "locale": "ko_KR",
+      "name_native": "한국어",
+      "name_english": "Korean",
+      "country": "South Korea",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ko/ko_KR/kss/medium/ko_KR-kss-medium.onnx",
+      "json_rel": "ko/ko_KR/kss/medium/ko_KR-kss-medium.onnx.json"
+    },
+    {
+      "key": "fr_FR-gilles-low",
+      "name": "gilles",
+      "lang": "fr",
+      "locale": "fr_FR",
+      "name_native": "Français",
+      "name_english": "French",
+      "country": "France",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "fr/fr_FR/gilles/low/fr_FR-gilles-low.onnx",
+      "json_rel": "fr/fr_FR/gilles/low/fr_FR-gilles-low.onnx.json"
+    },
+    {
+      "key": "fr_FR-mls-medium",
+      "name": "mls",
+      "lang": "fr",
+      "locale": "fr_FR",
+      "name_native": "Français",
+      "name_english": "French",
+      "country": "France",
+      "quality": "medium",
+      "num_speakers": 125,
+      "size_mb": 73,
+      "onnx_rel": "fr/fr_FR/mls/medium/fr_FR-mls-medium.onnx",
+      "json_rel": "fr/fr_FR/mls/medium/fr_FR-mls-medium.onnx.json"
+    },
+    {
+      "key": "fr_FR-mls_1840-low",
+      "name": "mls_1840",
+      "lang": "fr",
+      "locale": "fr_FR",
+      "name_native": "Français",
+      "name_english": "French",
+      "country": "France",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "fr/fr_FR/mls_1840/low/fr_FR-mls_1840-low.onnx",
+      "json_rel": "fr/fr_FR/mls_1840/low/fr_FR-mls_1840-low.onnx.json"
+    },
+    {
+      "key": "fr_FR-siwis-low",
+      "name": "siwis",
+      "lang": "fr",
+      "locale": "fr_FR",
+      "name_native": "Français",
+      "name_english": "French",
+      "country": "France",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 27,
+      "onnx_rel": "fr/fr_FR/siwis/low/fr_FR-siwis-low.onnx",
+      "json_rel": "fr/fr_FR/siwis/low/fr_FR-siwis-low.onnx.json"
+    },
+    {
+      "key": "fr_FR-siwis-medium",
+      "name": "siwis",
+      "lang": "fr",
+      "locale": "fr_FR",
+      "name_native": "Français",
+      "name_english": "French",
+      "country": "France",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx",
+      "json_rel": "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json"
+    },
+    {
+      "key": "fr_FR-tom-medium",
+      "name": "tom",
+      "lang": "fr",
+      "locale": "fr_FR",
+      "name_native": "Français",
+      "name_english": "French",
+      "country": "France",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "fr/fr_FR/tom/medium/fr_FR-tom-medium.onnx",
+      "json_rel": "fr/fr_FR/tom/medium/fr_FR-tom-medium.onnx.json"
+    },
+    {
+      "key": "fr_FR-upmc-medium",
+      "name": "upmc",
+      "lang": "fr",
+      "locale": "fr_FR",
+      "name_native": "Français",
+      "name_english": "French",
+      "country": "France",
+      "quality": "medium",
+      "num_speakers": 2,
+      "size_mb": 73,
+      "onnx_rel": "fr/fr_FR/upmc/medium/fr_FR-upmc-medium.onnx",
+      "json_rel": "fr/fr_FR/upmc/medium/fr_FR-upmc-medium.onnx.json"
+    },
+    {
+      "key": "es_AR-daniela-high",
+      "name": "daniela",
+      "lang": "es",
+      "locale": "es_AR",
+      "name_native": "Español",
+      "name_english": "Spanish",
+      "country": "Argentina",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 109,
+      "onnx_rel": "es/es_AR/daniela/high/es_AR-daniela-high.onnx",
+      "json_rel": "es/es_AR/daniela/high/es_AR-daniela-high.onnx.json"
+    },
+    {
+      "key": "es_ES-carlfm-x_low",
+      "name": "carlfm",
+      "lang": "es",
+      "locale": "es_ES",
+      "name_native": "Español",
+      "name_english": "Spanish",
+      "country": "Spain",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 27,
+      "onnx_rel": "es/es_ES/carlfm/x_low/es_ES-carlfm-x_low.onnx",
+      "json_rel": "es/es_ES/carlfm/x_low/es_ES-carlfm-x_low.onnx.json"
+    },
+    {
+      "key": "es_ES-davefx-medium",
+      "name": "davefx",
+      "lang": "es",
+      "locale": "es_ES",
+      "name_native": "Español",
+      "name_english": "Spanish",
+      "country": "Spain",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "es/es_ES/davefx/medium/es_ES-davefx-medium.onnx",
+      "json_rel": "es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json"
+    },
+    {
+      "key": "es_ES-mls_10246-low",
+      "name": "mls_10246",
+      "lang": "es",
+      "locale": "es_ES",
+      "name_native": "Español",
+      "name_english": "Spanish",
+      "country": "Spain",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "es/es_ES/mls_10246/low/es_ES-mls_10246-low.onnx",
+      "json_rel": "es/es_ES/mls_10246/low/es_ES-mls_10246-low.onnx.json"
+    },
+    {
+      "key": "es_ES-mls_9972-low",
+      "name": "mls_9972",
+      "lang": "es",
+      "locale": "es_ES",
+      "name_native": "Español",
+      "name_english": "Spanish",
+      "country": "Spain",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "es/es_ES/mls_9972/low/es_ES-mls_9972-low.onnx",
+      "json_rel": "es/es_ES/mls_9972/low/es_ES-mls_9972-low.onnx.json"
+    },
+    {
+      "key": "es_ES-sharvard-medium",
+      "name": "sharvard",
+      "lang": "es",
+      "locale": "es_ES",
+      "name_native": "Español",
+      "name_english": "Spanish",
+      "country": "Spain",
+      "quality": "medium",
+      "num_speakers": 2,
+      "size_mb": 73,
+      "onnx_rel": "es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx",
+      "json_rel": "es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx.json"
+    },
+    {
+      "key": "es_MX-ald-medium",
+      "name": "ald",
+      "lang": "es",
+      "locale": "es_MX",
+      "name_native": "Español",
+      "name_english": "Spanish",
+      "country": "Mexico",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "es/es_MX/ald/medium/es_MX-ald-medium.onnx",
+      "json_rel": "es/es_MX/ald/medium/es_MX-ald-medium.onnx.json"
+    },
+    {
+      "key": "es_MX-ald-x_low",
+      "name": "ald",
+      "lang": "es",
+      "locale": "es_MX",
+      "name_native": "Español",
+      "name_english": "Spanish",
+      "country": "Mexico",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 20,
+      "onnx_rel": "es/es_MX/ald/x_low/es_MX-ald-x_low.onnx",
+      "json_rel": "es/es_MX/ald/x_low/es_MX-ald-x_low.onnx.json"
+    },
+    {
+      "key": "es_MX-claude-high",
+      "name": "claude",
+      "lang": "es",
+      "locale": "es_MX",
+      "name_native": "Español",
+      "name_english": "Spanish",
+      "country": "Mexico",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "es/es_MX/claude/high/es_MX-claude-high.onnx",
+      "json_rel": "es/es_MX/claude/high/es_MX-claude-high.onnx.json"
+    },
+    {
+      "key": "th_TH-tsync2-medium",
+      "name": "tsync2",
+      "lang": "th",
+      "locale": "th_TH",
+      "name_native": "ไทย",
+      "name_english": "Thai",
+      "country": "Thailand",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "th/th_TH/tsync2/medium/th_TH-tsync2-medium.onnx",
+      "json_rel": "th/th_TH/tsync2/medium/th_TH-tsync2-medium.onnx.json"
+    },
+    {
+      "key": "id_ID-news_tts-medium",
+      "name": "news_tts",
+      "lang": "id",
+      "locale": "id_ID",
+      "name_native": "Bahasa Indonesia",
+      "name_english": "Indonesian",
+      "country": "Indonesia",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "id/id_ID/news_tts/medium/id_ID-news_tts-medium.onnx",
+      "json_rel": "id/id_ID/news_tts/medium/id_ID-news_tts-medium.onnx.json"
+    },
+    {
+      "key": "hi_IN-pratham-medium",
+      "name": "pratham",
+      "lang": "hi",
+      "locale": "hi_IN",
+      "name_native": "हिन्दी",
+      "name_english": "Hindi",
+      "country": "India",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "hi/hi_IN/pratham/medium/hi_IN-pratham-medium.onnx",
+      "json_rel": "hi/hi_IN/pratham/medium/hi_IN-pratham-medium.onnx.json"
+    },
+    {
+      "key": "hi_IN-priyamvada-medium",
+      "name": "priyamvada",
+      "lang": "hi",
+      "locale": "hi_IN",
+      "name_native": "हिन्दी",
+      "name_english": "Hindi",
+      "country": "India",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "hi/hi_IN/priyamvada/medium/hi_IN-priyamvada-medium.onnx",
+      "json_rel": "hi/hi_IN/priyamvada/medium/hi_IN-priyamvada-medium.onnx.json"
+    },
+    {
+      "key": "hi_IN-rohan-medium",
+      "name": "rohan",
+      "lang": "hi",
+      "locale": "hi_IN",
+      "name_native": "हिन्दी",
+      "name_english": "Hindi",
+      "country": "India",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "hi/hi_IN/rohan/medium/hi_IN-rohan-medium.onnx",
+      "json_rel": "hi/hi_IN/rohan/medium/hi_IN-rohan-medium.onnx.json"
+    },
+    {
+      "key": "de_DE-eva_k-x_low",
+      "name": "eva_k",
+      "lang": "de",
+      "locale": "de_DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country": "Germany",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 20,
+      "onnx_rel": "de/de_DE/eva_k/x_low/de_DE-eva_k-x_low.onnx",
+      "json_rel": "de/de_DE/eva_k/x_low/de_DE-eva_k-x_low.onnx.json"
+    },
+    {
+      "key": "de_DE-karlsson-low",
+      "name": "karlsson",
+      "lang": "de",
+      "locale": "de_DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country": "Germany",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "de/de_DE/karlsson/low/de_DE-karlsson-low.onnx",
+      "json_rel": "de/de_DE/karlsson/low/de_DE-karlsson-low.onnx.json"
+    },
+    {
+      "key": "de_DE-kerstin-low",
+      "name": "kerstin",
+      "lang": "de",
+      "locale": "de_DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country": "Germany",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "de/de_DE/kerstin/low/de_DE-kerstin-low.onnx",
+      "json_rel": "de/de_DE/kerstin/low/de_DE-kerstin-low.onnx.json"
+    },
+    {
+      "key": "de_DE-kerstin-medium",
+      "name": "kerstin",
+      "lang": "de",
+      "locale": "de_DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country": "Germany",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "de/de_DE/kerstin/medium/de_DE-kerstin-medium.onnx",
+      "json_rel": "de/de_DE/kerstin/medium/de_DE-kerstin-medium.onnx.json"
+    },
+    {
+      "key": "de_DE-mls-medium",
+      "name": "mls",
+      "lang": "de",
+      "locale": "de_DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country": "Germany",
+      "quality": "medium",
+      "num_speakers": 236,
+      "size_mb": 73,
+      "onnx_rel": "de/de_DE/mls/medium/de_DE-mls-medium.onnx",
+      "json_rel": "de/de_DE/mls/medium/de_DE-mls-medium.onnx.json"
+    },
+    {
+      "key": "de_DE-pavoque-low",
+      "name": "pavoque",
+      "lang": "de",
+      "locale": "de_DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country": "Germany",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "de/de_DE/pavoque/low/de_DE-pavoque-low.onnx",
+      "json_rel": "de/de_DE/pavoque/low/de_DE-pavoque-low.onnx.json"
+    },
+    {
+      "key": "de_DE-ramona-low",
+      "name": "ramona",
+      "lang": "de",
+      "locale": "de_DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country": "Germany",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "de/de_DE/ramona/low/de_DE-ramona-low.onnx",
+      "json_rel": "de/de_DE/ramona/low/de_DE-ramona-low.onnx.json"
+    },
+    {
+      "key": "de_DE-thorsten-high",
+      "name": "thorsten",
+      "lang": "de",
+      "locale": "de_DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country": "Germany",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 109,
+      "onnx_rel": "de/de_DE/thorsten/high/de_DE-thorsten-high.onnx",
+      "json_rel": "de/de_DE/thorsten/high/de_DE-thorsten-high.onnx.json"
+    },
+    {
+      "key": "de_DE-thorsten-low",
+      "name": "thorsten",
+      "lang": "de",
+      "locale": "de_DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country": "Germany",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "de/de_DE/thorsten/low/de_DE-thorsten-low.onnx",
+      "json_rel": "de/de_DE/thorsten/low/de_DE-thorsten-low.onnx.json"
+    },
+    {
+      "key": "de_DE-thorsten-medium",
+      "name": "thorsten",
+      "lang": "de",
+      "locale": "de_DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country": "Germany",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx",
+      "json_rel": "de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx.json"
+    },
+    {
+      "key": "de_DE-thorsten_emotional-medium",
+      "name": "thorsten_emotional",
+      "lang": "de",
+      "locale": "de_DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country": "Germany",
+      "quality": "medium",
+      "num_speakers": 8,
+      "size_mb": 73,
+      "onnx_rel": "de/de_DE/thorsten_emotional/medium/de_DE-thorsten_emotional-medium.onnx",
+      "json_rel": "de/de_DE/thorsten_emotional/medium/de_DE-thorsten_emotional-medium.onnx.json"
+    },
+    {
+      "key": "ru_RU-denis-medium",
+      "name": "denis",
+      "lang": "ru",
+      "locale": "ru_RU",
+      "name_native": "Русский",
+      "name_english": "Russian",
+      "country": "Russia",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ru/ru_RU/denis/medium/ru_RU-denis-medium.onnx",
+      "json_rel": "ru/ru_RU/denis/medium/ru_RU-denis-medium.onnx.json"
+    },
+    {
+      "key": "ru_RU-dmitri-medium",
+      "name": "dmitri",
+      "lang": "ru",
+      "locale": "ru_RU",
+      "name_native": "Русский",
+      "name_english": "Russian",
+      "country": "Russia",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx",
+      "json_rel": "ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json"
+    },
+    {
+      "key": "ru_RU-irina-medium",
+      "name": "irina",
+      "lang": "ru",
+      "locale": "ru_RU",
+      "name_native": "Русский",
+      "name_english": "Russian",
+      "country": "Russia",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx",
+      "json_rel": "ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json"
+    },
+    {
+      "key": "ru_RU-ruslan-medium",
+      "name": "ruslan",
+      "lang": "ru",
+      "locale": "ru_RU",
+      "name_native": "Русский",
+      "name_english": "Russian",
+      "country": "Russia",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx",
+      "json_rel": "ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx.json"
+    },
+    {
+      "key": "pt_BR-cadu-medium",
+      "name": "cadu",
+      "lang": "pt",
+      "locale": "pt_BR",
+      "name_native": "Português",
+      "name_english": "Portuguese",
+      "country": "Brazil",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "pt/pt_BR/cadu/medium/pt_BR-cadu-medium.onnx",
+      "json_rel": "pt/pt_BR/cadu/medium/pt_BR-cadu-medium.onnx.json"
+    },
+    {
+      "key": "pt_BR-edresson-low",
+      "name": "edresson",
+      "lang": "pt",
+      "locale": "pt_BR",
+      "name_native": "Português",
+      "name_english": "Portuguese",
+      "country": "Brazil",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "pt/pt_BR/edresson/low/pt_BR-edresson-low.onnx",
+      "json_rel": "pt/pt_BR/edresson/low/pt_BR-edresson-low.onnx.json"
+    },
+    {
+      "key": "pt_BR-faber-medium",
+      "name": "faber",
+      "lang": "pt",
+      "locale": "pt_BR",
+      "name_native": "Português",
+      "name_english": "Portuguese",
+      "country": "Brazil",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx",
+      "json_rel": "pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json"
+    },
+    {
+      "key": "pt_BR-jeff-medium",
+      "name": "jeff",
+      "lang": "pt",
+      "locale": "pt_BR",
+      "name_native": "Português",
+      "name_english": "Portuguese",
+      "country": "Brazil",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "pt/pt_BR/jeff/medium/pt_BR-jeff-medium.onnx",
+      "json_rel": "pt/pt_BR/jeff/medium/pt_BR-jeff-medium.onnx.json"
+    },
+    {
+      "key": "pt_PT-tugão-medium",
+      "name": "tugão",
+      "lang": "pt",
+      "locale": "pt_PT",
+      "name_native": "Português",
+      "name_english": "Portuguese",
+      "country": "Portugal",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "pt/pt_PT/tugão/medium/pt_PT-tugão-medium.onnx",
+      "json_rel": "pt/pt_PT/tugão/medium/pt_PT-tugão-medium.onnx.json"
+    },
+    {
+      "key": "it_IT-paola-medium",
+      "name": "paola",
+      "lang": "it",
+      "locale": "it_IT",
+      "name_native": "Italiano",
+      "name_english": "Italian",
+      "country": "Italy",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "it/it_IT/paola/medium/it_IT-paola-medium.onnx",
+      "json_rel": "it/it_IT/paola/medium/it_IT-paola-medium.onnx.json"
+    },
+    {
+      "key": "it_IT-riccardo-x_low",
+      "name": "riccardo",
+      "lang": "it",
+      "locale": "it_IT",
+      "name_native": "Italiano",
+      "name_english": "Italian",
+      "country": "Italy",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 27,
+      "onnx_rel": "it/it_IT/riccardo/x_low/it_IT-riccardo-x_low.onnx",
+      "json_rel": "it/it_IT/riccardo/x_low/it_IT-riccardo-x_low.onnx.json"
+    },
+    {
+      "key": "it_IT-serena-high",
+      "name": "serena",
+      "lang": "it",
+      "locale": "it_IT",
+      "name_native": "Italiano",
+      "name_english": "Italian",
+      "country": "Italy",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 109,
+      "onnx_rel": "it/it_IT/serena/high/it_IT-serena-high.onnx",
+      "json_rel": "it/it_IT/serena/high/it_IT-serena-high.onnx.json"
+    },
+    {
+      "key": "it_IT-serena-medium",
+      "name": "serena",
+      "lang": "it",
+      "locale": "it_IT",
+      "name_native": "Italiano",
+      "name_english": "Italian",
+      "country": "Italy",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "it/it_IT/serena/medium/it_IT-serena-medium.onnx",
+      "json_rel": "it/it_IT/serena/medium/it_IT-serena-medium.onnx.json"
+    },
+    {
+      "key": "ar_JO-kareem-low",
+      "name": "kareem",
+      "lang": "ar",
+      "locale": "ar_JO",
+      "name_native": "العربية",
+      "name_english": "Arabic",
+      "country": "Jordan",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ar/ar_JO/kareem/low/ar_JO-kareem-low.onnx",
+      "json_rel": "ar/ar_JO/kareem/low/ar_JO-kareem-low.onnx.json"
+    },
+    {
+      "key": "ar_JO-kareem-medium",
+      "name": "kareem",
+      "lang": "ar",
+      "locale": "ar_JO",
+      "name_native": "العربية",
+      "name_english": "Arabic",
+      "country": "Jordan",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx",
+      "json_rel": "ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx.json"
+    },
+    {
+      "key": "bg_BG-dimitar-medium",
+      "name": "dimitar",
+      "lang": "bg",
+      "locale": "bg_BG",
+      "name_native": "български",
+      "name_english": "Bulgarian",
+      "country": "Bulgaria",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "bg/bg_BG/dimitar/medium/bg_BG-dimitar-medium.onnx",
+      "json_rel": "bg/bg_BG/dimitar/medium/bg_BG-dimitar-medium.onnx.json"
+    },
+    {
+      "key": "bn_BD-google-medium",
+      "name": "google",
+      "lang": "bn",
+      "locale": "bn_BD",
+      "name_native": "বাংলা",
+      "name_english": "Bengali",
+      "country": "Bangladesh",
+      "quality": "medium",
+      "num_speakers": 16,
+      "size_mb": 73,
+      "onnx_rel": "bn/bn_BD/google/medium/bn_BD-google-medium.onnx",
+      "json_rel": "bn/bn_BD/google/medium/bn_BD-google-medium.onnx.json"
+    },
+    {
+      "key": "ca_ES-upc_ona-medium",
+      "name": "upc_ona",
+      "lang": "ca",
+      "locale": "ca_ES",
+      "name_native": "Català",
+      "name_english": "Catalan",
+      "country": "Spain",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ca/ca_ES/upc_ona/medium/ca_ES-upc_ona-medium.onnx",
+      "json_rel": "ca/ca_ES/upc_ona/medium/ca_ES-upc_ona-medium.onnx.json"
+    },
+    {
+      "key": "ca_ES-upc_ona-x_low",
+      "name": "upc_ona",
+      "lang": "ca",
+      "locale": "ca_ES",
+      "name_native": "Català",
+      "name_english": "Catalan",
+      "country": "Spain",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 20,
+      "onnx_rel": "ca/ca_ES/upc_ona/x_low/ca_ES-upc_ona-x_low.onnx",
+      "json_rel": "ca/ca_ES/upc_ona/x_low/ca_ES-upc_ona-x_low.onnx.json"
+    },
+    {
+      "key": "ca_ES-upc_pau-x_low",
+      "name": "upc_pau",
+      "lang": "ca",
+      "locale": "ca_ES",
+      "name_native": "Català",
+      "name_english": "Catalan",
+      "country": "Spain",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 27,
+      "onnx_rel": "ca/ca_ES/upc_pau/x_low/ca_ES-upc_pau-x_low.onnx",
+      "json_rel": "ca/ca_ES/upc_pau/x_low/ca_ES-upc_pau-x_low.onnx.json"
+    },
+    {
+      "key": "cs_CZ-jirka-low",
+      "name": "jirka",
+      "lang": "cs",
+      "locale": "cs_CZ",
+      "name_native": "Čeština",
+      "name_english": "Czech",
+      "country": "Czech Republic",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "cs/cs_CZ/jirka/low/cs_CZ-jirka-low.onnx",
+      "json_rel": "cs/cs_CZ/jirka/low/cs_CZ-jirka-low.onnx.json"
+    },
+    {
+      "key": "cs_CZ-jirka-medium",
+      "name": "jirka",
+      "lang": "cs",
+      "locale": "cs_CZ",
+      "name_native": "Čeština",
+      "name_english": "Czech",
+      "country": "Czech Republic",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "cs/cs_CZ/jirka/medium/cs_CZ-jirka-medium.onnx",
+      "json_rel": "cs/cs_CZ/jirka/medium/cs_CZ-jirka-medium.onnx.json"
+    },
+    {
+      "key": "cs_CZ-kasandra-medium",
+      "name": "kasandra",
+      "lang": "cs",
+      "locale": "cs_CZ",
+      "name_native": "Čeština",
+      "name_english": "Czech",
+      "country": "Czech Republic",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "cs/cs_CZ/kasandra/medium/cs_CZ-kasandra-medium.onnx",
+      "json_rel": "cs/cs_CZ/kasandra/medium/cs_CZ-kasandra-medium.onnx.json"
+    },
+    {
+      "key": "cy_GB-bu_tts-medium",
+      "name": "bu_tts",
+      "lang": "cy",
+      "locale": "cy_GB",
+      "name_native": "Cymraeg",
+      "name_english": "Welsh",
+      "country": "Great Britain",
+      "quality": "medium",
+      "num_speakers": 7,
+      "size_mb": 73,
+      "onnx_rel": "cy/cy_GB/bu_tts/medium/cy_GB-bu_tts-medium.onnx",
+      "json_rel": "cy/cy_GB/bu_tts/medium/cy_GB-bu_tts-medium.onnx.json"
+    },
+    {
+      "key": "cy_GB-gwryw_gogleddol-medium",
+      "name": "gwryw_gogleddol",
+      "lang": "cy",
+      "locale": "cy_GB",
+      "name_native": "Cymraeg",
+      "name_english": "Welsh",
+      "country": "Great Britain",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "cy/cy_GB/gwryw_gogleddol/medium/cy_GB-gwryw_gogleddol-medium.onnx",
+      "json_rel": "cy/cy_GB/gwryw_gogleddol/medium/cy_GB-gwryw_gogleddol-medium.onnx.json"
+    },
+    {
+      "key": "da_DK-talesyntese-medium",
+      "name": "talesyntese",
+      "lang": "da",
+      "locale": "da_DK",
+      "name_native": "Dansk",
+      "name_english": "Danish",
+      "country": "Denmark",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "da/da_DK/talesyntese/medium/da_DK-talesyntese-medium.onnx",
+      "json_rel": "da/da_DK/talesyntese/medium/da_DK-talesyntese-medium.onnx.json"
+    },
+    {
+      "key": "el_GR-joy-medium",
+      "name": "joy",
+      "lang": "el",
+      "locale": "el_GR",
+      "name_native": "Ελληνικά",
+      "name_english": "Greek",
+      "country": "Greece",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "el/el_GR/joy/medium/el_GR-joy-medium.onnx",
+      "json_rel": "el/el_GR/joy/medium/el_GR-joy-medium.onnx.json"
+    },
+    {
+      "key": "el_GR-rapunzelina-low",
+      "name": "rapunzelina",
+      "lang": "el",
+      "locale": "el_GR",
+      "name_native": "Ελληνικά",
+      "name_english": "Greek",
+      "country": "Greece",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "el/el_GR/rapunzelina/low/el_GR-rapunzelina-low.onnx",
+      "json_rel": "el/el_GR/rapunzelina/low/el_GR-rapunzelina-low.onnx.json"
+    },
+    {
+      "key": "el_GR-rapunzelina-medium",
+      "name": "rapunzelina",
+      "lang": "el",
+      "locale": "el_GR",
+      "name_native": "Ελληνικά",
+      "name_english": "Greek",
+      "country": "Greece",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "el/el_GR/rapunzelina/medium/el_GR-rapunzelina-medium.onnx",
+      "json_rel": "el/el_GR/rapunzelina/medium/el_GR-rapunzelina-medium.onnx.json"
+    },
+    {
+      "key": "et_EE-news-medium",
+      "name": "news",
+      "lang": "et",
+      "locale": "et_EE",
+      "name_native": "eesti",
+      "name_english": "Estonian",
+      "country": "Estonia",
+      "quality": "medium",
+      "num_speakers": 4,
+      "size_mb": 73,
+      "onnx_rel": "et/et_EE/news/medium/et_EE-news-medium.onnx",
+      "json_rel": "et/et_EE/news/medium/et_EE-news-medium.onnx.json"
+    },
+    {
+      "key": "eu_ES-antton-medium",
+      "name": "antton",
+      "lang": "eu",
+      "locale": "eu_ES",
+      "name_native": "Euskara",
+      "name_english": "Basque",
+      "country": "Spain",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "eu/eu_ES/antton/medium/eu_ES-antton-medium.onnx",
+      "json_rel": "eu/eu_ES/antton/medium/eu_ES-antton-medium.onnx.json"
+    },
+    {
+      "key": "eu_ES-maider-medium",
+      "name": "maider",
+      "lang": "eu",
+      "locale": "eu_ES",
+      "name_native": "Euskara",
+      "name_english": "Basque",
+      "country": "Spain",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "eu/eu_ES/maider/medium/eu_ES-maider-medium.onnx",
+      "json_rel": "eu/eu_ES/maider/medium/eu_ES-maider-medium.onnx.json"
+    },
+    {
+      "key": "fa_IR-amir-medium",
+      "name": "amir",
+      "lang": "fa",
+      "locale": "fa_IR",
+      "name_native": "فارسی",
+      "name_english": "Farsi",
+      "country": "Iran",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "fa/fa_IR/amir/medium/fa_IR-amir-medium.onnx",
+      "json_rel": "fa/fa_IR/amir/medium/fa_IR-amir-medium.onnx.json"
+    },
+    {
+      "key": "fa_IR-ganji-medium",
+      "name": "ganji",
+      "lang": "fa",
+      "locale": "fa_IR",
+      "name_native": "فارسی",
+      "name_english": "Farsi",
+      "country": "Iran",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "fa/fa_IR/ganji/medium/fa_IR-ganji-medium.onnx",
+      "json_rel": "fa/fa_IR/ganji/medium/fa_IR-ganji-medium.onnx.json"
+    },
+    {
+      "key": "fa_IR-ganji_adabi-medium",
+      "name": "ganji_adabi",
+      "lang": "fa",
+      "locale": "fa_IR",
+      "name_native": "فارسی",
+      "name_english": "Farsi",
+      "country": "Iran",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "fa/fa_IR/ganji_adabi/medium/fa_IR-ganji_adabi-medium.onnx",
+      "json_rel": "fa/fa_IR/ganji_adabi/medium/fa_IR-ganji_adabi-medium.onnx.json"
+    },
+    {
+      "key": "fa_IR-gyro-medium",
+      "name": "gyro",
+      "lang": "fa",
+      "locale": "fa_IR",
+      "name_native": "فارسی",
+      "name_english": "Farsi",
+      "country": "Iran",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "fa/fa_IR/gyro/medium/fa_IR-gyro-medium.onnx",
+      "json_rel": "fa/fa_IR/gyro/medium/fa_IR-gyro-medium.onnx.json"
+    },
+    {
+      "key": "fa_IR-reza_ibrahim-medium",
+      "name": "reza_ibrahim",
+      "lang": "fa",
+      "locale": "fa_IR",
+      "name_native": "فارسی",
+      "name_english": "Farsi",
+      "country": "Iran",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "fa/fa_IR/reza_ibrahim/medium/fa_IR-reza_ibrahim-medium.onnx",
+      "json_rel": "fa/fa_IR/reza_ibrahim/medium/fa_IR-reza_ibrahim-medium.onnx.json"
+    },
+    {
+      "key": "fi_FI-harri-low",
+      "name": "harri",
+      "lang": "fi",
+      "locale": "fi_FI",
+      "name_native": "Suomi",
+      "name_english": "Finnish",
+      "country": "Finland",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 67,
+      "onnx_rel": "fi/fi_FI/harri/low/fi_FI-harri-low.onnx",
+      "json_rel": "fi/fi_FI/harri/low/fi_FI-harri-low.onnx.json"
+    },
+    {
+      "key": "fi_FI-harri-medium",
+      "name": "harri",
+      "lang": "fi",
+      "locale": "fi_FI",
+      "name_native": "Suomi",
+      "name_english": "Finnish",
+      "country": "Finland",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "fi/fi_FI/harri/medium/fi_FI-harri-medium.onnx",
+      "json_rel": "fi/fi_FI/harri/medium/fi_FI-harri-medium.onnx.json"
+    },
+    {
+      "key": "he_IL-saspeech-medium",
+      "name": "saspeech",
+      "lang": "he",
+      "locale": "he_IL",
+      "name_native": "עִבְרִית‎",
+      "name_english": "Hebrew",
+      "country": "Israel",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "he/he_IL/saspeech/medium/he_IL-saspeech-medium.onnx",
+      "json_rel": "he/he_IL/saspeech/medium/he_IL-saspeech-medium.onnx.json"
+    },
+    {
+      "key": "hu_HU-anna-medium",
+      "name": "anna",
+      "lang": "hu",
+      "locale": "hu_HU",
+      "name_native": "Magyar",
+      "name_english": "Hungarian",
+      "country": "Hungary",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "hu/hu_HU/anna/medium/hu_HU-anna-medium.onnx",
+      "json_rel": "hu/hu_HU/anna/medium/hu_HU-anna-medium.onnx.json"
+    },
+    {
+      "key": "hu_HU-berta-medium",
+      "name": "berta",
+      "lang": "hu",
+      "locale": "hu_HU",
+      "name_native": "Magyar",
+      "name_english": "Hungarian",
+      "country": "Hungary",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "hu/hu_HU/berta/medium/hu_HU-berta-medium.onnx",
+      "json_rel": "hu/hu_HU/berta/medium/hu_HU-berta-medium.onnx.json"
+    },
+    {
+      "key": "hu_HU-imre-medium",
+      "name": "imre",
+      "lang": "hu",
+      "locale": "hu_HU",
+      "name_native": "Magyar",
+      "name_english": "Hungarian",
+      "country": "Hungary",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "hu/hu_HU/imre/medium/hu_HU-imre-medium.onnx",
+      "json_rel": "hu/hu_HU/imre/medium/hu_HU-imre-medium.onnx.json"
+    },
+    {
+      "key": "hy_AM-gor-medium",
+      "name": "gor",
+      "lang": "hy",
+      "locale": "hy_AM",
+      "name_native": "հայերեն",
+      "name_english": "Armenian",
+      "country": "Armenia",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "hy/hy_AM/gor/medium/hy_AM-gor-medium.onnx",
+      "json_rel": "hy/hy_AM/gor/medium/hy_AM-gor-medium.onnx.json"
+    },
+    {
+      "key": "is_IS-bui-medium",
+      "name": "bui",
+      "lang": "is",
+      "locale": "is_IS",
+      "name_native": "íslenska",
+      "name_english": "Icelandic",
+      "country": "Iceland",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 73,
+      "onnx_rel": "is/is_IS/bui/medium/is_IS-bui-medium.onnx",
+      "json_rel": "is/is_IS/bui/medium/is_IS-bui-medium.onnx.json"
+    },
+    {
+      "key": "is_IS-salka-medium",
+      "name": "salka",
+      "lang": "is",
+      "locale": "is_IS",
+      "name_native": "íslenska",
+      "name_english": "Icelandic",
+      "country": "Iceland",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 73,
+      "onnx_rel": "is/is_IS/salka/medium/is_IS-salka-medium.onnx",
+      "json_rel": "is/is_IS/salka/medium/is_IS-salka-medium.onnx.json"
+    },
+    {
+      "key": "is_IS-steinn-medium",
+      "name": "steinn",
+      "lang": "is",
+      "locale": "is_IS",
+      "name_native": "íslenska",
+      "name_english": "Icelandic",
+      "country": "Iceland",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 73,
+      "onnx_rel": "is/is_IS/steinn/medium/is_IS-steinn-medium.onnx",
+      "json_rel": "is/is_IS/steinn/medium/is_IS-steinn-medium.onnx.json"
+    },
+    {
+      "key": "is_IS-ugla-medium",
+      "name": "ugla",
+      "lang": "is",
+      "locale": "is_IS",
+      "name_native": "íslenska",
+      "name_english": "Icelandic",
+      "country": "Iceland",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 73,
+      "onnx_rel": "is/is_IS/ugla/medium/is_IS-ugla-medium.onnx",
+      "json_rel": "is/is_IS/ugla/medium/is_IS-ugla-medium.onnx.json"
+    },
+    {
+      "key": "ka_GE-natia-medium",
+      "name": "natia",
+      "lang": "ka",
+      "locale": "ka_GE",
+      "name_native": "ქართული ენა",
+      "name_english": "Georgian",
+      "country": "Georgia",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ka/ka_GE/natia/medium/ka_GE-natia-medium.onnx",
+      "json_rel": "ka/ka_GE/natia/medium/ka_GE-natia-medium.onnx.json"
+    },
+    {
+      "key": "kk_KZ-iseke-x_low",
+      "name": "iseke",
+      "lang": "kk",
+      "locale": "kk_KZ",
+      "name_native": "қазақша",
+      "name_english": "Kazakh",
+      "country": "Kazakhstan",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 27,
+      "onnx_rel": "kk/kk_KZ/iseke/x_low/kk_KZ-iseke-x_low.onnx",
+      "json_rel": "kk/kk_KZ/iseke/x_low/kk_KZ-iseke-x_low.onnx.json"
+    },
+    {
+      "key": "kk_KZ-issai-high",
+      "name": "issai",
+      "lang": "kk",
+      "locale": "kk_KZ",
+      "name_native": "қазақша",
+      "name_english": "Kazakh",
+      "country": "Kazakhstan",
+      "quality": "high",
+      "num_speakers": 6,
+      "size_mb": 122,
+      "onnx_rel": "kk/kk_KZ/issai/high/kk_KZ-issai-high.onnx",
+      "json_rel": "kk/kk_KZ/issai/high/kk_KZ-issai-high.onnx.json"
+    },
+    {
+      "key": "kk_KZ-raya-x_low",
+      "name": "raya",
+      "lang": "kk",
+      "locale": "kk_KZ",
+      "name_native": "қазақша",
+      "name_english": "Kazakh",
+      "country": "Kazakhstan",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 27,
+      "onnx_rel": "kk/kk_KZ/raya/x_low/kk_KZ-raya-x_low.onnx",
+      "json_rel": "kk/kk_KZ/raya/x_low/kk_KZ-raya-x_low.onnx.json"
+    },
+    {
+      "key": "ku_TR-berfin_renas-medium",
+      "name": "berfin_renas",
+      "lang": "ku",
+      "locale": "ku_TR",
+      "name_native": "Kurmancî",
+      "name_english": "Kurmanji Kurdish",
+      "country": "Turkey",
+      "quality": "medium",
+      "num_speakers": 2,
+      "size_mb": 73,
+      "onnx_rel": "ku/ku_TR/berfin_renas/medium/ku_TR-berfin_renas-medium.onnx",
+      "json_rel": "ku/ku_TR/berfin_renas/medium/ku_TR-berfin_renas-medium.onnx.json"
+    },
+    {
+      "key": "lb_LU-marylux-medium",
+      "name": "marylux",
+      "lang": "lb",
+      "locale": "lb_LU",
+      "name_native": "Lëtzebuergesch",
+      "name_english": "Luxembourgish",
+      "country": "Luxembourg",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "lb/lb_LU/marylux/medium/lb_LU-marylux-medium.onnx",
+      "json_rel": "lb/lb_LU/marylux/medium/lb_LU-marylux-medium.onnx.json"
+    },
+    {
+      "key": "lt_LT-ingute-medium",
+      "name": "ingute",
+      "lang": "lt",
+      "locale": "lt_LT",
+      "name_native": "Lietuvių",
+      "name_english": "Lithuanian",
+      "country": "Lithuania",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "lt/lt_LT/ingute/medium/lt_LT-ingute-medium.onnx",
+      "json_rel": "lt/lt_LT/ingute/medium/lt_LT-ingute-medium.onnx.json"
+    },
+    {
+      "key": "lt_LT-reginute1-medium",
+      "name": "reginute1",
+      "lang": "lt",
+      "locale": "lt_LT",
+      "name_native": "Lietuvių",
+      "name_english": "Lithuanian",
+      "country": "Lithuania",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "lt/lt_LT/reginute1/medium/lt_LT-reginute1-medium.onnx",
+      "json_rel": "lt/lt_LT/reginute1/medium/lt_LT-reginute1-medium.onnx.json"
+    },
+    {
+      "key": "lv_LV-aivars-medium",
+      "name": "aivars",
+      "lang": "lv",
+      "locale": "lv_LV",
+      "name_native": "Latviešu",
+      "name_english": "Latvian",
+      "country": "Latvia",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "lv/lv_LV/aivars/medium/lv_LV-aivars-medium.onnx",
+      "json_rel": "lv/lv_LV/aivars/medium/lv_LV-aivars-medium.onnx.json"
+    },
+    {
+      "key": "ml_IN-arjun-medium",
+      "name": "arjun",
+      "lang": "ml",
+      "locale": "ml_IN",
+      "name_native": "മലയാളം",
+      "name_english": "Malayalam",
+      "country": "India",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ml/ml_IN/arjun/medium/ml_IN-arjun-medium.onnx",
+      "json_rel": "ml/ml_IN/arjun/medium/ml_IN-arjun-medium.onnx.json"
+    },
+    {
+      "key": "ml_IN-meera-medium",
+      "name": "meera",
+      "lang": "ml",
+      "locale": "ml_IN",
+      "name_native": "മലയാളം",
+      "name_english": "Malayalam",
+      "country": "India",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ml/ml_IN/meera/medium/ml_IN-meera-medium.onnx",
+      "json_rel": "ml/ml_IN/meera/medium/ml_IN-meera-medium.onnx.json"
+    },
+    {
+      "key": "mr_IN-google-medium",
+      "name": "google",
+      "lang": "mr",
+      "locale": "mr_IN",
+      "name_native": "मराठी, 𑘦𑘨𑘰𑘙𑘲",
+      "name_english": "Marathi",
+      "country": "India",
+      "quality": "medium",
+      "num_speakers": 9,
+      "size_mb": 73,
+      "onnx_rel": "mr/mr_IN/google/medium/mr_IN-google-medium.onnx",
+      "json_rel": "mr/mr_IN/google/medium/mr_IN-google-medium.onnx.json"
+    },
+    {
+      "key": "ne_NP-chitwan-medium",
+      "name": "chitwan",
+      "lang": "ne",
+      "locale": "ne_NP",
+      "name_native": "नेपाली",
+      "name_english": "Nepali",
+      "country": "Nepal",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ne/ne_NP/chitwan/medium/ne_NP-chitwan-medium.onnx",
+      "json_rel": "ne/ne_NP/chitwan/medium/ne_NP-chitwan-medium.onnx.json"
+    },
+    {
+      "key": "ne_NP-google-medium",
+      "name": "google",
+      "lang": "ne",
+      "locale": "ne_NP",
+      "name_native": "नेपाली",
+      "name_english": "Nepali",
+      "country": "Nepal",
+      "quality": "medium",
+      "num_speakers": 18,
+      "size_mb": 73,
+      "onnx_rel": "ne/ne_NP/google/medium/ne_NP-google-medium.onnx",
+      "json_rel": "ne/ne_NP/google/medium/ne_NP-google-medium.onnx.json"
+    },
+    {
+      "key": "ne_NP-google-x_low",
+      "name": "google",
+      "lang": "ne",
+      "locale": "ne_NP",
+      "name_native": "नेपाली",
+      "name_english": "Nepali",
+      "country": "Nepal",
+      "quality": "x_low",
+      "num_speakers": 18,
+      "size_mb": 26,
+      "onnx_rel": "ne/ne_NP/google/x_low/ne_NP-google-x_low.onnx",
+      "json_rel": "ne/ne_NP/google/x_low/ne_NP-google-x_low.onnx.json"
+    },
+    {
+      "key": "nl_BE-nathalie-medium",
+      "name": "nathalie",
+      "lang": "nl",
+      "locale": "nl_BE",
+      "name_native": "Nederlands",
+      "name_english": "Dutch",
+      "country": "Belgium",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "nl/nl_BE/nathalie/medium/nl_BE-nathalie-medium.onnx",
+      "json_rel": "nl/nl_BE/nathalie/medium/nl_BE-nathalie-medium.onnx.json"
+    },
+    {
+      "key": "nl_BE-nathalie-x_low",
+      "name": "nathalie",
+      "lang": "nl",
+      "locale": "nl_BE",
+      "name_native": "Nederlands",
+      "name_english": "Dutch",
+      "country": "Belgium",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 20,
+      "onnx_rel": "nl/nl_BE/nathalie/x_low/nl_BE-nathalie-x_low.onnx",
+      "json_rel": "nl/nl_BE/nathalie/x_low/nl_BE-nathalie-x_low.onnx.json"
+    },
+    {
+      "key": "nl_BE-rdh-medium",
+      "name": "rdh",
+      "lang": "nl",
+      "locale": "nl_BE",
+      "name_native": "Nederlands",
+      "name_english": "Dutch",
+      "country": "Belgium",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "nl/nl_BE/rdh/medium/nl_BE-rdh-medium.onnx",
+      "json_rel": "nl/nl_BE/rdh/medium/nl_BE-rdh-medium.onnx.json"
+    },
+    {
+      "key": "nl_BE-rdh-x_low",
+      "name": "rdh",
+      "lang": "nl",
+      "locale": "nl_BE",
+      "name_native": "Nederlands",
+      "name_english": "Dutch",
+      "country": "Belgium",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 20,
+      "onnx_rel": "nl/nl_BE/rdh/x_low/nl_BE-rdh-x_low.onnx",
+      "json_rel": "nl/nl_BE/rdh/x_low/nl_BE-rdh-x_low.onnx.json"
+    },
+    {
+      "key": "nl_NL-alex-medium",
+      "name": "alex",
+      "lang": "nl",
+      "locale": "nl_NL",
+      "name_native": "Nederlands",
+      "name_english": "Dutch",
+      "country": "Netherlands",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "nl/nl_NL/alex/medium/nl_NL-alex-medium.onnx",
+      "json_rel": "nl/nl_NL/alex/medium/nl_NL-alex-medium.onnx.json"
+    },
+    {
+      "key": "nl_NL-mls-medium",
+      "name": "mls",
+      "lang": "nl",
+      "locale": "nl_NL",
+      "name_native": "Nederlands",
+      "name_english": "Dutch",
+      "country": "Netherlands",
+      "quality": "medium",
+      "num_speakers": 52,
+      "size_mb": 73,
+      "onnx_rel": "nl/nl_NL/mls/medium/nl_NL-mls-medium.onnx",
+      "json_rel": "nl/nl_NL/mls/medium/nl_NL-mls-medium.onnx.json"
+    },
+    {
+      "key": "nl_NL-mls_5809-low",
+      "name": "mls_5809",
+      "lang": "nl",
+      "locale": "nl_NL",
+      "name_native": "Nederlands",
+      "name_english": "Dutch",
+      "country": "Netherlands",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "nl/nl_NL/mls_5809/low/nl_NL-mls_5809-low.onnx",
+      "json_rel": "nl/nl_NL/mls_5809/low/nl_NL-mls_5809-low.onnx.json"
+    },
+    {
+      "key": "nl_NL-mls_7432-low",
+      "name": "mls_7432",
+      "lang": "nl",
+      "locale": "nl_NL",
+      "name_native": "Nederlands",
+      "name_english": "Dutch",
+      "country": "Netherlands",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "nl/nl_NL/mls_7432/low/nl_NL-mls_7432-low.onnx",
+      "json_rel": "nl/nl_NL/mls_7432/low/nl_NL-mls_7432-low.onnx.json"
+    },
+    {
+      "key": "nl_NL-pim-medium",
+      "name": "pim",
+      "lang": "nl",
+      "locale": "nl_NL",
+      "name_native": "Nederlands",
+      "name_english": "Dutch",
+      "country": "Netherlands",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "nl/nl_NL/pim/medium/nl_NL-pim-medium.onnx",
+      "json_rel": "nl/nl_NL/pim/medium/nl_NL-pim-medium.onnx.json"
+    },
+    {
+      "key": "nl_NL-ronnie-medium",
+      "name": "ronnie",
+      "lang": "nl",
+      "locale": "nl_NL",
+      "name_native": "Nederlands",
+      "name_english": "Dutch",
+      "country": "Netherlands",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "nl/nl_NL/ronnie/medium/nl_NL-ronnie-medium.onnx",
+      "json_rel": "nl/nl_NL/ronnie/medium/nl_NL-ronnie-medium.onnx.json"
+    },
+    {
+      "key": "no_NO-nvcc-medium",
+      "name": "nvcc",
+      "lang": "no",
+      "locale": "no_NO",
+      "name_native": "Norsk",
+      "name_english": "Norwegian",
+      "country": "Norway",
+      "quality": "medium",
+      "num_speakers": 10,
+      "size_mb": 73,
+      "onnx_rel": "no/no_NO/nvcc/medium/no_NO-nvcc-medium.onnx",
+      "json_rel": "no/no_NO/nvcc/medium/no_NO-nvcc-medium.onnx.json"
+    },
+    {
+      "key": "no_NO-talesyntese-medium",
+      "name": "talesyntese",
+      "lang": "no",
+      "locale": "no_NO",
+      "name_native": "Norsk",
+      "name_english": "Norwegian",
+      "country": "Norway",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "no/no_NO/talesyntese/medium/no_NO-talesyntese-medium.onnx",
+      "json_rel": "no/no_NO/talesyntese/medium/no_NO-talesyntese-medium.onnx.json"
+    },
+    {
+      "key": "pl_PL-bass-high",
+      "name": "bass",
+      "lang": "pl",
+      "locale": "pl_PL",
+      "name_native": "Polski",
+      "name_english": "Polish",
+      "country": "Poland",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 109,
+      "onnx_rel": "pl/pl_PL/bass/high/pl_PL-bass-high.onnx",
+      "json_rel": "pl/pl_PL/bass/high/pl_PL-bass-high.onnx.json"
+    },
+    {
+      "key": "pl_PL-darkman-medium",
+      "name": "darkman",
+      "lang": "pl",
+      "locale": "pl_PL",
+      "name_native": "Polski",
+      "name_english": "Polish",
+      "country": "Poland",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "pl/pl_PL/darkman/medium/pl_PL-darkman-medium.onnx",
+      "json_rel": "pl/pl_PL/darkman/medium/pl_PL-darkman-medium.onnx.json"
+    },
+    {
+      "key": "pl_PL-gosia-medium",
+      "name": "gosia",
+      "lang": "pl",
+      "locale": "pl_PL",
+      "name_native": "Polski",
+      "name_english": "Polish",
+      "country": "Poland",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "pl/pl_PL/gosia/medium/pl_PL-gosia-medium.onnx",
+      "json_rel": "pl/pl_PL/gosia/medium/pl_PL-gosia-medium.onnx.json"
+    },
+    {
+      "key": "pl_PL-mc_speech-medium",
+      "name": "mc_speech",
+      "lang": "pl",
+      "locale": "pl_PL",
+      "name_native": "Polski",
+      "name_english": "Polish",
+      "country": "Poland",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "pl/pl_PL/mc_speech/medium/pl_PL-mc_speech-medium.onnx",
+      "json_rel": "pl/pl_PL/mc_speech/medium/pl_PL-mc_speech-medium.onnx.json"
+    },
+    {
+      "key": "pl_PL-mls_6892-low",
+      "name": "mls_6892",
+      "lang": "pl",
+      "locale": "pl_PL",
+      "name_native": "Polski",
+      "name_english": "Polish",
+      "country": "Poland",
+      "quality": "low",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "pl/pl_PL/mls_6892/low/pl_PL-mls_6892-low.onnx",
+      "json_rel": "pl/pl_PL/mls_6892/low/pl_PL-mls_6892-low.onnx.json"
+    },
+    {
+      "key": "ro_RO-mihai-medium",
+      "name": "mihai",
+      "lang": "ro",
+      "locale": "ro_RO",
+      "name_native": "Română",
+      "name_english": "Romanian",
+      "country": "Romania",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "ro/ro_RO/mihai/medium/ro_RO-mihai-medium.onnx",
+      "json_rel": "ro/ro_RO/mihai/medium/ro_RO-mihai-medium.onnx.json"
+    },
+    {
+      "key": "sk_SK-lili-medium",
+      "name": "lili",
+      "lang": "sk",
+      "locale": "sk_SK",
+      "name_native": "Slovenčina",
+      "name_english": "Slovak",
+      "country": "Slovakia",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "sk/sk_SK/lili/medium/sk_SK-lili-medium.onnx",
+      "json_rel": "sk/sk_SK/lili/medium/sk_SK-lili-medium.onnx.json"
+    },
+    {
+      "key": "sl_SI-artur-medium",
+      "name": "artur",
+      "lang": "sl",
+      "locale": "sl_SI",
+      "name_native": "Slovenščina",
+      "name_english": "Slovenian",
+      "country": "Slovenia",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "sl/sl_SI/artur/medium/sl_SI-artur-medium.onnx",
+      "json_rel": "sl/sl_SI/artur/medium/sl_SI-artur-medium.onnx.json"
+    },
+    {
+      "key": "sq_AL-edon-medium",
+      "name": "edon",
+      "lang": "sq",
+      "locale": "sq_AL",
+      "name_native": "shqip",
+      "name_english": "Albanian",
+      "country": "Albania",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "sq/sq_AL/edon/medium/sq_AL-edon-medium.onnx",
+      "json_rel": "sq/sq_AL/edon/medium/sq_AL-edon-medium.onnx.json"
+    },
+    {
+      "key": "sr_RS-serbski_institut-medium",
+      "name": "serbski_institut",
+      "lang": "sr",
+      "locale": "sr_RS",
+      "name_native": "srpski",
+      "name_english": "Serbian",
+      "country": "Serbia",
+      "quality": "medium",
+      "num_speakers": 2,
+      "size_mb": 73,
+      "onnx_rel": "sr/sr_RS/serbski_institut/medium/sr_RS-serbski_institut-medium.onnx",
+      "json_rel": "sr/sr_RS/serbski_institut/medium/sr_RS-serbski_institut-medium.onnx.json"
+    },
+    {
+      "key": "sv_SE-alma-medium",
+      "name": "alma",
+      "lang": "sv",
+      "locale": "sv_SE",
+      "name_native": "Svenska",
+      "name_english": "Swedish",
+      "country": "Sweden",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "sv/sv_SE/alma/medium/sv_SE-alma-medium.onnx",
+      "json_rel": "sv/sv_SE/alma/medium/sv_SE-alma-medium.onnx.json"
+    },
+    {
+      "key": "sv_SE-lisa-medium",
+      "name": "lisa",
+      "lang": "sv",
+      "locale": "sv_SE",
+      "name_native": "Svenska",
+      "name_english": "Swedish",
+      "country": "Sweden",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "sv/sv_SE/lisa/medium/sv_SE-lisa-medium.onnx",
+      "json_rel": "sv/sv_SE/lisa/medium/sv_SE-lisa-medium.onnx.json"
+    },
+    {
+      "key": "sv_SE-nst-medium",
+      "name": "nst",
+      "lang": "sv",
+      "locale": "sv_SE",
+      "name_native": "Svenska",
+      "name_english": "Swedish",
+      "country": "Sweden",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "sv/sv_SE/nst/medium/sv_SE-nst-medium.onnx",
+      "json_rel": "sv/sv_SE/nst/medium/sv_SE-nst-medium.onnx.json"
+    },
+    {
+      "key": "sw_CD-lanfrica-medium",
+      "name": "lanfrica",
+      "lang": "sw",
+      "locale": "sw_CD",
+      "name_native": "Kiswahili",
+      "name_english": "Swahili",
+      "country": "Democratic Republic of the Congo",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "sw/sw_CD/lanfrica/medium/sw_CD-lanfrica-medium.onnx",
+      "json_rel": "sw/sw_CD/lanfrica/medium/sw_CD-lanfrica-medium.onnx.json"
+    },
+    {
+      "key": "te_IN-maya-medium",
+      "name": "maya",
+      "lang": "te",
+      "locale": "te_IN",
+      "name_native": "తెలుగు",
+      "name_english": "Telugu",
+      "country": "India",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "te/te_IN/maya/medium/te_IN-maya-medium.onnx",
+      "json_rel": "te/te_IN/maya/medium/te_IN-maya-medium.onnx.json"
+    },
+    {
+      "key": "te_IN-padmavathi-medium",
+      "name": "padmavathi",
+      "lang": "te",
+      "locale": "te_IN",
+      "name_native": "తెలుగు",
+      "name_english": "Telugu",
+      "country": "India",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "te/te_IN/padmavathi/medium/te_IN-padmavathi-medium.onnx",
+      "json_rel": "te/te_IN/padmavathi/medium/te_IN-padmavathi-medium.onnx.json"
+    },
+    {
+      "key": "te_IN-venkatesh-medium",
+      "name": "venkatesh",
+      "lang": "te",
+      "locale": "te_IN",
+      "name_native": "తెలుగు",
+      "name_english": "Telugu",
+      "country": "India",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "te/te_IN/venkatesh/medium/te_IN-venkatesh-medium.onnx",
+      "json_rel": "te/te_IN/venkatesh/medium/te_IN-venkatesh-medium.onnx.json"
+    },
+    {
+      "key": "tr_TR-dfki-medium",
+      "name": "dfki",
+      "lang": "tr",
+      "locale": "tr_TR",
+      "name_native": "Türkçe",
+      "name_english": "Turkish",
+      "country": "Turkey",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "tr/tr_TR/dfki/medium/tr_TR-dfki-medium.onnx",
+      "json_rel": "tr/tr_TR/dfki/medium/tr_TR-dfki-medium.onnx.json"
+    },
+    {
+      "key": "uk_UA-lada-x_low",
+      "name": "lada",
+      "lang": "uk",
+      "locale": "uk_UA",
+      "name_native": "украї́нська мо́ва",
+      "name_english": "Ukrainian",
+      "country": "Ukraine",
+      "quality": "x_low",
+      "num_speakers": 1,
+      "size_mb": 20,
+      "onnx_rel": "uk/uk_UA/lada/x_low/uk_UA-lada-x_low.onnx",
+      "json_rel": "uk/uk_UA/lada/x_low/uk_UA-lada-x_low.onnx.json"
+    },
+    {
+      "key": "uk_UA-mykyta-high",
+      "name": "mykyta",
+      "lang": "uk",
+      "locale": "uk_UA",
+      "name_native": "украї́нська мо́ва",
+      "name_english": "Ukrainian",
+      "country": "Ukraine",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 109,
+      "onnx_rel": "uk/uk_UA/mykyta/high/uk_UA-mykyta-high.onnx",
+      "json_rel": "uk/uk_UA/mykyta/high/uk_UA-mykyta-high.onnx.json"
+    },
+    {
+      "key": "uk_UA-oleksa-high",
+      "name": "oleksa",
+      "lang": "uk",
+      "locale": "uk_UA",
+      "name_native": "украї́нська мо́ва",
+      "name_english": "Ukrainian",
+      "country": "Ukraine",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 109,
+      "onnx_rel": "uk/uk_UA/oleksa/high/uk_UA-oleksa-high.onnx",
+      "json_rel": "uk/uk_UA/oleksa/high/uk_UA-oleksa-high.onnx.json"
+    },
+    {
+      "key": "uk_UA-tetiana-high",
+      "name": "tetiana",
+      "lang": "uk",
+      "locale": "uk_UA",
+      "name_native": "украї́нська мо́ва",
+      "name_english": "Ukrainian",
+      "country": "Ukraine",
+      "quality": "high",
+      "num_speakers": 1,
+      "size_mb": 109,
+      "onnx_rel": "uk/uk_UA/tetiana/high/uk_UA-tetiana-high.onnx",
+      "json_rel": "uk/uk_UA/tetiana/high/uk_UA-tetiana-high.onnx.json"
+    },
+    {
+      "key": "uk_UA-ukrainian_tts-medium",
+      "name": "ukrainian_tts",
+      "lang": "uk",
+      "locale": "uk_UA",
+      "name_native": "украї́нська мо́ва",
+      "name_english": "Ukrainian",
+      "country": "Ukraine",
+      "quality": "medium",
+      "num_speakers": 3,
+      "size_mb": 73,
+      "onnx_rel": "uk/uk_UA/ukrainian_tts/medium/uk_UA-ukrainian_tts-medium.onnx",
+      "json_rel": "uk/uk_UA/ukrainian_tts/medium/uk_UA-ukrainian_tts-medium.onnx.json"
+    },
+    {
+      "key": "ur_PK-aegis_female-medium",
+      "name": "aegis_female",
+      "lang": "ur",
+      "locale": "ur_PK",
+      "name_native": "اردو",
+      "name_english": "Urdu",
+      "country": "Pakistan",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 61,
+      "onnx_rel": "ur/ur_PK/aegis_female/medium/ur_PK-aegis_female-medium.onnx",
+      "json_rel": "ur/ur_PK/aegis_female/medium/ur_PK-aegis_female-medium.onnx.json"
+    },
+    {
+      "key": "ur_PK-fasih-medium",
+      "name": "fasih",
+      "lang": "ur",
+      "locale": "ur_PK",
+      "name_native": "اردو",
+      "name_english": "Urdu",
+      "country": "Pakistan",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 62,
+      "onnx_rel": "ur/ur_PK/fasih/medium/ur_PK-fasih-medium.onnx",
+      "json_rel": "ur/ur_PK/fasih/medium/ur_PK-fasih-medium.onnx.json"
+    }
+  ]
+}

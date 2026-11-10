@@ -1,6 +1,7 @@
 """Local Piper TTS engine (ONNX Runtime C++ binary / Python piper-tts) for multi-language synthesis."""
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.languages import DEFAULT_LANGUAGE, language_name, normalize_language
-from core.settings import default_piper_path, normalize_piper_path
+from core.settings import ROOT, default_piper_path, normalize_piper_path
 from core.text_processor import chunk_text
 from core.tts_engine import SynthesisCancelled, SynthResult, TTSError
 from utils.logger import get_logger
@@ -24,6 +25,7 @@ CancelCb = Optional[Callable[[], bool]]
 PauseCb = Optional[Callable[[], bool]]
 
 _CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+_CATALOG_PATH = ROOT / "config" / "tts_catalog.json"
 
 # Default curated Piper ONNX voice models per language
 PIPER_DEFAULT_VOICES: Dict[str, str] = {
@@ -38,87 +40,93 @@ PIPER_DEFAULT_VOICES: Dict[str, str] = {
     "ko": "en_US-lessac-medium",
     "th": "en_US-lessac-medium",
     "id": "en_US-lessac-medium",
-    "hi": "en_US-lessac-medium",
+    "hi": "hi_IN-rohan-medium",
 }
 
-PIPER_VOICES_BY_LANG: Dict[str, List[Tuple[str, str]]] = {
-    "vi": [
-        ("VAIS1000 Medium (Chuẩn phòng thu · Khuyên dùng)", "vi_VN-vais1000-medium"),
-        ("25Hours Single Low (Giọng nữ miền Nam · Siêu nhanh)", "vi_VN-25hours_single-low"),
-        ("Vivos X Low (Đa vùng miền · Nhẹ)", "vi_VN-vivos-x_low"),
-    ],
-    "en": [
-        ("Lessac Medium (Giọng Mỹ chuẩn · Khuyên dùng)", "en_US-lessac-medium"),
-        ("Amy Medium (Giọng nữ Mỹ ấm áp)", "en_US-amy-medium"),
-        ("Ryan High (Giọng nam Mỹ chất lượng cao)", "en_US-ryan-high"),
-        ("Alba Medium (Giọng Anh Quốc)", "en_GB-alba-medium"),
-    ],
-    "zh": [
-        ("Huayan Medium (Tiếng Trung phổ thông)", "zh_CN-huayan-medium"),
-    ],
-    "fr": [
-        ("UPMC Medium (Tiếng Pháp chuẩn)", "fr_FR-upmc-medium"),
-        ("Siwis Medium (Giọng nữ Pháp)", "fr_FR-siwis-medium"),
-    ],
-    "es": [
-        ("Davefx Medium (Tiếng Tây Ban Nha)", "es_ES-davefx-medium"),
-        ("Sharvard Medium (Đa giọng Tây Ban Nha)", "es_ES-sharvard-medium"),
-    ],
-    "de": [
-        ("Thorsten Medium (Tiếng Đức chuẩn)", "de_DE-thorsten-medium"),
-    ],
-    "ru": [
-        ("Irina Medium (Giọng nữ Nga)", "ru_RU-irina-medium"),
-        ("Denis Medium (Giọng nam Nga)", "ru_RU-denis-medium"),
-    ],
-}
 
-EDGE_VOICES_BY_LANG: Dict[str, List[Tuple[str, str]]] = {
-    "vi": [
-        ("Hoài My — Nữ (vi-VN-HoaiMyNeural)", "vi-VN-HoaiMyNeural"),
-        ("Nam Minh — Nam (vi-VN-NamMinhNeural)", "vi-VN-NamMinhNeural"),
-    ],
-    "en": [
-        ("Aria — Nữ Mỹ (en-US-AriaNeural)", "en-US-AriaNeural"),
-        ("Jenny — Nữ Mỹ (en-US-JennyNeural)", "en-US-JennyNeural"),
-        ("Guy — Nam Mỹ (en-US-GuyNeural)", "en-US-GuyNeural"),
-        ("Christopher — Nam Mỹ (en-US-ChristopherNeural)", "en-US-ChristopherNeural"),
-        ("Sonia — Nữ Anh (en-GB-SoniaNeural)", "en-GB-SoniaNeural"),
-    ],
-    "zh": [
-        ("Xiaoxiao — Nữ (zh-CN-XiaoxiaoNeural)", "zh-CN-XiaoxiaoNeural"),
-        ("Yunxi — Nam (zh-CN-YunxiNeural)", "zh-CN-YunxiNeural"),
-        ("Yunjian — Nam Kể chuyện (zh-CN-YunjianNeural)", "zh-CN-YunjianNeural"),
-    ],
-    "ja": [
-        ("Nanami — Nữ (ja-JP-NanamiNeural)", "ja-JP-NanamiNeural"),
-        ("Keita — Nam (ja-JP-KeitaNeural)", "ja-JP-KeitaNeural"),
-    ],
-    "ko": [
-        ("SunHi — Nữ (ko-KR-SunHiNeural)", "ko-KR-SunHiNeural"),
-        ("InJoon — Nam (ko-KR-InJoonNeural)", "ko-KR-InJoonNeural"),
-    ],
-    "fr": [
-        ("Denise — Nữ (fr-FR-DeniseNeural)", "fr-FR-DeniseNeural"),
-        ("Henri — Nam (fr-FR-HenriNeural)", "fr-FR-HenriNeural"),
-    ],
-    "es": [
-        ("Elvira — Nữ (es-ES-ElviraNeural)", "es-ES-ElviraNeural"),
-        ("Alvaro — Nam (es-ES-AlvaroNeural)", "es-ES-AlvaroNeural"),
-    ],
-    "th": [
-        ("Premwadee — Nữ (th-TH-PremwadeeNeural)", "th-TH-PremwadeeNeural"),
-        ("Niwat — Nam (th-TH-NiwatNeural)", "th-TH-NiwatNeural"),
-    ],
-    "id": [
-        ("Gadis — Nữ (id-ID-GadisNeural)", "id-ID-GadisNeural"),
-        ("Ardi — Nam (id-ID-ArdiNeural)", "id-ID-ArdiNeural"),
-    ],
-    "hi": [
-        ("Swara — Nữ (hi-IN-SwaraNeural)", "hi-IN-SwaraNeural"),
-        ("Madhur — Nam (hi-IN-MadhurNeural)", "hi-IN-MadhurNeural"),
-    ],
-}
+def _load_tts_catalog() -> Dict[str, Any]:
+    if _CATALOG_PATH.is_file():
+        try:
+            return json.loads(_CATALOG_PATH.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("Không đọc được tts_catalog.json: %s", exc)
+    return {"edge_voices": [], "piper_voices": []}
+
+
+_CATALOG_DATA = _load_tts_catalog()
+
+# Build complete Edge-TTS voice lists (all 322+ voices)
+ALL_EDGE_VOICES: List[Tuple[str, str]] = []
+EDGE_VOICES_BY_LANG: Dict[str, List[Tuple[str, str]]] = {}
+
+for _ev in _CATALOG_DATA.get("edge_voices", []):
+    _sn = str(_ev.get("short_name") or "").strip()
+    _lbl = str(_ev.get("label") or _sn).strip()
+    _lang = str(_ev.get("lang") or "").strip().lower()
+    if _sn:
+        ALL_EDGE_VOICES.append((_lbl, _sn))
+        if _lang:
+            EDGE_VOICES_BY_LANG.setdefault(_lang, []).append((_lbl, _sn))
+
+if not ALL_EDGE_VOICES:
+    EDGE_VOICES_BY_LANG = {
+        "vi": [
+            ("[vi-VN] HoaiMy — Nữ (Vietnamese) [vi-VN-HoaiMyNeural]", "vi-VN-HoaiMyNeural"),
+            ("[vi-VN] NamMinh — Nam (Vietnamese) [vi-VN-NamMinhNeural]", "vi-VN-NamMinhNeural"),
+        ],
+        "en": [
+            ("[en-US] Aria — Nữ (English) [en-US-AriaNeural]", "en-US-AriaNeural"),
+            ("[en-US] Jenny — Nữ (English) [en-US-JennyNeural]", "en-US-JennyNeural"),
+            ("[en-US] Guy — Nam (English) [en-US-GuyNeural]", "en-US-GuyNeural"),
+        ],
+    }
+    for _lst in EDGE_VOICES_BY_LANG.values():
+        ALL_EDGE_VOICES.extend(_lst)
+
+# Build complete PiperTTS voice lists (all 180+ voice models)
+ALL_PIPER_MODELS: List[Dict[str, Any]] = list(_CATALOG_DATA.get("piper_voices", []))
+PIPER_VOICES_BY_LANG: Dict[str, List[Tuple[str, str]]] = {}
+
+for _pv in ALL_PIPER_MODELS:
+    _key = str(_pv.get("key") or "").strip()
+    _lang = str(_pv.get("lang") or "").strip().lower()
+    _native = str(_pv.get("name_native") or _lang).strip()
+    _name = str(_pv.get("name") or _key).strip()
+    _qual = str(_pv.get("quality") or "medium").strip()
+    _size = _pv.get("size_mb", 60)
+    if _key:
+        _disp = f"[{_pv.get('locale', _lang)}] {_name} ({_qual} · ~{_size}MB · {_native}) [{_key}]"
+        PIPER_VOICES_BY_LANG.setdefault(_lang, []).append((_disp, _key))
+        if _lang not in PIPER_DEFAULT_VOICES:
+            PIPER_DEFAULT_VOICES[_lang] = _key
+
+if not PIPER_VOICES_BY_LANG:
+    PIPER_VOICES_BY_LANG = {
+        "vi": [
+            ("[vi_VN] vais1000 (medium · ~60MB · Tiếng Việt) [vi_VN-vais1000-medium]", "vi_VN-vais1000-medium"),
+            ("[vi_VN] 25hours_single (low · ~60MB · Tiếng Việt) [vi_VN-25hours_single-low]", "vi_VN-25hours_single-low"),
+            ("[vi_VN] vivos (x_low · ~29MB · Tiếng Việt) [vi_VN-vivos-x_low]", "vi_VN-vivos-x_low"),
+        ],
+        "en": [
+            ("[en_US] lessac (medium · ~60MB · English) [en_US-lessac-medium]", "en_US-lessac-medium"),
+            ("[en_US] amy (medium · ~60MB · English) [en_US-amy-medium]", "en_US-amy-medium"),
+        ],
+    }
+
+
+def get_edge_voices_for_language(language: str = "") -> List[Tuple[str, str]]:
+    """Return all Edge-TTS voices for the given language code, or all voices if empty/unknown."""
+    raw = str(language or "").strip().lower()
+    if not raw:
+        return list(ALL_EDGE_VOICES)
+    primary = raw.replace("_", "-").split("-", 1)[0]
+    matched = EDGE_VOICES_BY_LANG.get(primary)
+    if matched:
+        return list(matched)
+    code = normalize_language(raw, "")
+    if code and code in EDGE_VOICES_BY_LANG:
+        return list(EDGE_VOICES_BY_LANG[code])
+    return list(ALL_EDGE_VOICES)
 
 H2M_DEFAULT_VOICES: List[Tuple[str, str]] = [
     ("Hải Đăng · Bắc (Nam)", "Hải Đăng"),

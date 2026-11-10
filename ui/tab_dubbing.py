@@ -56,6 +56,7 @@ from core.piper_tts_engine import (
     PIPER_DEFAULT_VOICES,
     PIPER_VOICES_BY_LANG,
     PiperTTSEngine,
+    get_edge_voices_for_language,
     resolve_tts_engine_for_language,
     resolve_voice_for_language_engine,
 )
@@ -580,7 +581,7 @@ class DubbingTab(QWidget):
                     "",
                 )
         else:
-            voices = EDGE_VOICES_BY_LANG.get(lang_code) or EDGE_VOICES_BY_LANG.get("en", [])
+            voices = get_edge_voices_for_language(lang_code)
             for label, val in voices:
                 voice_combo.addItem(label, val)
 

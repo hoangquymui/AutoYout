@@ -27,7 +27,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.edge_tts_engine import EdgeTTSEngine
 from core.languages import language_choices, normalize_language
+from core.piper_tts_engine import ALL_EDGE_VOICES, H2M_DEFAULT_VOICES, PiperTTSEngine
 from core.settings import ROOT, default_h2mtts_path, normalize_h2mtts_path
 from core.tts_engine import SynthesisCancelled, TTSEngine
 from ui.components.audio_player import AudioPreview
@@ -47,29 +49,60 @@ class _PreviewWorker(QThread):
     failed = Signal(str)
     cancelled = Signal()
 
-    def __init__(self, settings: Dict[str, Any], text: str, parent=None) -> None:
+    def __init__(
+        self,
+        settings: Dict[str, Any],
+        text: str,
+        provider: str = "h2mtts",
+        voice: str = "",
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self._settings = settings
         self._text = text
+        self._provider = provider
+        self._voice = voice
         self._cancel = threading.Event()
 
     def cancel(self) -> None:
         self._cancel.set()
 
     def run(self) -> None:
-        engine = TTSEngine(self._settings)
+        if self._provider == "edge":
+            engine = EdgeTTSEngine(self._settings)
+        elif self._provider == "piper":
+            engine = PiperTTSEngine(self._settings)
+        else:
+            engine = TTSEngine(self._settings)
         try:
             out_dir = Path(tempfile.gettempdir()) / "AutoYout" / "preview"
             out_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now().strftime("%H%M%S_%f")
             out_path = out_dir / f"preview_{stamp}.mp3"
-            engine.synthesize(
-                self._text,
-                out_path,
-                progress_cb=self.progress.emit,
-                message_cb=self.message.emit,
-                cancel_cb=self._cancel.is_set,
-            )
+            if self._provider in ("edge", "piper"):
+                lang = "vi"
+                if self._voice and "-" in self._voice and "_" not in self._voice:
+                    lang = self._voice.split("-")[0].lower()
+                elif self._voice and "_" in self._voice:
+                    lang = self._voice.split("_")[0].lower()
+                engine.synthesize(
+                    self._text,
+                    out_path,
+                    language=lang,
+                    voice=self._voice or None,
+                    progress_cb=self.progress.emit,
+                    message_cb=self.message.emit,
+                    cancel_cb=self._cancel.is_set,
+                )
+            else:
+                engine.synthesize(
+                    self._text,
+                    out_path,
+                    voice=self._voice or None,
+                    progress_cb=self.progress.emit,
+                    message_cb=self.message.emit,
+                    cancel_cb=self._cancel.is_set,
+                )
             self.done.emit(str(out_path))
         except SynthesisCancelled:
             self.cancelled.emit()
@@ -104,7 +137,7 @@ class TTSConfigTab(QWidget):
         root.addWidget(
             PageHeader(
                 "Engine && giọng mặc định",
-                "Chọn model, giọng đọc, nhịp nghỉ và nghe thử trước khi lồng tiếng.",
+                "Chọn model, giọng đọc, thiết bị xử lý (CPU / GPU / Tự động), nhịp nghỉ và nghe thử.",
             )
         )
 
@@ -113,67 +146,36 @@ class TTSConfigTab(QWidget):
         root.addLayout(columns, 1)
 
         left = QVBoxLayout()
-        left.setSpacing(8)
+        left.setSpacing(10)
         columns.addLayout(left, 3)
 
-        model_box = QGroupBox("Engine H2MTTS")
-        model_form = QFormLayout(model_box)
-        model_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        model_form.setHorizontalSpacing(12)
-        model_form.setVerticalSpacing(5)
-        self.h2m_edit = QLineEdit()
+        # Hidden compatibility widgets for settings roundtrip
+        self.h2m_edit = QLineEdit(self)
         self.h2m_edit.setPlaceholderText(default_h2mtts_path())
-        self.h2m_edit.textChanged.connect(lambda _: self.changed.emit())
-        h2m_row = QHBoxLayout()
-        h2m_row.setSpacing(6)
-        h2m_row.addWidget(self.h2m_edit, 1)
-        browse_h2m = icon_button(
-            "folder", "Chọn thư mục H2MTTS…", role="muted", size=15, side=30
-        )
-        browse_h2m.clicked.connect(self._browse_h2m)
-        reload_btn = QPushButton("Nạp lại giọng")
-        set_icon(reload_btn, "refresh", "accent", 14)
-        reload_btn.clicked.connect(self.engine_reload_requested.emit)
-        h2m_row.addWidget(browse_h2m)
-        h2m_row.addWidget(reload_btn)
-        model_form.addRow("Thư mục H2MTTS", self._wrap(h2m_row))
-
-        self.engine_combo = QComboBox()
+        self.h2m_edit.setVisible(False)
+        self.engine_combo = QComboBox(self)
         self.engine_combo.addItem("v3 Turbo — chất lượng cao (48 kHz)", "turbo")
-        model_form.addRow("Model", self.engine_combo)
-
-        self.backend_combo = QComboBox()
-        self.backend_combo.addItem("Tự động (GPU nếu có)", "auto")
-        self.backend_combo.addItem("GPU CUDA (PyTorch)", "gpu")
-        self.backend_combo.addItem("CPU / ONNX Runtime", "onnx")
-        model_form.addRow("Backend", self.backend_combo)
-
-        self.language_combo = QComboBox()
+        self.engine_combo.setVisible(False)
+        self.language_combo = QComboBox(self)
         for code, label in language_choices():
             self.language_combo.addItem(label, code)
-        self.language_combo.setToolTip(
-            "Ngôn ngữ mặc định cho file mới. Mỗi file vẫn có thể ghi đè bằng "
-            "hậu tố tên file (_en, _zh…) hoặc trường 'language' trong JSON."
-        )
-        model_form.addRow("Ngôn ngữ mặc định", self.language_combo)
-        self.edge_hint = QLabel(
-            "Tiếng Việt tổng hợp bằng H2MTTS (offline). Ngôn ngữ khác dùng "
-            "edge-tts (cần mạng, giọng mặc định lấy từ registry ngôn ngữ)."
-        )
-        self.edge_hint.setObjectName("MutedLabel")
-        self.edge_hint.setWordWrap(True)
-        model_form.addRow("", self.edge_hint)
+        self.language_combo.setVisible(False)
+        self.edge_hint = QLabel("", self)
+        self.edge_hint.setVisible(False)
 
-        self.model_status = QLabel("Chưa nạp thông tin H2MTTS.")
-        self.model_status.setObjectName("MutedLabel")
-        self.model_status.setWordWrap(True)
-        model_form.addRow("", self.model_status)
-        left.addWidget(model_box)
+        # ── 1. Khung "Model" (Chọn Model & Giọng đọc) ────────────────────────
+        self.model_box = QGroupBox("Model")
+        model_form = QFormLayout(self.model_box)
+        model_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        model_form.setHorizontalSpacing(12)
+        model_form.setVerticalSpacing(8)
 
-        voice_box = QGroupBox("Giọng đọc && nhịp đọc")
-        voice_form = QGridLayout(voice_box)
-        voice_form.setHorizontalSpacing(12)
-        voice_form.setVerticalSpacing(5)
+        self.provider_combo = QComboBox()
+        self.provider_combo.addItem("H2MTTS (v3 Turbo — Giọng Việt Offline)", "h2mtts")
+        self.provider_combo.addItem("EdgeTTS (Đa ngôn ngữ — Miễn phí)", "edge")
+        self.provider_combo.addItem("PiperTTS (Đa ngôn ngữ — Siêu nhẹ Offline)", "piper")
+        self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
+        model_form.addRow("Model", self.provider_combo)
 
         self.region_combo = QComboBox()
         self.region_combo.addItem("Tất cả vùng miền", "")
@@ -181,53 +183,86 @@ class TTSConfigTab(QWidget):
         self.region_combo.addItem("Miền Trung", "Trung")
         self.region_combo.addItem("Miền Nam", "Nam")
         self.region_combo.currentIndexChanged.connect(self._refresh_voice_list)
-        voice_form.addWidget(self._caption("Vùng miền"), 0, 0)
-        voice_form.addWidget(self.region_combo, 0, 1, 1, 3)
+        self.region_label = QLabel("Vùng miền")
+        model_form.addRow(self.region_label, self.region_combo)
 
+        voice_row = QHBoxLayout()
+        voice_row.setSpacing(6)
         self.voice_combo = QComboBox()
-        self.voice_combo.setMinimumWidth(280)
-        voice_form.addWidget(self._caption("Giọng đọc"), 1, 0)
-        voice_form.addWidget(self.voice_combo, 1, 1, 1, 3)
+        self.voice_combo.setMinimumWidth(260)
+        self.voice_combo.currentIndexChanged.connect(lambda _: self._update_preview_btn())
+        reload_btn = QPushButton("Nạp lại giọng")
+        set_icon(reload_btn, "refresh", "accent", 14)
+        reload_btn.clicked.connect(self._on_reload_voices_clicked)
+        voice_row.addWidget(self.voice_combo, 1)
+        voice_row.addWidget(reload_btn)
+        model_form.addRow("Giọng đọc", self._wrap(voice_row))
+
+        self.model_status = QLabel("Chưa nạp thông tin model.")
+        self.model_status.setObjectName("MutedLabel")
+        self.model_status.setWordWrap(True)
+        model_form.addRow("", self.model_status)
+        left.addWidget(self.model_box)
+
+        # ── 2. Khung "Chạy với" (Chọn Tự động / GPU / CPU) ───────────────────
+        self.run_with_box = QGroupBox("Chạy với")
+        run_form = QFormLayout(self.run_with_box)
+        run_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        run_form.setHorizontalSpacing(12)
+        run_form.setVerticalSpacing(8)
+
+        self.backend_combo = QComboBox()
+        self.backend_combo.addItem("Tự động (Ưu tiên GPU nếu có)", "auto")
+        self.backend_combo.addItem("GPU (CUDA / Tăng tốc phần cứng)", "gpu")
+        self.backend_combo.addItem("CPU (ONNX Runtime)", "onnx")
+        run_form.addRow("Thiết bị chạy", self.backend_combo)
+        left.addWidget(self.run_with_box)
+
+        # ── 3. Khung "Nhịp đọc" (Tốc độ, Nghỉ câu, Nghỉ đoạn, Bitrate) ──────
+        self.pacing_box = QGroupBox("Nhịp đọc")
+        voice_form = QGridLayout(self.pacing_box)
+        voice_form.setHorizontalSpacing(12)
+        voice_form.setVerticalSpacing(6)
 
         self.speed_spin = QDoubleSpinBox()
         self.speed_spin.setRange(0.5, 2.0)
         self.speed_spin.setSingleStep(0.05)
         self.speed_spin.setDecimals(2)
         self.speed_spin.setSuffix(" x")
-        voice_form.addWidget(self._caption("Tốc độ"), 2, 0)
-        voice_form.addWidget(self.speed_spin, 2, 1)
+        voice_form.addWidget(self._caption("Tốc độ"), 0, 0)
+        voice_form.addWidget(self.speed_spin, 0, 1)
 
         self.gap_sentence_spin = QDoubleSpinBox()
         self.gap_sentence_spin.setRange(0.0, 3.0)
         self.gap_sentence_spin.setSingleStep(0.1)
         self.gap_sentence_spin.setDecimals(1)
         self.gap_sentence_spin.setSuffix(" giây")
-        voice_form.addWidget(self._caption("Nghỉ giữa câu"), 2, 2)
-        voice_form.addWidget(self.gap_sentence_spin, 2, 3)
+        voice_form.addWidget(self._caption("Nghỉ giữa câu"), 0, 2)
+        voice_form.addWidget(self.gap_sentence_spin, 0, 3)
 
         self.gap_paragraph_spin = QDoubleSpinBox()
         self.gap_paragraph_spin.setRange(0.0, 5.0)
         self.gap_paragraph_spin.setSingleStep(0.1)
         self.gap_paragraph_spin.setDecimals(1)
         self.gap_paragraph_spin.setSuffix(" giây")
-        voice_form.addWidget(self._caption("Nghỉ giữa đoạn"), 3, 0)
-        voice_form.addWidget(self.gap_paragraph_spin, 3, 1)
+        voice_form.addWidget(self._caption("Nghỉ giữa đoạn"), 1, 0)
+        voice_form.addWidget(self.gap_paragraph_spin, 1, 1)
 
         self.max_chars_spin = QSpinBox()
         self.max_chars_spin.setRange(200, 400)
         self.max_chars_spin.setSingleStep(10)
         self.max_chars_spin.setSuffix(" ký tự")
-        voice_form.addWidget(self._caption("Độ dài đoạn TTS"), 3, 2)
-        voice_form.addWidget(self.max_chars_spin, 3, 3)
+        voice_form.addWidget(self._caption("Độ dài đoạn TTS"), 1, 2)
+        voice_form.addWidget(self.max_chars_spin, 1, 3)
 
         self.bitrate_combo = QComboBox()
         for label, value in _BITRATES:
             self.bitrate_combo.addItem(label, value)
-        voice_form.addWidget(self._caption("Bitrate MP3"), 4, 0)
-        voice_form.addWidget(self.bitrate_combo, 4, 1, 1, 3)
+        voice_form.addWidget(self._caption("Bitrate MP3"), 2, 0)
+        voice_form.addWidget(self.bitrate_combo, 2, 1, 1, 3)
         voice_form.setColumnStretch(1, 1)
         voice_form.setColumnStretch(3, 1)
-        left.addWidget(voice_box)
+        left.addWidget(self.pacing_box)
         left.addStretch(1)
 
         right = QVBoxLayout()
@@ -294,6 +329,12 @@ class TTSConfigTab(QWidget):
         tts = settings.get("tts") or {}
         raw_h2m = normalize_h2mtts_path(str((settings.get("paths") or {}).get("h2mtts") or "").strip())
         self.h2m_edit.setText(raw_h2m)
+        provider = str(tts.get("provider") or "h2mtts").strip().lower()
+        if provider not in ("h2mtts", "edge", "piper"):
+            provider = "h2mtts"
+        self.provider_combo.blockSignals(True)
+        self._set_combo(self.provider_combo, provider)
+        self.provider_combo.blockSignals(False)
         self._set_combo(self.engine_combo, tts.get("engine", "turbo"))
         self._set_combo(self.backend_combo, tts.get("backend", "auto"))
         self._set_combo(self.language_combo,
@@ -304,9 +345,8 @@ class TTSConfigTab(QWidget):
         self.max_chars_spin.setValue(int(tts.get("max_chars", 350) or 350))
         self._set_combo(self.bitrate_combo, tts.get("bitrate", "192k"))
         self.preview_edit.setPlainText(str(tts.get("preview_text") or ""))
-        self._on_engine_changed()
-        if self._engine is not None:
-            self._select_voice(str(tts.get("voice") or ""))
+        self._refresh_voice_list()
+        self._select_voice(str(tts.get("voice") or ""))
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         paths = settings.setdefault("paths", {})
@@ -324,6 +364,7 @@ class TTSConfigTab(QWidget):
         except Exception:
             paths["h2mtts"] = h2_norm
         tts = settings.setdefault("tts", {})
+        tts["provider"] = self.provider_combo.currentData() or "h2mtts"
         tts["engine"] = self.engine_combo.currentData() or "turbo"
         tts["backend"] = self.backend_combo.currentData() or "auto"
         tts["language"] = self.language_combo.currentData() or "vi"
@@ -350,67 +391,106 @@ class TTSConfigTab(QWidget):
 
     def set_engine(self, engine: Optional[TTSEngine]) -> None:
         self._engine = engine
-        if engine is None:
-            self.model_status.setText("Chưa nạp được engine TTS.")
-            paint_status(self.model_status, "muted")
-            self._refresh_voice_list()
-            return
-        layout = engine.layout
-        if not layout.valid:
-            self.model_status.setText(f"Không thấy thư mục H2MTTS: {layout.root}")
-            paint_status(self.model_status, "error")
-        else:
-            missing = layout.missing()
-            try:
-                turbo = len(engine.voices("turbo"))
-            except Exception as exc:
-                turbo = 0
-                missing = missing + [f"Lỗi đọc voice-packs: {exc}"]
-            if missing:
-                self.model_status.setText(
-                    f"{turbo} giọng Turbo · thiếu {len(missing)} thành phần."
-                )
-                paint_status(self.model_status, "warning")
-                self.model_status.setToolTip("\n".join(missing))
-            else:
-                self.model_status.setText(
-                    f"{turbo} giọng Turbo · model đầy đủ."
-                )
-                paint_status(self.model_status, "success")
-                self.model_status.setToolTip(str(layout.root))
         self._refresh_voice_list()
 
     def _on_engine_changed(self) -> None:
         self._refresh_voice_list()
 
+    def _on_provider_changed(self) -> None:
+        self._refresh_voice_list()
+        self.changed.emit()
+
+    def _on_reload_voices_clicked(self) -> None:
+        provider = str(self.provider_combo.currentData() or "h2mtts")
+        if provider == "h2mtts":
+            self.engine_reload_requested.emit()
+        self._refresh_voice_list()
+
+    def _update_preview_btn(self) -> None:
+        self.preview_button.setEnabled(self._can_preview())
+
     def _refresh_voice_list(self) -> None:
-        if self._engine is None:
-            self.voice_combo.blockSignals(True)
-            self.voice_combo.clear()
-            self.voice_combo.addItem("— Chưa nạp được danh sách giọng —", "")
-            self.voice_combo.blockSignals(False)
-            return
-        engine_key = self.engine_combo.currentData() or "turbo"
-        region = self.region_combo.currentData() or ""
+        provider = str(self.provider_combo.currentData() or "h2mtts")
+        is_h2m = provider == "h2mtts"
+        self.region_label.setVisible(is_h2m)
+        self.region_combo.setVisible(is_h2m)
+
         current = self.voice_combo.currentData()
-        try:
-            voices = self._engine.voices(engine_key)
-        except Exception as exc:
-            logger.error("Không đọc được voice-packs: %s", exc)
-            voices = []
-        filtered = [voice for voice in voices if not region or voice.region == region]
         self.voice_combo.blockSignals(True)
         self.voice_combo.clear()
-        for voice in filtered:
-            suffix = f" · {voice.region}" if voice.region else ""
-            self.voice_combo.addItem(f"{voice.name}{suffix}", voice.name)
+
+        if provider == "edge":
+            for label, vid in ALL_EDGE_VOICES:
+                self.voice_combo.addItem(label, vid)
+            self.model_status.setText(
+                f"Đã nạp {len(ALL_EDGE_VOICES)} giọng EdgeTTS đa ngôn ngữ."
+            )
+            paint_status(self.model_status, "success")
+            self.model_status.setToolTip("EdgeTTS trực tuyến miễn phí (không cần cài model)")
+        elif provider == "piper":
+            p_eng = PiperTTSEngine(self._settings)
+            installed = p_eng.installed_voices()
+            if installed:
+                for v in installed:
+                    self.voice_combo.addItem(v.label, v.model_id)
+                self.model_status.setText(
+                    f"Đã nạp {len(installed)} giọng PiperTTS đã cài đặt ({p_eng.root})."
+                )
+                paint_status(self.model_status, "success")
+                self.model_status.setToolTip(str(p_eng.root))
+            else:
+                self.voice_combo.addItem("⚠ Chưa cài đặt PiperTTS / chưa tải model", "")
+                self.model_status.setText(
+                    "Chưa cài đặt PiperTTS hoặc chưa tải model giọng (Cài đặt → API → Giọng đọc → PiperTTS)."
+                )
+                paint_status(self.model_status, "warning")
+                self.model_status.setToolTip(str(p_eng.root))
+        else:
+            # H2MTTS
+            if self._engine is None:
+                self.voice_combo.addItem("— Chưa nạp được danh sách giọng —", "")
+                self.model_status.setText("Chưa nạp được engine H2MTTS.")
+                paint_status(self.model_status, "muted")
+            else:
+                layout = self._engine.layout
+                engine_key = self.engine_combo.currentData() or "turbo"
+                region = self.region_combo.currentData() or ""
+                try:
+                    voices = self._engine.voices(engine_key)
+                except Exception as exc:
+                    logger.error("Không đọc được voice-packs: %s", exc)
+                    voices = []
+                filtered = [voice for voice in voices if not region or voice.region == region]
+                for voice in filtered:
+                    suffix = f" · {voice.region}" if voice.region else ""
+                    self.voice_combo.addItem(f"{voice.name}{suffix}", voice.name)
+                if not layout.valid:
+                    self.model_status.setText(f"Không thấy thư mục H2MTTS: {layout.root}")
+                    paint_status(self.model_status, "error")
+                else:
+                    missing = layout.missing()
+                    turbo = len(voices)
+                    if missing:
+                        self.model_status.setText(
+                            f"{turbo} giọng Turbo · thiếu {len(missing)} thành phần."
+                        )
+                        paint_status(self.model_status, "warning")
+                        self.model_status.setToolTip("\n".join(missing))
+                    else:
+                        self.model_status.setText(
+                            f"{turbo} giọng Turbo · model đầy đủ."
+                        )
+                        paint_status(self.model_status, "success")
+                        self.model_status.setToolTip(str(layout.root))
+
         self.voice_combo.blockSignals(False)
         preferred = current
         if not preferred and self._settings:
             preferred = str((self._settings.get("tts") or {}).get("voice") or "")
-        if not preferred:
-            preferred = self._engine.default_voice(engine_key)
-        self._select_voice(preferred)
+        if not preferred and provider == "h2mtts" and self._engine is not None:
+            preferred = self._engine.default_voice(self.engine_combo.currentData() or "turbo")
+        if preferred:
+            self._select_voice(preferred)
         if self.voice_combo.count() == 0:
             self.voice_combo.addItem("— Không có giọng phù hợp —", "")
         self.preview_button.setEnabled(self._can_preview())
@@ -480,13 +560,21 @@ class TTSConfigTab(QWidget):
         if len(text) > 600:
             text = text[:600]
             self.preview_status.setText("Đoạn nghe thử đã được rút còn 600 ký tự.")
-        if not self.voice_combo.currentData():
+        voice_data = str(self.voice_combo.currentData() or "")
+        provider = str(self.provider_combo.currentData() or "h2mtts")
+        if not voice_data:
             self.preview_status.setText("Chưa có giọng đọc khả dụng.")
             paint_status(self.preview_status, "warning")
             return
         snapshot = copy.deepcopy(self._settings)
         self.apply_to(snapshot)
-        self._worker = _PreviewWorker(snapshot, text, self)
+        self._worker = _PreviewWorker(
+            snapshot,
+            text,
+            self,
+            provider=provider,
+            voice=voice_data,
+        )
         self._worker.progress.connect(self._on_preview_progress)
         self._worker.message.connect(self._on_preview_message)
         self._worker.done.connect(self._on_preview_done)
@@ -499,7 +587,7 @@ class TTSConfigTab(QWidget):
         self.preview_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.busy_changed.emit(True)
-        logger.info("Bắt đầu nghe thử giọng %s", self.voice_combo.currentData())
+        logger.info("Bắt đầu nghe thử giọng %s (%s)", voice_data, provider)
         self._worker.start()
 
     def cancel_preview(self) -> None:

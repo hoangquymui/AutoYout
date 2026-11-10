@@ -54,6 +54,7 @@ from utils.logger import get_logger
 logger = get_logger("ui.settings")
 
 from core.ai_client import GEMINI_TEXT_MODELS
+from core.piper_tts_engine import ALL_EDGE_VOICES, ALL_PIPER_MODELS
 
 DEFAULT_CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID", "")
 DEFAULT_CF_API_TOKEN = os.environ.get("CF_API_TOKEN", "")
@@ -82,25 +83,7 @@ CLOUDFLARE_TEXT_MODELS: List[Tuple[str, str]] = [
     ("Gemma 7B IT", "@cf/google/gemma-7b-it"),
 ]
 
-EDGE_MULTILANG_VOICES: List[Tuple[str, str]] = [
-    ("🇻🇳 Tiếng Việt - Hoài My (Nữ)", "vi-VN-HoaiMyNeural"),
-    ("🇻🇳 Tiếng Việt - Nam Minh (Nam)", "vi-VN-NamMinhNeural"),
-    ("🇺🇸 Tiếng Anh (Mỹ) - Jenny (Nữ)", "en-US-JennyNeural"),
-    ("🇺🇸 Tiếng Anh (Mỹ) - Guy (Nam)", "en-US-GuyNeural"),
-    ("🇬🇧 Tiếng Anh (Anh) - Sonia (Nữ)", "en-GB-SoniaNeural"),
-    ("🇨🇳 Tiếng Trung - Xiaoxiao (Nữ)", "zh-CN-XiaoxiaoNeural"),
-    ("🇨🇳 Tiếng Trung - Yunxi (Nam)", "zh-CN-YunxiNeural"),
-    ("🇯🇵 Tiếng Nhật - Nanami (Nữ)", "ja-JP-NanamiNeural"),
-    ("🇯🇵 Tiếng Nhật - Keita (Nam)", "ja-JP-KeitaNeural"),
-    ("🇰🇷 Tiếng Hàn - SunHi (Nữ)", "ko-KR-SunHiNeural"),
-    ("🇰🇷 Tiếng Hàn - InJoon (Nam)", "ko-KR-InJoonNeural"),
-    ("🇫🇷 Tiếng Pháp - Denise (Nữ)", "fr-FR-DeniseNeural"),
-    ("🇪🇸 Tiếng Tây Ban Nha - Elvira (Nữ)", "es-ES-ElviraNeural"),
-    ("🇹🇭 Tiếng Thái - Premwadee (Nữ)", "th-TH-PremwadeeNeural"),
-    ("🇮🇩 Tiếng Indo - Gadis (Nữ)", "id-ID-GadisNeural"),
-    ("🇩🇪 Tiếng Đức - Katja (Nữ)", "de-DE-KatjaNeural"),
-    ("🇷🇺 Tiếng Nga - Svetlana (Nữ)", "ru-RU-SvetlanaNeural"),
-]
+EDGE_MULTILANG_VOICES: List[Tuple[str, str]] = list(ALL_EDGE_VOICES)
 
 
 def detect_hardware(h2mtts_path: str = "") -> Dict[str, Any]:
@@ -1802,74 +1785,76 @@ class H2MTTSCard(QFrame):
                 )
 
 
-# ── PiperTTS Model Packages ──────────────────────────────────────────────────
-PIPER_PACKAGES: List[Dict[str, Any]] = [
-    {
-        "id": "piper_runtime",
-        "name": "Piper TTS Engine (Windows x64)",
-        "tag": "Bắt buộc · Runtime",
-        "tag_color": theme.ACCENT,
-        "tag_bg": theme.SURFACE_RAISED,
-        "url": "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip",
-        "is_zip_url": True,
-        "size": "~20 MB",
-        "desc": "Bộ thực thi Piper TTS C++ ONNX siêu tốc (piper.exe + espeak-ng-data).",
-        "target_subpath": ".",
-        "check_files": ["piper.exe", "piper/piper.exe"],
-        "core": True,
-    },
-    {
-        "id": "piper_vi_vais1000",
-        "name": "Giọng Tiếng Việt – VAIS1000 (Medium)",
-        "tag": "Khuyên dùng · Tiếng Việt",
-        "tag_color": theme.SUCCESS,
-        "tag_bg": theme.SURFACE_RAISED,
-        "repo": "rhasspy/piper-voices",
-        "files": [
-            ("vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium.onnx", "models/vi_VN-vais1000-medium.onnx"),
-            ("vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium.onnx.json", "models/vi_VN-vais1000-medium.onnx.json"),
-        ],
-        "size": "~63 MB",
-        "desc": "Model giọng đọc tiếng Việt tự nhiên VAIS1000 chất lượng Medium.",
-        "target_subpath": "models",
-        "check_files": ["vi_VN-vais1000-medium.onnx"],
-        "core": True,
-    },
-    {
-        "id": "piper_en_lessac",
-        "name": "Giọng Tiếng Anh – Lessac (US Medium)",
-        "tag": "Khuyên dùng · English",
-        "tag_color": theme.BLUE,
-        "tag_bg": theme.SURFACE_RAISED,
-        "repo": "rhasspy/piper-voices",
-        "files": [
-            ("en/en_US/lessac/medium/en_US-lessac-medium.onnx", "models/en_US-lessac-medium.onnx"),
-            ("en/en_US/lessac/medium/en_US-lessac-medium.onnx.json", "models/en_US-lessac-medium.onnx.json"),
-        ],
-        "size": "~63 MB",
-        "desc": "Model giọng đọc tiếng Anh Mỹ (Lessac) chất lượng cao.",
-        "target_subpath": "models",
-        "check_files": ["en_US-lessac-medium.onnx"],
-        "core": True,
-    },
-    {
-        "id": "piper_zh_huayan",
-        "name": "Giọng Tiếng Trung – Huayan (Medium)",
-        "tag": "Đa ngôn ngữ · 中文",
-        "tag_color": theme.WARNING,
-        "tag_bg": theme.SURFACE_RAISED,
-        "repo": "rhasspy/piper-voices",
-        "files": [
-            ("zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx", "models/zh_CN-huayan-medium.onnx"),
-            ("zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx.json", "models/zh_CN-huayan-medium.onnx.json"),
-        ],
-        "size": "~63 MB",
-        "desc": "Model giọng đọc tiếng Trung phổ thông (zh_CN Huayan).",
-        "target_subpath": "models",
-        "check_files": ["zh_CN-huayan-medium.onnx"],
-        "core": False,
-    },
-]
+# ── PiperTTS Model Packages (Runtime + Full Catalog of 180+ Voices) ──────────
+def _build_piper_packages() -> List[Dict[str, Any]]:
+    pkgs: List[Dict[str, Any]] = [
+        {
+            "id": "piper_runtime",
+            "name": "Piper TTS Engine (Windows x64)",
+            "tag": "Bắt buộc · Runtime",
+            "tag_color": theme.ACCENT,
+            "tag_bg": theme.SURFACE_RAISED,
+            "url": "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip",
+            "is_zip_url": True,
+            "size": "~20 MB",
+            "desc": "Bộ thực thi Piper TTS C++ ONNX siêu tốc (piper.exe + espeak-ng-data).",
+            "target_subpath": ".",
+            "check_files": ["piper.exe", "piper/piper.exe"],
+            "core": True,
+        }
+    ]
+    core_keys = {"vi_VN-vais1000-medium", "en_US-lessac-medium"}
+    for m in ALL_PIPER_MODELS:
+        key = str(m.get("key") or "").strip()
+        onnx_rel = str(m.get("onnx_rel") or "").strip()
+        json_rel = str(m.get("json_rel") or "").strip()
+        if not key or not onnx_rel:
+            continue
+        lang_code = str(m.get("lang") or "").lower()
+        locale = str(m.get("locale") or lang_code)
+        native = str(m.get("name_native") or lang_code)
+        en_name = str(m.get("name_english") or "")
+        country = str(m.get("country") or "")
+        quality = str(m.get("quality") or "medium")
+        speakers = int(m.get("num_speakers") or 1)
+        size_mb = m.get("size_mb", 60)
+        is_core = key in core_keys
+
+        if is_core:
+            tag_color = theme.SUCCESS
+            tag_text = f"Khuyên dùng · {native} ({locale})"
+        elif lang_code in ("vi", "en", "zh", "fr", "es", "de", "ru"):
+            tag_color = theme.BLUE
+            tag_text = f"{native} ({locale})"
+        else:
+            tag_color = theme.TEXT_MUTED
+            tag_text = f"{native} ({locale})"
+
+        files = [(onnx_rel, f"models/{key}.onnx")]
+        if json_rel:
+            files.append((json_rel, f"models/{key}.onnx.json"))
+
+        spk_str = f" · {speakers} giọng" if speakers > 1 else ""
+        pkgs.append(
+            {
+                "id": f"piper_{key}",
+                "name": f"[{locale}] {m.get('name', key)} ({quality.capitalize()}) — {native}",
+                "tag": tag_text,
+                "tag_color": tag_color,
+                "tag_bg": theme.SURFACE_RAISED,
+                "repo": "rhasspy/piper-voices",
+                "files": files,
+                "size": f"~{size_mb} MB",
+                "desc": f"Model Piper ONNX: {key} ({en_name} - {country}{spk_str}).",
+                "target_subpath": "models",
+                "check_files": [f"{key}.onnx", f"voices/{lang_code}/{key}.onnx"],
+                "core": is_core,
+            }
+        )
+    return pkgs
+
+
+PIPER_PACKAGES: List[Dict[str, Any]] = _build_piper_packages()
 
 
 class PiperDownloadWorker(QThread):
@@ -2089,7 +2074,13 @@ class PiperTTSCard(QFrame):
         self.btn_check_engine.clicked.connect(self.check_packages_status)
         btn_bar.addWidget(self.btn_check_engine)
 
-        btn_bar.addStretch(1)
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("🔍 Tìm model / ngôn ngữ Piper (vd: vi, en, lessac, vais1000, zh, fr, de)...")
+        self.search_edit.setClearButtonEnabled(True)
+        self.search_edit.setMinimumWidth(260)
+        self.search_edit.textChanged.connect(self._filter_packages)
+        btn_bar.addWidget(self.search_edit, 1)
+
         dl_layout.addLayout(btn_bar)
 
         self.progress_container = QWidget()
@@ -2117,6 +2108,16 @@ class PiperTTSCard(QFrame):
 
         self.progress_container.setVisible(False)
         dl_layout.addWidget(self.progress_container)
+
+        self.pkg_scroll = QScrollArea()
+        self.pkg_scroll.setWidgetResizable(True)
+        self.pkg_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.pkg_scroll.setMinimumHeight(320)
+        self.pkg_scroll.setMaximumHeight(420)
+        self.pkg_list_host = QWidget()
+        pkg_list_layout = QVBoxLayout(self.pkg_list_host)
+        pkg_list_layout.setContentsMargins(0, 0, 4, 0)
+        pkg_list_layout.setSpacing(8)
 
         for pkg in PIPER_PACKAGES:
             row_frame = QFrame()
@@ -2162,13 +2163,21 @@ class PiperTTSCard(QFrame):
             btn_dl.clicked.connect(lambda _, p=pkg: self._download_single_clicked(p))
             row_layout.addWidget(btn_dl)
 
+            search_blob = f"{pkg['id']} {pkg['name']} {pkg['tag']} {pkg['desc']}".lower()
             self.pkg_widgets[pkg["id"]] = {
                 "frame": row_frame,
+                "row": row_frame,
                 "status_badge": status_badge,
                 "btn_dl": btn_dl,
                 "pkg": pkg,
+                "search_blob": search_blob,
+                "state": None,
             }
-            dl_layout.addWidget(row_frame)
+            pkg_list_layout.addWidget(row_frame)
+
+        pkg_list_layout.addStretch(1)
+        self.pkg_scroll.setWidget(self.pkg_list_host)
+        dl_layout.addWidget(self.pkg_scroll)
 
         body_layout.addWidget(self.downloads_box)
 
@@ -2208,6 +2217,16 @@ class PiperTTSCard(QFrame):
         self.check_packages_status()
         self.changed.emit()
 
+    def _filter_packages(self, text: str) -> None:
+        query = str(text or "").strip().lower()
+        terms = [t for t in query.split() if t]
+        for pid, w in self.pkg_widgets.items():
+            if not terms or pid == "piper_runtime":
+                w["frame"].setVisible(True)
+            else:
+                blob = w.get("search_blob", "")
+                w["frame"].setVisible(all(t in blob for t in terms))
+
     @staticmethod
     def _is_pkg_installed(root: Path, pkg: Dict[str, Any]) -> bool:
         if not root.exists():
@@ -2230,39 +2249,46 @@ class PiperTTSCard(QFrame):
         all_core_ok = True
         has_any = False
         errors = errors or {}
+        root_exists = path.exists()
 
         for pkg in PIPER_PACKAGES:
             pkg_id = pkg["id"]
             w = self.pkg_widgets.get(pkg_id)
             if not w:
                 continue
-            is_installed = self._is_pkg_installed(path, pkg)
+            is_installed = root_exists and self._is_pkg_installed(path, pkg)
             if is_installed:
                 has_any = True
-                w["status_badge"].setText("✓ Đã có")
-                w["status_badge"].setStyleSheet(
-                    f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
-                    "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-                )
-                w["btn_dl"].setText("Tải lại")
+                if w.get("state") != "installed":
+                    w["state"] = "installed"
+                    w["status_badge"].setText("✓ Đã có")
+                    w["status_badge"].setStyleSheet(
+                        f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
+                        "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+                    )
+                    w["btn_dl"].setText("Tải lại")
             elif pkg_id in errors:
                 if pkg.get("core"):
                     all_core_ok = False
-                w["status_badge"].setText("Lỗi tải")
-                w["status_badge"].setStyleSheet(
-                    f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
-                    "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-                )
-                w["btn_dl"].setText("Thử lại")
+                if w.get("state") != "error":
+                    w["state"] = "error"
+                    w["status_badge"].setText("Lỗi tải")
+                    w["status_badge"].setStyleSheet(
+                        f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
+                        "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+                    )
+                    w["btn_dl"].setText("Thử lại")
             else:
                 if pkg.get("core"):
                     all_core_ok = False
-                w["status_badge"].setText("Chưa tải")
-                w["status_badge"].setStyleSheet(
-                    f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
-                    "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-                )
-                w["btn_dl"].setText("Tải về")
+                if w.get("state") != "missing":
+                    w["state"] = "missing"
+                    w["status_badge"].setText("Chưa tải")
+                    w["status_badge"].setStyleSheet(
+                        f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
+                        "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+                    )
+                    w["btn_dl"].setText("Tải về")
 
         if path.exists() and all_core_ok:
             self.status_badge.setText("Đã cài đủ")

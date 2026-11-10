@@ -472,8 +472,59 @@ def test_dubbing_language_subtab_and_routing(app, tmp_path: Path) -> None:
     assert fresh_dub.lang_engine_combos["en"].currentData() == "edge"
 
 
+def test_full_edge_piper_catalog_search_and_tts_config_tab(app, tmp_path: Path) -> None:
+    from core.piper_tts_engine import ALL_EDGE_VOICES, ALL_PIPER_MODELS
+    from ui.tab_settings import EDGE_MULTILANG_VOICES, PIPER_PACKAGES, PiperTTSCard
+    from ui.tab_tts import TTSConfigTab
 
+    # 1. Edge TTS full catalog (300+ voices)
+    assert len(ALL_EDGE_VOICES) >= 300
+    assert len(EDGE_MULTILANG_VOICES) >= 300
 
+    # 2. Piper TTS full catalog (180 models + 1 runtime) and live search next to 'Quét lại'
+    assert len(ALL_PIPER_MODELS) >= 150
+    assert len(PIPER_PACKAGES) >= 151
+    piper_card = PiperTTSCard()
+    assert hasattr(piper_card, "search_edit")
+    piper_card.search_edit.setText("vais1000")
+    visible_rows = [
+        pid for pid, w in piper_card.pkg_widgets.items()
+        if not w["row"].isHidden()
+    ]
+    assert "piper_runtime" in visible_rows
+    assert any("vais1000" in pid for pid in visible_rows)
+    assert len(visible_rows) < 10
 
+    piper_card.search_edit.setText("")
+    all_visible = [
+        pid for pid, w in piper_card.pkg_widgets.items()
+        if not w["row"].isHidden()
+    ]
+    assert len(all_visible) == len(PIPER_PACKAGES)
+
+    # 3. TTSConfigTab ("Engine & giọng") has Model, Chạy với, Nhịp đọc, Nghe thử giọng đọc
+    tts_tab = TTSConfigTab()
+    assert tts_tab.model_box.title() == "Model"
+    assert tts_tab.run_with_box.title() == "Chạy với"
+    assert tts_tab.pacing_box.title() == "Nhịp đọc"
+
+    # Check Model providers (H2MTTS, EdgeTTS, PiperTTS)
+    providers = [tts_tab.provider_combo.itemData(i) for i in range(tts_tab.provider_combo.count())]
+    assert providers == ["h2mtts", "edge", "piper"]
+
+    # Check Chạy với options (Tự động, GPU, CPU)
+    backends = [tts_tab.backend_combo.itemData(i) for i in range(tts_tab.backend_combo.count())]
+    assert backends == ["auto", "gpu", "onnx"]
+
+    # Switch to EdgeTTS -> populates all 322 Edge voices
+    tts_tab.provider_combo.setCurrentIndex(tts_tab.provider_combo.findData("edge"))
+    assert tts_tab.voice_combo.count() == len(ALL_EDGE_VOICES)
+    assert tts_tab.region_combo.isHidden()
+
+    # Switch to PiperTTS (empty dir) -> shows warning
+    tts_tab.load_from({"paths": {"piper": str(tmp_path / "empty_piper")}, "tts": {"provider": "piper", "backend": "gpu"}})
+    assert tts_tab.provider_combo.currentData() == "piper"
+    assert tts_tab.backend_combo.currentData() == "gpu"
+    assert "Chưa cài đặt" in tts_tab.voice_combo.currentText()
 
 
