@@ -15,8 +15,10 @@ from core.settings import (
     ROOT,
     default_f5tts_path,
     default_piper_path,
+    default_xtts_path,
     normalize_f5tts_path,
     normalize_piper_path,
+    normalize_xtts_path,
 )
 from core.text_processor import chunk_text
 from core.tts_engine import SynthesisCancelled, SynthResult, TTSError
@@ -219,9 +221,14 @@ F5_MODELS_CATALOG: List[Tuple[str, str]] = [
     ("F5-TTS Base (24kHz · Zero-Shot)", "F5TTS_Base"),
 ]
 
+XTTS_MODELS_CATALOG: List[Tuple[str, str]] = [
+    ("Coqui XTTS-v2 Multilingual (17+ ngôn ngữ · Zero-Shot)", "XTTS_v2_Base"),
+    ("viXTTS – Coqui XTTS-v2 Tiếng Việt (Zero-Shot)", "viXTTS"),
+]
+
 
 def resolve_tts_engine_for_language(settings: Optional[Dict[str, Any]], language: str) -> str:
-    """Return the configured TTS engine ID ('h2mtts', 'edge', 'piper', or 'f5tts') for a language."""
+    """Return the configured TTS engine ID ('h2mtts', 'edge', 'piper', 'f5tts', or 'xtts') for a language."""
     code = normalize_language(language)
     cfg = settings if isinstance(settings, dict) else {}
     tts_cfg = cfg.get("tts") if isinstance(cfg.get("tts"), dict) else {}
@@ -233,6 +240,8 @@ def resolve_tts_engine_for_language(settings: Optional[Dict[str, Any]], language
         return "piper"
     if chosen in ("f5tts", "f5", "e2tts", "f5-tts", "e2-tts"):
         return "f5tts"
+    if chosen in ("xtts", "xttsv2", "xtts-v2", "coqui", "coqui_xtts"):
+        return "xtts"
     if chosen in ("edge", "edgetts", "edge_tts"):
         return "edge"
     # Default: Vietnamese uses h2mtts, other languages use edge
@@ -260,6 +269,10 @@ def resolve_voice_for_language_engine(
         f5_voices = tts_cfg.get("f5_voices") if isinstance(tts_cfg.get("f5_voices"), dict) else {}
         default_f5 = "F5TTS_Vietnamese" if code == "vi" else "F5TTS_v1_Base"
         return str(f5_voices.get(code) or default_f5).strip()
+    if engine_id == "xtts":
+        xtts_voices = tts_cfg.get("xtts_voices") if isinstance(tts_cfg.get("xtts_voices"), dict) else {}
+        default_xtts = "viXTTS" if code == "vi" else "XTTS_v2_Base"
+        return str(xtts_voices.get(code) or default_xtts).strip()
     # edge
     edge_voices = tts_cfg.get("edge_voices") if isinstance(tts_cfg.get("edge_voices"), dict) else {}
     from core.languages import edge_voice
@@ -701,4 +714,155 @@ class F5TTSEngine:
             )
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+class XTTSEngine:
+    """Offline Coqui XTTS-v2 GPU engine for multilingual zero-shot voice synthesis."""
+
+    def __init__(self, settings: Optional[Dict[str, Any] | str | Path] = None) -> None:
+        if isinstance(settings, (str, Path)):
+            self.settings: Dict[str, Any] = {}
+            raw_xtts = str(settings).strip()
+            paths: Dict[str, Any] = {"xtts": raw_xtts}
+            tts: Dict[str, Any] = {}
+        elif isinstance(settings, dict):
+            self.settings = settings
+            paths = self.settings.get("paths") if isinstance(self.settings.get("paths"), dict) else {}
+            tts = self.settings.get("tts") if isinstance(self.settings.get("tts"), dict) else {}
+        else:
+            self.settings = {}
+            paths = {}
+            tts = {}
+        self.root = Path(normalize_xtts_path(paths.get("xtts") or default_xtts_path()))
+        self.ffmpeg = resolve_tool(str(paths.get("ffmpeg") or "ffmpeg"), "ffmpeg")
+        self.bitrate = str(tts.get("bitrate") or "192k")
+        try:
+            self.default_speed = float(tts.get("speed", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            self.default_speed = 1.0
+
+    def close(self) -> None:
+        pass
+
+    def installed_voices(self, language: str = "") -> List[Tuple[str, str]]:
+        """Return list of (label, model_id) actually installed inside XTTSv2 directory."""
+        if not self.root.is_dir():
+            return []
+        known = {mid: label for label, mid in XTTS_MODELS_CATALOG}
+        found_list: List[Tuple[str, str]] = []
+        seen: set[str] = set()
+        for f in self.root.rglob("*.pth"):
+            if not f.is_file() or f.name == "speakers_xtts.pth":
+                continue
+            parent_name = f.parent.name
+            mid = parent_name if parent_name in known else f.stem
+            if mid not in seen:
+                seen.add(mid)
+                found_list.append((known.get(mid, f"{mid} (Đã tải)"), mid))
+        return found_list
+
+    def check_ready(self, language: str = "") -> Tuple[bool, str]:
+        has_gpu, gpu_desc = detect_gpu_status()
+        if not has_gpu:
+            return (
+                False,
+                f"Coqui XTTS-v2 yêu cầu GPU NVIDIA (CUDA) để hoạt động ({gpu_desc}).",
+            )
+        voices = self.installed_voices(language)
+        if not voices:
+            return (
+                False,
+                f"Chưa cài đặt model Coqui XTTS-v2 trong thư mục '{self.root}'. "
+                "Vui lòng vào Cài đặt → API → Giọng đọc → Coqui XTTS-v2 để tải model.",
+            )
+        return True, f"Coqui XTTS-v2 đã sẵn sàng ({gpu_desc})."
+
+    def synthesize(
+        self,
+        text: str,
+        out_path: str | os.PathLike,
+        language: str = DEFAULT_LANGUAGE,
+        voice: Optional[str] = None,
+        speed: Optional[float] = None,
+        progress_cb: ProgressCb = None,
+        message_cb: MessageCb = None,
+        pause_cb: PauseCb = None,
+        cancel_cb: CancelCb = None,
+    ) -> SynthResult:
+        ok, reason = self.check_ready(language)
+        if not ok:
+            raise TTSError(reason)
+
+        clean_text = " ".join(str(text or "").split())
+        if not clean_text:
+            raise TTSError("Văn bản rỗng, không có gì để đọc.")
+
+        code = normalize_language(language)
+        chosen_model = (voice or ("viXTTS" if code == "vi" else "XTTS_v2_Base")).strip()
+        cli_bin = shutil.which("tts")
+        if not cli_bin:
+            raise TTSError(
+                "Chưa tìm thấy công cụ dòng lệnh 'tts' (coqui-tts). "
+                "Vui lòng cài đặt gói coqui-tts hoặc tải đầy đủ tài nguyên trong Cài đặt → API → Giọng đọc."
+            )
+
+        target = Path(out_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temp_dir = Path(tempfile.mkdtemp(prefix="ay_xtts_", dir=str(target.parent)))
+        try:
+            out_wav = temp_dir / "xtts_out.wav"
+            model_dir = self.root / "models" / chosen_model
+            cmd = [
+                cli_bin,
+                "--text",
+                clean_text,
+                "--language_idx",
+                code,
+                "--out_path",
+                str(out_wav),
+                "--use_cuda",
+                "true",
+            ]
+            if model_dir.is_dir():
+                cmd.extend(["--model_path", str(model_dir), "--config_path", str(model_dir / "config.json")])
+            else:
+                cmd.extend(["--model_name", "tts_models/multilingual/multi-dataset/xtts_v2"])
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=300,
+                creationflags=_CREATE_NO_WINDOW,
+            )
+            if proc.returncode != 0 or not out_wav.is_file():
+                err = proc.stderr.decode("utf-8", errors="replace")[:300]
+                raise TTSError(f"Coqui XTTS-v2 lỗi tạo audio: {err}")
+            if progress_cb:
+                progress_cb(100)
+            if target.suffix.lower() == ".wav":
+                os.replace(out_wav, target)
+            else:
+                cmd_ff = [
+                    self.ffmpeg,
+                    "-y",
+                    "-i",
+                    str(out_wav),
+                    "-c:a",
+                    "libmp3lame",
+                    "-b:a",
+                    self.bitrate,
+                    str(target),
+                ]
+                subprocess.run(cmd_ff, capture_output=True, timeout=120, creationflags=_CREATE_NO_WINDOW)
+            dur = probe_duration(target)
+            return SynthResult(
+                path=target,
+                duration=dur,
+                chunks=1,
+                voice=chosen_model,
+                engine="xtts",
+                backend="gpu",
+            )
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
 

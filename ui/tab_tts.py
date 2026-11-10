@@ -34,6 +34,7 @@ from core.piper_tts_engine import (
     F5TTSEngine,
     H2M_DEFAULT_VOICES,
     PiperTTSEngine,
+    XTTSEngine,
     detect_gpu_status,
 )
 from core.settings import ROOT, default_h2mtts_path, normalize_h2mtts_path
@@ -80,6 +81,8 @@ class _PreviewWorker(QThread):
             engine = PiperTTSEngine(self._settings)
         elif self._provider == "f5tts":
             engine = F5TTSEngine(self._settings)
+        elif self._provider == "xtts":
+            engine = XTTSEngine(self._settings)
         else:
             engine = TTSEngine(self._settings)
         try:
@@ -87,7 +90,7 @@ class _PreviewWorker(QThread):
             out_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now().strftime("%H%M%S_%f")
             out_path = out_dir / f"preview_{stamp}.mp3"
-            if self._provider in ("edge", "piper", "f5tts"):
+            if self._provider in ("edge", "piper", "f5tts", "xtts"):
                 lang = "vi"
                 if self._voice and "-" in self._voice and "_" not in self._voice:
                     lang = self._voice.split("-")[0].lower()
@@ -183,6 +186,7 @@ class TTSConfigTab(QWidget):
         self.provider_combo.addItem("EdgeTTS (Đa ngôn ngữ — Miễn phí)", "edge")
         self.provider_combo.addItem("PiperTTS (Đa ngôn ngữ — Siêu nhẹ Offline)", "piper")
         self.provider_combo.addItem("F5-TTS / E2-TTS (GPU — Zero-Shot Voice Cloning)", "f5tts")
+        self.provider_combo.addItem("Coqui XTTS-v2 (GPU — Đa ngôn ngữ & Clone giọng)", "xtts")
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         model_form.addRow("Model", self.provider_combo)
 
@@ -319,25 +323,34 @@ class TTSConfigTab(QWidget):
         self.refresh_gpu_state()
 
     def refresh_gpu_state(self) -> None:
-        """Enable F5-TTS / E2-TTS in provider_combo if GPU is present; dim/disable if no GPU."""
+        """Enable F5-TTS / E2-TTS and Coqui XTTS-v2 in provider_combo if GPU is present; dim/disable if no GPU."""
         has_gpu, _ = detect_gpu_status()
-        idx = self.provider_combo.findData("f5tts")
-        if idx < 0:
-            return
         model = self.provider_combo.model()
-        item = model.item(idx) if hasattr(model, "item") else None
-        if has_gpu:
-            self.provider_combo.setItemText(
-                idx, "F5-TTS / E2-TTS (GPU — Zero-Shot Voice Cloning)"
-            )
-            if item is not None:
-                item.setEnabled(True)
-        else:
-            self.provider_combo.setItemText(
-                idx, "F5-TTS / E2-TTS (Yêu cầu GPU — Đã làm mờ)"
-            )
-            if item is not None:
-                item.setEnabled(False)
+        gpu_items = [
+            (
+                "f5tts",
+                "F5-TTS / E2-TTS (GPU — Zero-Shot Voice Cloning)",
+                "F5-TTS / E2-TTS (Yêu cầu GPU — Đã làm mờ)",
+            ),
+            (
+                "xtts",
+                "Coqui XTTS-v2 (GPU — Đa ngôn ngữ & Clone giọng)",
+                "Coqui XTTS-v2 (Yêu cầu GPU — Đã làm mờ)",
+            ),
+        ]
+        for key, text_gpu, text_nogpu in gpu_items:
+            idx = self.provider_combo.findData(key)
+            if idx < 0:
+                continue
+            item = model.item(idx) if hasattr(model, "item") else None
+            if has_gpu:
+                self.provider_combo.setItemText(idx, text_gpu)
+                if item is not None:
+                    item.setEnabled(True)
+            else:
+                self.provider_combo.setItemText(idx, text_nogpu)
+                if item is not None:
+                    item.setEnabled(False)
 
     @staticmethod
     def _caption(text: str) -> QLabel:
@@ -362,7 +375,7 @@ class TTSConfigTab(QWidget):
         raw_h2m = normalize_h2mtts_path(str((settings.get("paths") or {}).get("h2mtts") or "").strip())
         self.h2m_edit.setText(raw_h2m)
         provider = str(tts.get("provider") or "h2mtts").strip().lower()
-        if provider not in ("h2mtts", "edge", "piper", "f5tts"):
+        if provider not in ("h2mtts", "edge", "piper", "f5tts", "xtts"):
             provider = "h2mtts"
         self.provider_combo.blockSignals(True)
         self._set_combo(self.provider_combo, provider)
@@ -497,6 +510,27 @@ class TTSConfigTab(QWidget):
                 self.voice_combo.addItem("⚠ Chưa cài đặt model F5-TTS / E2-TTS", "")
                 self.model_status.setText(
                     "Chưa tải model F5-TTS / E2-TTS (Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS)."
+                )
+                paint_status(self.model_status, "warning")
+        elif provider == "xtts":
+            has_gpu, gpu_desc = detect_gpu_status()
+            xtts_eng = XTTSEngine(self._settings)
+            installed = xtts_eng.installed_voices()
+            if not has_gpu:
+                self.voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Máy hiện tại không có GPU)", "")
+                self.model_status.setText(f"Coqui XTTS-v2 yêu cầu GPU: {gpu_desc}")
+                paint_status(self.model_status, "warning")
+            elif installed:
+                for label, model_id in installed:
+                    self.voice_combo.addItem(label, model_id)
+                self.model_status.setText(
+                    f"Đã nạp {len(installed)} model Coqui XTTS-v2 ({gpu_desc})."
+                )
+                paint_status(self.model_status, "success")
+            else:
+                self.voice_combo.addItem("⚠ Chưa cài đặt model Coqui XTTS-v2", "")
+                self.model_status.setText(
+                    "Chưa tải model Coqui XTTS-v2 (Cài đặt → API → Giọng đọc → Coqui XTTS-v2)."
                 )
                 paint_status(self.model_status, "warning")
         else:

@@ -25,7 +25,12 @@ from core.ai_client import clean_transcript_heuristics
 from core.edge_tts_engine import EdgeTTSEngine
 from core.ffmpeg_renderer import FFmpegRenderer
 from core.languages import DEFAULT_LANGUAGE, normalize_language
-from core.piper_tts_engine import PiperTTSEngine, resolve_tts_engine_for_language
+from core.piper_tts_engine import (
+    F5TTSEngine,
+    PiperTTSEngine,
+    XTTSEngine,
+    resolve_tts_engine_for_language,
+)
 from core.subtitles import (
     Cue,
     cues_to_text,
@@ -542,6 +547,26 @@ class DubbingEngine:
                     self._render_cue(engine, manager, item_base, out_dir, cue,
                                      language, None, finish, pause_cb, cancel_cb,
                                      engine_kind="piper")
+            finally:
+                engine.close()
+        elif engine_kind == "f5tts":
+            engine = F5TTSEngine(self.settings)
+            try:
+                for cue in pending:
+                    self._idle(pause_cb, cancel_cb)
+                    self._render_cue(engine, manager, item_base, out_dir, cue,
+                                     language, None, finish, pause_cb, cancel_cb,
+                                     engine_kind="f5tts")
+            finally:
+                engine.close()
+        elif engine_kind == "xtts":
+            engine = XTTSEngine(self.settings)
+            try:
+                for cue in pending:
+                    self._idle(pause_cb, cancel_cb)
+                    self._render_cue(engine, manager, item_base, out_dir, cue,
+                                     language, None, finish, pause_cb, cancel_cb,
+                                     engine_kind="xtts")
             finally:
                 engine.close()
         else:

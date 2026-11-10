@@ -57,6 +57,7 @@ from core.piper_tts_engine import (
     PIPER_DEFAULT_VOICES,
     PIPER_VOICES_BY_LANG,
     PiperTTSEngine,
+    XTTSEngine,
     detect_gpu_status,
     get_edge_voices_for_language,
     resolve_tts_engine_for_language,
@@ -515,11 +516,16 @@ class DubbingTab(QWidget):
                     "F5-TTS / E2-TTS" if has_gpu else "F5-TTS / E2-TTS (Cần GPU)",
                     "f5tts",
                 )
-                f5_idx = eng_combo.findData("f5tts")
-                if f5_idx >= 0 and not has_gpu:
-                    c_model = eng_combo.model()
-                    if hasattr(c_model, "item") and c_model.item(f5_idx) is not None:
-                        c_model.item(f5_idx).setEnabled(False)
+                eng_combo.addItem(
+                    "Coqui XTTS-v2" if has_gpu else "Coqui XTTS-v2 (Cần GPU)",
+                    "xtts",
+                )
+                for gpu_key in ("f5tts", "xtts"):
+                    g_idx = eng_combo.findData(gpu_key)
+                    if g_idx >= 0 and not has_gpu:
+                        c_model = eng_combo.model()
+                        if hasattr(c_model, "item") and c_model.item(g_idx) is not None:
+                            c_model.item(g_idx).setEnabled(False)
                 eng_id = resolve_tts_engine_for_language(self._settings, code)
                 eng_idx = eng_combo.findData(eng_id)
                 if eng_idx >= 0:
@@ -606,6 +612,20 @@ class DubbingTab(QWidget):
                     "⚠ Chưa cài đặt model F5-TTS / E2-TTS (Vào Cài đặt → Giọng đọc để tải)",
                     "",
                 )
+        elif engine_id == "xtts":
+            has_gpu, _ = detect_gpu_status()
+            xtts_engine = XTTSEngine(self._settings)
+            installed = xtts_engine.installed_voices(lang_code)
+            if not has_gpu:
+                voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Không phát hiện GPU)", "")
+            elif installed:
+                for label, val in installed:
+                    voice_combo.addItem(label, val)
+            else:
+                voice_combo.addItem(
+                    "⚠ Chưa cài đặt model Coqui XTTS-v2 (Vào Cài đặt → Giọng đọc để tải)",
+                    "",
+                )
         else:
             voices = get_edge_voices_for_language(lang_code)
             for label, val in voices:
@@ -666,6 +686,17 @@ class DubbingTab(QWidget):
                     self.lang_status_label.setVisible(True)
                     if self.isVisible():
                         QMessageBox.warning(self, "Chưa cài đặt F5-TTS / E2-TTS", err_msg)
+                else:
+                    self.lang_status_label.setVisible(False)
+            elif engine_id == "xtts":
+                xtts_engine = XTTSEngine(self._settings)
+                ok, err_msg = xtts_engine.check_ready(lang_code)
+                if not ok:
+                    paint_status(self.lang_status_label, "error")
+                    self.lang_status_label.setText(f"⚠ {err_msg}")
+                    self.lang_status_label.setVisible(True)
+                    if self.isVisible():
+                        QMessageBox.warning(self, "Chưa cài đặt Coqui XTTS-v2", err_msg)
                 else:
                     self.lang_status_label.setVisible(False)
             elif engine_id == "h2mtts" and lang_code != "vi":
@@ -758,6 +789,7 @@ class DubbingTab(QWidget):
         edge_voices = tts_cfg.setdefault("edge_voices", {})
         piper_voices = tts_cfg.setdefault("piper_voices", {})
         f5_voices = tts_cfg.setdefault("f5_voices", {})
+        xtts_voices = tts_cfg.setdefault("xtts_voices", {})
         h2m_voices = tts_cfg.setdefault("h2m_voices", {})
 
         for code, eng_combo in self.lang_engine_combos.items():
@@ -773,6 +805,8 @@ class DubbingTab(QWidget):
                         piper_voices[code] = v_val
                     elif eng_id == "f5tts":
                         f5_voices[code] = v_val
+                    elif eng_id == "xtts":
+                        xtts_voices[code] = v_val
                     elif eng_id == "h2mtts":
                         h2m_voices[code] = v_val
                         if code == "vi":

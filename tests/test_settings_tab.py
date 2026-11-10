@@ -431,11 +431,11 @@ def test_dubbing_language_subtab_and_routing(app, tmp_path: Path) -> None:
     assert list(dub_tab.lang_engine_combos.keys()) == ["vi", "en", "ja"]
     assert "hi" not in dub_tab.lang_engine_combos
 
-    # Check Vietnamese and English have H2MTTS / EdgeTTS / PiperTTS / F5-TTS & E2-TTS options
+    # Check Vietnamese and English have H2MTTS / EdgeTTS / PiperTTS / F5-TTS & E2-TTS / Coqui XTTS-v2 options
     for lang_code in ("vi", "en"):
         combo = dub_tab.lang_engine_combos[lang_code]
         options = [combo.itemData(i) for i in range(combo.count())]
-        assert options == ["h2mtts", "edge", "piper", "f5tts"]
+        assert options == ["h2mtts", "edge", "piper", "f5tts", "xtts"]
 
     # Point to an empty Piper directory so PiperTTS is not installed
     dub_tab.load_from({"paths": {"piper": str(tmp_path / "empty_piper")}})
@@ -510,9 +510,9 @@ def test_full_edge_piper_catalog_search_and_tts_config_tab(app, tmp_path: Path) 
     assert tts_tab.run_with_box.title() == "Chạy với"
     assert tts_tab.pacing_box.title() == "Nhịp đọc"
 
-    # Check Model providers (H2MTTS, EdgeTTS, PiperTTS, F5-TTS / E2-TTS)
+    # Check Model providers (H2MTTS, EdgeTTS, PiperTTS, F5-TTS / E2-TTS, Coqui XTTS-v2)
     providers = [tts_tab.provider_combo.itemData(i) for i in range(tts_tab.provider_combo.count())]
-    assert providers == ["h2mtts", "edge", "piper", "f5tts"]
+    assert providers == ["h2mtts", "edge", "piper", "f5tts", "xtts"]
 
     # Check Chạy với options (Tự động, GPU, CPU)
     backends = [tts_tab.backend_combo.itemData(i) for i in range(tts_tab.backend_combo.count())]
@@ -533,11 +533,11 @@ def test_full_edge_piper_catalog_search_and_tts_config_tab(app, tmp_path: Path) 
 def test_f5tts_e2tts_gpu_detection_enables_or_dims(app) -> None:
     from core.piper_tts_engine import set_gpu_override
     from ui.tab_dubbing import DubbingTab
-    from ui.tab_settings import F5TTSCard
+    from ui.tab_settings import F5TTSCard, XTTSCard
     from ui.tab_tts import TTSConfigTab
 
     try:
-        # 1. Simulate NO GPU -> F5TTSCard is dimmed & disabled, combo items are disabled
+        # 1. Simulate NO GPU -> F5TTSCard & XTTSCard are dimmed & disabled, combo items are disabled
         set_gpu_override(False, "Chỉ có CPU")
         f5_card = F5TTSCard()
         assert f5_card.is_gpu_enabled() is False
@@ -545,29 +545,47 @@ def test_f5tts_e2tts_gpu_detection_enables_or_dims(app) -> None:
         assert f5_card._opacity_effect.opacity() < 1.0
         assert "Yêu cầu GPU" in f5_card.status_badge.text()
 
+        xtts_card = XTTSCard()
+        assert xtts_card.is_gpu_enabled() is False
+        assert xtts_card.body_widget.isEnabled() is False
+        assert xtts_card._opacity_effect.opacity() < 1.0
+        assert "Yêu cầu GPU" in xtts_card.status_badge.text()
+
         tts_tab = TTSConfigTab()
         f5_idx = tts_tab.provider_combo.findData("f5tts")
+        xtts_idx = tts_tab.provider_combo.findData("xtts")
         assert tts_tab.provider_combo.model().item(f5_idx).isEnabled() is False
+        assert tts_tab.provider_combo.model().item(xtts_idx).isEnabled() is False
 
         dub_tab = DubbingTab()
         vi_combo = dub_tab.lang_engine_combos["vi"]
         vi_f5_idx = vi_combo.findData("f5tts")
+        vi_xtts_idx = vi_combo.findData("xtts")
         assert vi_combo.model().item(vi_f5_idx).isEnabled() is False
+        assert vi_combo.model().item(vi_xtts_idx).isEnabled() is False
 
-        # 2. Simulate GPU present -> F5TTSCard is enabled & normal opacity, combo items are enabled
+        # 2. Simulate GPU present -> F5TTSCard & XTTSCard are enabled & normal opacity, combo items are enabled
         set_gpu_override(True, "NVIDIA RTX 4090 · 24.0 GB")
         f5_card.refresh_gpu_status()
         assert f5_card.is_gpu_enabled() is True
         assert f5_card.body_widget.isEnabled() is True
         assert f5_card._opacity_effect.opacity() == 1.0
 
+        xtts_card.refresh_gpu_status()
+        assert xtts_card.is_gpu_enabled() is True
+        assert xtts_card.body_widget.isEnabled() is True
+        assert xtts_card._opacity_effect.opacity() == 1.0
+
         tts_tab.refresh_gpu_state()
         assert tts_tab.provider_combo.model().item(f5_idx).isEnabled() is True
+        assert tts_tab.provider_combo.model().item(xtts_idx).isEnabled() is True
 
         dub_tab.sync_languages()
         vi_combo2 = dub_tab.lang_engine_combos["vi"]
         vi_f5_idx2 = vi_combo2.findData("f5tts")
+        vi_xtts_idx2 = vi_combo2.findData("xtts")
         assert vi_combo2.model().item(vi_f5_idx2).isEnabled() is True
+        assert vi_combo2.model().item(vi_xtts_idx2).isEnabled() is True
     finally:
         set_gpu_override(None)
 
