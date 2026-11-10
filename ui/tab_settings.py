@@ -412,23 +412,33 @@ class ServiceCard(QFrame):
         layout.addWidget(self.sub_lbl)
 
         # ── 3. Key input row & Model combo ───────────────────────────────────
-        mid_row = QHBoxLayout()
-        mid_row.setSpacing(6)
-
         if has_key_input:
+            key_row = QHBoxLayout()
+            key_row.setSpacing(8)
+            key_lbl = QLabel("API Key:")
+            key_lbl.setFixedWidth(80)
+            key_lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
             self.key_edit = QLineEdit()
             self.key_edit.setPlaceholderText(key_placeholder or "Nhập API key...")
             self.key_edit.setEchoMode(QLineEdit.EchoMode.Password)
             self.key_edit.textChanged.connect(self._on_key_changed)
-            mid_row.addWidget(self.key_edit, 2)
 
             self.eye_btn = icon_button(
                 "eye", "Hiện/Ẩn API key", role="muted", size=14, side=30
             )
             self.eye_btn.clicked.connect(self._toggle_eye)
-            mid_row.addWidget(self.eye_btn)
+
+            key_row.addWidget(key_lbl)
+            key_row.addWidget(self.key_edit, 1)
+            key_row.addWidget(self.eye_btn)
+            layout.addLayout(key_row)
 
         if models:
+            mod_row = QHBoxLayout()
+            mod_row.setSpacing(8)
+            mod_lbl = QLabel("Model AI:" if has_key_input else "Giọng đọc:")
+            mod_lbl.setFixedWidth(80)
+            mod_lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
             self.model_combo = QComboBox()
             self.model_combo.setEditable(True)
             self.model_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -436,10 +446,9 @@ class ServiceCard(QFrame):
                 self.model_combo.addItem(label, val)
             self.model_combo.currentIndexChanged.connect(lambda _: self.changed.emit())
             self.model_combo.currentTextChanged.connect(lambda _: self.changed.emit())
-            mid_row.addWidget(self.model_combo, 1)
-
-        if has_key_input or models:
-            layout.addLayout(mid_row)
+            mod_row.addWidget(mod_lbl)
+            mod_row.addWidget(self.model_combo, 1)
+            layout.addLayout(mod_row)
 
         # ── 4. Collapsible Endpoint ──────────────────────────────────────────
         if has_endpoint:
@@ -1998,12 +2007,12 @@ class SettingsTab(QWidget):
 
         self.card_gemini = ServiceCard(
             service_id="gemini",
-            title="Gemini Flash",
-            tag="Google Gemini API",
-            key_placeholder="Nhập AIza...",
+            title="Gemini",
+            tag="",
+            key_placeholder="Nhập API key Gemini (AIza...)",
             models=GEMINI_TEXT_MODELS,
-            has_endpoint=True,
-            has_test_model=True,
+            has_endpoint=False,
+            has_test_model=False,
             parent=page,
         )
         self.card_gemini.changed.connect(self._sync_shared_keys)

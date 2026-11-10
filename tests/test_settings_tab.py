@@ -61,6 +61,11 @@ def test_settings_tab_structure_and_cards(app) -> None:
     assert not hasattr(tab, "card_kling_fal")
 
     # Verify titles, tags, and button texts
+    assert tab.card_gemini.title_text == "Gemini"
+    assert tab.card_gemini.tag_text == ""
+    assert tab.card_gemini.btn_save.text() == "Lưu key"
+    assert tab.card_gemini.btn_check.text() == "Check Connection"
+    assert not hasattr(tab.card_gemini, "btn_test")
     assert tab.card_cloudflare_text.title_text == "Cloudflare Worker AI"
     assert tab.card_cloudflare_image.title_text == "Cloudflare Worker AI"
     assert tab.card_cloudflare_text.tag_text == ""
