@@ -100,6 +100,7 @@ def test_translate_gives_up_after_retries() -> None:
         translate_text("Xin chào", "k", generate_fn=broken, retry_delay=0.0)
 
 
-def test_translate_requires_key_without_generator() -> None:
+def test_translate_requires_key_without_generator(monkeypatch) -> None:
+    monkeypatch.setattr("core.ai_client.get_cloudflare_text_config", lambda: ("", "", ""))
     with pytest.raises(AIError):
         translate_text("Xin chào", "")

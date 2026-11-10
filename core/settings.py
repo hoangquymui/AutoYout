@@ -73,6 +73,31 @@ def normalize_h2mtts_path(value: str | os.PathLike | None) -> str:
     return str(p.resolve().as_posix())
 
 
+def default_piper_path() -> str:
+    """Return default PiperTTS directory path inside this project."""
+    if (ROOT / "tts" / "PiperTTS").is_dir():
+        return str((ROOT / "tts" / "PiperTTS").as_posix())
+    return str((ROOT / "PiperTTS").as_posix())
+
+
+def normalize_piper_path(value: str | os.PathLike | None) -> str:
+    """Normalize PiperTTS path to a valid path on the current machine."""
+    raw = str(value or "").strip()
+    if not raw:
+        return default_piper_path()
+    p = Path(raw)
+    if not p.is_absolute():
+        resolved = (ROOT / p).resolve()
+        return str(resolved.as_posix())
+    norm_lower = raw.replace("\\", "/").lower()
+    root_norm = str(ROOT).replace("\\", "/").lower()
+    if "mui/f375" in norm_lower and "mui/f375" not in root_norm:
+        return default_piper_path()
+    if not p.exists():
+        return default_piper_path()
+    return str(p.resolve().as_posix())
+
+
 def load_settings() -> Dict[str, Any]:
     defaults = load_json(DEFAULT_SETTINGS_PATH, {}) or {}
     user = load_json(USER_SETTINGS_PATH, {}) or {}
@@ -84,9 +109,11 @@ def load_settings() -> Dict[str, Any]:
     merged.setdefault("youtube", {})
     merged.setdefault("app", {})
 
-    # Normalize h2mtts path so it always works on the current machine
+    # Normalize h2mtts and piper paths so they always work on the current machine
     h2 = str(merged["paths"].get("h2mtts") or "").strip()
     merged["paths"]["h2mtts"] = normalize_h2mtts_path(h2)
+    piper_raw = str(merged["paths"].get("piper") or "").strip()
+    merged["paths"]["piper"] = normalize_piper_path(piper_raw)
 
     # Normalize ffmpeg / ffprobe if they point to an invalid absolute path
     for tool_key, default_tool in [("ffmpeg", "ffmpeg"), ("ffprobe", "ffprobe")]:

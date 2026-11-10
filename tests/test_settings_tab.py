@@ -366,6 +366,84 @@ def test_gemini_key_and_switch_persistence(app) -> None:
     assert "Thiếu key" not in fresh_tab.card_gemini.status_badge.text()
 
 
+def test_h2mtts_and_piper_expand_collapse_and_packages(app, tmp_path: Path) -> None:
+    from ui.tab_settings import H2MTTSCard, PiperTTSCard
+
+    tab = SettingsTab()
+    assert hasattr(tab, "card_h2mtts")
+    assert hasattr(tab, "card_piper")
+
+    # Test H2MTTSCard expand / collapse button
+    h2_card = tab.card_h2mtts
+    assert hasattr(h2_card, "btn_collapse")
+    assert h2_card.is_expanded() is True
+    assert not h2_card.body_widget.isHidden()
+    h2_card.btn_collapse.click()
+    assert h2_card.is_expanded() is False
+    assert h2_card.body_widget.isHidden()
+    h2_card.btn_collapse.click()
+    assert h2_card.is_expanded() is True
+    assert not h2_card.body_widget.isHidden()
+
+    # Test PiperTTSCard expand / collapse button & package detection
+    piper_card = PiperTTSCard()
+    assert hasattr(piper_card, "btn_collapse")
+    assert piper_card.is_expanded() is True
+    piper_card.btn_collapse.click()
+    assert piper_card.is_expanded() is False
+    assert piper_card.body_widget.isHidden()
+    piper_card.btn_collapse.click()
+    assert piper_card.is_expanded() is True
+
+    fake_piper = tmp_path / "fake_piper"
+    (fake_piper / "models").mkdir(parents=True)
+    (fake_piper / "piper.exe").write_text("bin")
+    (fake_piper / "models" / "vi_VN-vais1000-medium.onnx").write_text("onnx")
+    (fake_piper / "models" / "en_US-lessac-medium.onnx").write_text("onnx")
+
+    piper_card.path_edit.setText(str(fake_piper))
+    piper_card.check_packages_status()
+    assert "Đã cài đủ" in piper_card.status_badge.text()
+
+
+def test_dubbing_language_subtab_and_routing(app) -> None:
+    from core.piper_tts_engine import (
+        resolve_tts_engine_for_language,
+        resolve_voice_for_language_engine,
+    )
+    from ui.tab_dubbing import DubbingTab
+
+    dub_tab = DubbingTab()
+    assert dub_tab.inner_tabs.count() == 3
+    assert dub_tab.inner_tabs.tabText(0) == "Bảng đoạn"
+    assert dub_tab.inner_tabs.tabText(1) == "Engine && giọng"
+    assert dub_tab.inner_tabs.tabText(2) == "Ngôn ngữ"
+
+    # Check Vietnamese and English have H2MTTS / EdgeTTS / PiperTTS options
+    for lang_code in ("vi", "en"):
+        combo = dub_tab.lang_engine_combos[lang_code]
+        options = [combo.itemData(i) for i in range(combo.count())]
+        assert options == ["h2mtts", "edge", "piper"]
+
+    # Set Vietnamese to PiperTTS and English to EdgeTTS
+    vi_combo = dub_tab.lang_engine_combos["vi"]
+    vi_combo.setCurrentIndex(vi_combo.findData("piper"))
+    en_combo = dub_tab.lang_engine_combos["en"]
+    en_combo.setCurrentIndex(en_combo.findData("edge"))
+
+    settings: dict = {}
+    dub_tab.apply_to(settings)
+    assert resolve_tts_engine_for_language(settings, "vi") == "piper"
+    assert resolve_tts_engine_for_language(settings, "en") == "edge"
+    assert resolve_voice_for_language_engine(settings, "vi", "piper") != ""
+
+    # Reload into a fresh DubbingTab
+    fresh_dub = DubbingTab()
+    fresh_dub.load_from(settings)
+    assert fresh_dub.lang_engine_combos["vi"].currentData() == "piper"
+    assert fresh_dub.lang_engine_combos["en"].currentData() == "edge"
+
+
 
 
 

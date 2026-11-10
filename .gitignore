@@ -62,10 +62,12 @@ tmp/
 # ── Heavy Local Binaries & Voice Model Packs (downloaded on demand) ─
 bin/
 H2MTTS/
+PiperTTS/
 tts/
 
 # ── AI Agents / Assistant scratch directories ──────────────────────
 .agents/
+.impeccable/
 
 # ── Legacy / Node.js artifacts ─────────────────────────────────────
 package.json

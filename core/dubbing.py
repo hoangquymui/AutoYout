@@ -25,6 +25,7 @@ from core.ai_client import clean_transcript_heuristics
 from core.edge_tts_engine import EdgeTTSEngine
 from core.ffmpeg_renderer import FFmpegRenderer
 from core.languages import DEFAULT_LANGUAGE, normalize_language
+from core.piper_tts_engine import PiperTTSEngine, resolve_tts_engine_for_language
 from core.subtitles import (
     Cue,
     cues_to_text,
@@ -521,13 +522,26 @@ class DubbingEngine:
                 f"({len(cues) - len(pending)} đã xong)."
             )
 
-        if language == "vi":
+        engine_kind = resolve_tts_engine_for_language(self.settings, language)
+
+        if engine_kind == "h2mtts":
             engine = TTSEngine(self.settings)
             try:
                 for cue in pending:
                     self._idle(pause_cb, cancel_cb)
                     self._render_cue(engine, manager, item_base, out_dir, cue,
-                                     language, None, finish, pause_cb, cancel_cb)
+                                     language, None, finish, pause_cb, cancel_cb,
+                                     engine_kind="h2mtts")
+            finally:
+                engine.close()
+        elif engine_kind == "piper":
+            engine = PiperTTSEngine(self.settings)
+            try:
+                for cue in pending:
+                    self._idle(pause_cb, cancel_cb)
+                    self._render_cue(engine, manager, item_base, out_dir, cue,
+                                     language, None, finish, pause_cb, cancel_cb,
+                                     engine_kind="piper")
             finally:
                 engine.close()
         else:
@@ -541,7 +555,7 @@ class DubbingEngine:
                         pool.submit(
                             self._render_cue, engine, manager, item_base, out_dir,
                             cue, language, self.edge_parallel, finish, pause_cb,
-                            cancel_cb,
+                            cancel_cb, "edge",
                         )
                         for cue in batch
                     ]
@@ -554,10 +568,12 @@ class DubbingEngine:
     def _render_cue(self, engine, manager, item_base: str, out_dir: Path,
                     cue: CueJob, language: str, _parallel: Optional[int],
                     finish: Callable[[CueJob], None],
-                    pause_cb, cancel_cb) -> bool:
+                    pause_cb, cancel_cb,
+                    engine_kind: str = "") -> bool:
         path = out_dir / f"{int(cue.id):04d}.mp3"
         signature = cue.signature()
         attempt = 0
+        kind = engine_kind or ("h2mtts" if language == "vi" else "edge")
         while True:
             if cancel_cb and cancel_cb():
                 cue.status = STATUS_PENDING
@@ -565,7 +581,7 @@ class DubbingEngine:
             try:
                 cue.status = STATUS_PROCESSING
                 cue.error = ""
-                if language == "vi":
+                if kind == "h2mtts":
                     engine.synthesize(
                         cue.text, path,
                         voice=cue.voice or None,

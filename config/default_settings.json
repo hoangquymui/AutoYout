@@ -1,6 +1,7 @@
 {
   "paths": {
     "h2mtts": "H2MTTS",
+    "piper": "PiperTTS",
     "ffmpeg": "ffmpeg",
     "ffprobe": "ffprobe"
   },
@@ -23,6 +24,8 @@
     "language": "vi",
     "voice": "Hải Đăng",
     "edge_voices": {},
+    "piper_voices": {},
+    "language_engines": {},
     "speed": 1.0,
     "gap_sentence": 0.3,
     "gap_paragraph": 0.8,

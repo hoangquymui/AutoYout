@@ -39,7 +39,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.settings import ROOT, default_h2mtts_path, normalize_h2mtts_path
+from core.settings import (
+    ROOT,
+    default_h2mtts_path,
+    default_piper_path,
+    normalize_h2mtts_path,
+    normalize_piper_path,
+)
 from ui import theme
 from ui.components.icons import icon, set_icon
 from ui.components.page import PageHeader, icon_button, paint_status, wrap_scroll
@@ -94,35 +100,6 @@ EDGE_MULTILANG_VOICES: List[Tuple[str, str]] = [
     ("🇮🇩 Tiếng Indo - Gadis (Nữ)", "id-ID-GadisNeural"),
     ("🇩🇪 Tiếng Đức - Katja (Nữ)", "de-DE-KatjaNeural"),
     ("🇷🇺 Tiếng Nga - Svetlana (Nữ)", "ru-RU-SvetlanaNeural"),
-]
-
-GEMINI_TTS_MODELS: List[Tuple[str, str]] = [
-    ("Gemini 2.5 Flash TTS (Tiêu chuẩn)", "gemini-2.5-flash-tts"),
-    ("Gemini 2.5 Pro TTS (Chất lượng cao)", "gemini-2.5-pro-tts"),
-    ("Gemini 3.1 Flash TTS (Thế hệ 3.1)", "gemini-3.1-flash-tts"),
-    ("Gemini 3.8 Flash TTS (Thế hệ 3.8)", "gemini-3.8-flash-tts"),
-    ("Gemini 3.8 Flash Lite TTS (Bản nhẹ)", "gemini-3.8-flash-lite-tts"),
-    ("Gemini 2.5 Flash Native Audio Dialog (Live API)", "gemini-2.5-flash-native-audio-dialog"),
-    ("Gemini 3 Flash Live (Live API)", "gemini-3-flash-live"),
-    ("Gemini 3.5 Live Translate (Dịch trực tiếp)", "gemini-3.5-live-translate"),
-    ("Gemini 3.5 Transcribe Live (Chuyển lời nói)", "gemini-3.5-transcribe-live"),
-    ("Gemini 3.8 Live (Live API)", "gemini-3.8-live"),
-]
-
-GEMINI_IMAGE_MODELS: List[Tuple[str, str]] = [
-    ("Gemini 3.1 Flash Image (Khuyên dùng)", "gemini-3.1-flash-image"),
-    ("Gemini 3.1 Flash Lite Image (Bản nhẹ)", "gemini-3.1-flash-lite-image"),
-    ("Gemini 2.5 Flash Image", "gemini-2.5-flash-image"),
-    ("Gemini 3 Pro Image (Chất lượng cao)", "gemini-3-pro-image"),
-    ("Gemini Nano Banana 2.1", "gemini-nano-banana-2.1"),
-    ("Nano Banana 2", "nano-banana-2"),
-]
-
-VEO_VIDEO_MODELS: List[Tuple[str, str]] = [
-    ("Veo 3 Fast Generate (Tạo nhanh)", "veo-3-fast-generate"),
-    ("Veo 3 Generate (Chuẩn chất lượng)", "veo-3-generate"),
-    ("Veo 3 Lite Generate (Tiết kiệm)", "veo-3-lite-generate"),
-    ("Veo 3.1 Lite (Rẻ nhất)", "veo-3.1-lite"),
 ]
 
 
@@ -1352,6 +1329,13 @@ class H2MTTSCard(QFrame):
 
         self.status_badge = QLabel("Chưa cài")
         top_row.addWidget(self.status_badge)
+
+        self._expanded = True
+        self.btn_collapse = icon_button(
+            "chevron-up", "Thu gọn / Mở rộng", role="muted", size=14, side=26
+        )
+        self.btn_collapse.clicked.connect(self.toggle_expanded)
+        top_row.addWidget(self.btn_collapse)
         layout.addLayout(top_row)
 
         desc = QLabel(
@@ -1362,6 +1346,12 @@ class H2MTTSCard(QFrame):
         desc.setWordWrap(True)
         desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
         layout.addWidget(desc)
+
+        self.body_widget = QWidget(self)
+        body_layout = QVBoxLayout(self.body_widget)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(12)
+        layout.addWidget(self.body_widget)
 
         # ── 2. Hardware Specifications Box ───────────────────────────────────
         self.specs_box = QFrame()
@@ -1414,7 +1404,7 @@ class H2MTTSCard(QFrame):
         self.lbl_note = QLabel("• GPU ... - đọc nhanh hơn thời gian thực nhiều lần")
         self.lbl_note.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
         specs_layout.addWidget(self.lbl_note)
-        layout.addWidget(self.specs_box)
+        body_layout.addWidget(self.specs_box)
 
         # ── 3. Path row ──────────────────────────────────────────────────────
         path_row = QHBoxLayout()
@@ -1431,7 +1421,7 @@ class H2MTTSCard(QFrame):
         path_row.addWidget(path_lbl)
         path_row.addWidget(self.path_edit, 1)
         path_row.addWidget(btn_browse)
-        layout.addLayout(path_row)
+        body_layout.addLayout(path_row)
 
         # ── 4. Download Manager Box ──────────────────────────────────────────
         self.downloads_box = QFrame()
@@ -1563,15 +1553,32 @@ class H2MTTSCard(QFrame):
             }
             dl_layout.addWidget(row_frame)
 
-        layout.addWidget(self.downloads_box)
+        body_layout.addWidget(self.downloads_box)
 
         # Status text line
         self.engine_status = QLabel("")
-        layout.addWidget(self.engine_status)
+        body_layout.addWidget(self.engine_status)
 
         self.apply_theme()
         self.detect_specs()
         self.check_packages_status()
+
+    def is_expanded(self) -> bool:
+        return self._expanded
+
+    def toggle_expanded(self) -> None:
+        self.set_expanded(not self._expanded)
+
+    def set_expanded(self, expanded: bool) -> None:
+        self._expanded = bool(expanded)
+        self.body_widget.setVisible(self._expanded)
+        set_icon(
+            self.btn_collapse,
+            "chevron-up" if self._expanded else "chevron-down",
+            "muted",
+            14,
+        )
+        self.btn_collapse.setToolTip("Thu gọn" if self._expanded else "Mở rộng")
 
     @staticmethod
     def _make_spec_label(text: str) -> QLabel:
@@ -1795,6 +1802,586 @@ class H2MTTSCard(QFrame):
                 )
 
 
+# ── PiperTTS Model Packages ──────────────────────────────────────────────────
+PIPER_PACKAGES: List[Dict[str, Any]] = [
+    {
+        "id": "piper_runtime",
+        "name": "Piper TTS Engine (Windows x64)",
+        "tag": "Bắt buộc · Runtime",
+        "tag_color": theme.ACCENT,
+        "tag_bg": theme.SURFACE_RAISED,
+        "url": "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip",
+        "is_zip_url": True,
+        "size": "~20 MB",
+        "desc": "Bộ thực thi Piper TTS C++ ONNX siêu tốc (piper.exe + espeak-ng-data).",
+        "target_subpath": ".",
+        "check_files": ["piper.exe", "piper/piper.exe"],
+        "core": True,
+    },
+    {
+        "id": "piper_vi_vais1000",
+        "name": "Giọng Tiếng Việt – VAIS1000 (Medium)",
+        "tag": "Khuyên dùng · Tiếng Việt",
+        "tag_color": theme.SUCCESS,
+        "tag_bg": theme.SURFACE_RAISED,
+        "repo": "rhasspy/piper-voices",
+        "files": [
+            ("vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium.onnx", "models/vi_VN-vais1000-medium.onnx"),
+            ("vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium.onnx.json", "models/vi_VN-vais1000-medium.onnx.json"),
+        ],
+        "size": "~63 MB",
+        "desc": "Model giọng đọc tiếng Việt tự nhiên VAIS1000 chất lượng Medium.",
+        "target_subpath": "models",
+        "check_files": ["vi_VN-vais1000-medium.onnx"],
+        "core": True,
+    },
+    {
+        "id": "piper_en_lessac",
+        "name": "Giọng Tiếng Anh – Lessac (US Medium)",
+        "tag": "Khuyên dùng · English",
+        "tag_color": theme.BLUE,
+        "tag_bg": theme.SURFACE_RAISED,
+        "repo": "rhasspy/piper-voices",
+        "files": [
+            ("en/en_US/lessac/medium/en_US-lessac-medium.onnx", "models/en_US-lessac-medium.onnx"),
+            ("en/en_US/lessac/medium/en_US-lessac-medium.onnx.json", "models/en_US-lessac-medium.onnx.json"),
+        ],
+        "size": "~63 MB",
+        "desc": "Model giọng đọc tiếng Anh Mỹ (Lessac) chất lượng cao.",
+        "target_subpath": "models",
+        "check_files": ["en_US-lessac-medium.onnx"],
+        "core": True,
+    },
+    {
+        "id": "piper_zh_huayan",
+        "name": "Giọng Tiếng Trung – Huayan (Medium)",
+        "tag": "Đa ngôn ngữ · 中文",
+        "tag_color": theme.WARNING,
+        "tag_bg": theme.SURFACE_RAISED,
+        "repo": "rhasspy/piper-voices",
+        "files": [
+            ("zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx", "models/zh_CN-huayan-medium.onnx"),
+            ("zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx.json", "models/zh_CN-huayan-medium.onnx.json"),
+        ],
+        "size": "~63 MB",
+        "desc": "Model giọng đọc tiếng Trung phổ thông (zh_CN Huayan).",
+        "target_subpath": "models",
+        "check_files": ["zh_CN-huayan-medium.onnx"],
+        "core": False,
+    },
+]
+
+
+class PiperDownloadWorker(QThread):
+    progress = Signal(int, str)
+    pkg_status_changed = Signal(str, str, str)
+    all_finished = Signal(bool, str)
+
+    def __init__(
+        self,
+        target_root: str,
+        packages: List[Dict[str, Any]],
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        raw = str(target_root or "").strip()
+        if not raw:
+            self.target_root = Path(default_piper_path())
+        else:
+            p = Path(raw)
+            self.target_root = (ROOT / p).resolve() if not p.is_absolute() else p
+        self.packages = packages
+        self._is_cancelled = False
+        self.errors: Dict[str, str] = {}
+
+    def cancel(self) -> None:
+        self._is_cancelled = True
+
+    def _download_url_to_file(self, url: str, dest: Path) -> None:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        req = urllib.request.Request(url, headers={"User-Agent": "AutoYout/1.0"})
+        with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as out_f:
+            while True:
+                if self._is_cancelled:
+                    raise H2MDownloadCancelled("Đã hủy tiến trình tải.")
+                chunk = resp.read(65536)
+                if not chunk:
+                    break
+                out_f.write(chunk)
+
+    def run(self) -> None:
+        total_pkgs = len(self.packages)
+        success_count = 0
+        self.errors.clear()
+        self.target_root.mkdir(parents=True, exist_ok=True)
+
+        for idx, pkg in enumerate(self.packages):
+            if self._is_cancelled:
+                self.all_finished.emit(False, "Đã hủy tiến trình tải.")
+                return
+
+            pkg_id = pkg["id"]
+            current_pct = int((idx / max(total_pkgs, 1)) * 100)
+            self.progress.emit(current_pct, f"Đang tải {pkg['name']} ({idx + 1}/{total_pkgs})…")
+            self.pkg_status_changed.emit(pkg_id, "downloading", "Đang tải…")
+
+            try:
+                if pkg.get("is_zip_url"):
+                    zip_path = self.target_root / "piper_runtime.zip"
+                    self._download_url_to_file(pkg["url"], zip_path)
+                    with zipfile.ZipFile(zip_path, "r") as zf:
+                        zf.extractall(self.target_root)
+                    try:
+                        zip_path.unlink()
+                    except OSError:
+                        pass
+                elif pkg.get("files"):
+                    repo = pkg["repo"]
+                    for remote_rel, local_rel in pkg["files"]:
+                        if self._is_cancelled:
+                            raise H2MDownloadCancelled("Đã hủy tiến trình tải.")
+                        dest_file = self.target_root / local_rel
+                        url = f"https://huggingface.co/{repo}/resolve/main/{remote_rel}"
+                        try:
+                            self._download_url_to_file(url, dest_file)
+                        except H2MDownloadCancelled:
+                            raise
+                        except Exception:
+                            mirror_url = f"https://hf-mirror.com/{repo}/resolve/main/{remote_rel}"
+                            self._download_url_to_file(mirror_url, dest_file)
+
+                success_count += 1
+                self.pkg_status_changed.emit(pkg_id, "installed", "✓ Đã có")
+            except H2MDownloadCancelled:
+                self.pkg_status_changed.emit(pkg_id, "ready", "Chưa tải")
+                self.all_finished.emit(False, "Đã hủy tiến trình tải.")
+                return
+            except Exception as exc:
+                self.errors[pkg_id] = str(exc)
+                self.pkg_status_changed.emit(pkg_id, "error", "Lỗi tải")
+
+        self.progress.emit(100, "Hoàn tất quá trình tải.")
+        all_ok = success_count == total_pkgs
+        msg = (
+            f"Đã tải thành công {success_count}/{total_pkgs} gói PiperTTS."
+            if all_ok
+            else f"Tải xong {success_count}/{total_pkgs} gói PiperTTS."
+        )
+        self.all_finished.emit(all_ok, msg)
+
+
+class PiperTTSCard(QFrame):
+    """Local PiperTTS engine card with collapsible body and model downloader."""
+
+    changed = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("PiperTTSCard")
+        self._downloader: Optional[PiperDownloadWorker] = None
+        self.pkg_widgets: Dict[str, Dict[str, Any]] = {}
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+
+        # ── 1. Header ────────────────────────────────────────────────────────
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
+
+        title_lbl = QLabel("Giọng đọc local – PiperTTS")
+        title_font = QFont()
+        title_font.setBold(True)
+        title_font.setPointSize(10)
+        title_lbl.setFont(title_font)
+        top_row.addWidget(title_lbl)
+
+        tag_lbl = QLabel("Đa ngôn ngữ · Siêu nhẹ")
+        tag_lbl.setStyleSheet(
+            f"background: {theme.SURFACE_RAISED}; color: {theme.TEXT_MUTED}; "
+            "border-radius: 4px; padding: 2px 6px; font-size: 11px;"
+        )
+        top_row.addWidget(tag_lbl)
+        top_row.addStretch(1)
+
+        self.status_badge = QLabel("Chưa cài")
+        top_row.addWidget(self.status_badge)
+
+        self._expanded = True
+        self.btn_collapse = icon_button(
+            "chevron-up", "Thu gọn / Mở rộng", role="muted", size=14, side=26
+        )
+        self.btn_collapse.clicked.connect(self.toggle_expanded)
+        top_row.addWidget(self.btn_collapse)
+        layout.addLayout(top_row)
+
+        desc = QLabel(
+            "Chạy model neural TTS đa ngôn ngữ (Việt / Anh / Trung / Nhật / Hàn / Pháp...) "
+            "ngay trên CPU với tốc độ cực nhanh, dung lượng nhẹ (~60MB/model), hoạt động hoàn toàn offline."
+        )
+        desc.setWordWrap(True)
+        desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+        layout.addWidget(desc)
+
+        self.body_widget = QWidget(self)
+        body_layout = QVBoxLayout(self.body_widget)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(12)
+        layout.addWidget(self.body_widget)
+
+        # ── 2. Path row ──────────────────────────────────────────────────────
+        path_row = QHBoxLayout()
+        path_row.setSpacing(6)
+        path_lbl = QLabel("Thư mục PiperTTS:")
+        path_lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
+        self.path_edit = QLineEdit(default_piper_path())
+        self.path_edit.textChanged.connect(self._on_path_changed)
+        btn_browse = icon_button(
+            "folder-open", "Chọn thư mục PiperTTS…", role="muted", size=14, side=30
+        )
+        btn_browse.clicked.connect(self._browse_dir)
+
+        path_row.addWidget(path_lbl)
+        path_row.addWidget(self.path_edit, 1)
+        path_row.addWidget(btn_browse)
+        body_layout.addLayout(path_row)
+
+        # ── 3. Download Manager Box ──────────────────────────────────────────
+        self.downloads_box = QFrame()
+        self.downloads_box.setObjectName("DownloadsBox")
+        dl_layout = QVBoxLayout(self.downloads_box)
+        dl_layout.setContentsMargins(12, 12, 12, 12)
+        dl_layout.setSpacing(10)
+
+        dl_header = QHBoxLayout()
+        dl_title = QLabel("📦 Tải tài nguyên mô hình PiperTTS")
+        dl_title_font = QFont()
+        dl_title_font.setBold(True)
+        dl_title_font.setPointSize(10)
+        dl_title.setFont(dl_title_font)
+        dl_header.addWidget(dl_title)
+        dl_header.addStretch(1)
+        dl_layout.addLayout(dl_header)
+
+        dl_desc = QLabel(
+            "Tự động tải bộ chạy PiperTTS và các model giọng đọc ONNX đa ngôn ngữ về thư mục trên máy."
+        )
+        dl_desc.setWordWrap(True)
+        dl_desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+        dl_layout.addWidget(dl_desc)
+
+        btn_bar = QHBoxLayout()
+        btn_bar.setSpacing(8)
+
+        self.btn_install = QPushButton("🚀 Tải gói khuyên dùng (~145 MB)")
+        self.btn_install.setObjectName("primaryButton")
+        set_icon(self.btn_install, "download", "white", 13)
+        self.btn_install.clicked.connect(self._download_recommended_clicked)
+        btn_bar.addWidget(self.btn_install)
+
+        self.btn_dl_all = QPushButton("📦 Tải tất cả gói (~210 MB)")
+        set_icon(self.btn_dl_all, "download", "accent", 13)
+        self.btn_dl_all.clicked.connect(self._download_all_clicked)
+        btn_bar.addWidget(self.btn_dl_all)
+
+        self.btn_check_engine = QPushButton("🔄 Quét lại")
+        set_icon(self.btn_check_engine, "check-circle", "muted", 12)
+        self.btn_check_engine.clicked.connect(self.check_packages_status)
+        btn_bar.addWidget(self.btn_check_engine)
+
+        btn_bar.addStretch(1)
+        dl_layout.addLayout(btn_bar)
+
+        self.progress_container = QWidget()
+        prog_layout = QVBoxLayout(self.progress_container)
+        prog_layout.setContentsMargins(0, 4, 0, 4)
+        prog_layout.setSpacing(4)
+
+        prog_top = QHBoxLayout()
+        self.lbl_progress = QLabel("Đang chuẩn bị tải…")
+        self.lbl_progress.setStyleSheet(f"font-size: 11px; color: {theme.ACCENT}; font-weight: bold;")
+        prog_top.addWidget(self.lbl_progress, 1)
+
+        self.btn_cancel_dl = QPushButton("Hủy")
+        self.btn_cancel_dl.setFixedWidth(50)
+        self.btn_cancel_dl.clicked.connect(self._cancel_download_clicked)
+        prog_top.addWidget(self.btn_cancel_dl)
+        prog_layout.addLayout(prog_top)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setTextVisible(False)
+        prog_layout.addWidget(self.progress_bar)
+
+        self.progress_container.setVisible(False)
+        dl_layout.addWidget(self.progress_container)
+
+        for pkg in PIPER_PACKAGES:
+            row_frame = QFrame()
+            row_frame.setObjectName("PkgRow")
+            row_layout = QHBoxLayout(row_frame)
+            row_layout.setContentsMargins(10, 8, 10, 8)
+            row_layout.setSpacing(10)
+
+            info_col = QVBoxLayout()
+            info_col.setSpacing(2)
+
+            title_row = QHBoxLayout()
+            title_row.setSpacing(8)
+            name_lbl = QLabel(pkg["name"])
+            name_font = QFont()
+            name_font.setBold(True)
+            name_font.setPointSize(9)
+            name_lbl.setFont(name_font)
+            title_row.addWidget(name_lbl)
+
+            tag_lbl = QLabel(pkg["tag"])
+            tag_lbl.setStyleSheet(
+                f"background: {pkg['tag_bg']}; color: {pkg['tag_color']}; "
+                f"border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600;"
+            )
+            title_row.addWidget(tag_lbl)
+            title_row.addStretch(1)
+            info_col.addLayout(title_row)
+
+            sub_lbl = QLabel(f"{pkg['size']} — {pkg['desc']}")
+            sub_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 10.5px;")
+            sub_lbl.setWordWrap(True)
+            info_col.addWidget(sub_lbl)
+            row_layout.addLayout(info_col, 1)
+
+            status_badge = QLabel("Chưa kiểm tra")
+            status_badge.setFixedWidth(80)
+            status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            row_layout.addWidget(status_badge)
+
+            btn_dl = QPushButton("Tải về")
+            btn_dl.setFixedWidth(70)
+            btn_dl.clicked.connect(lambda _, p=pkg: self._download_single_clicked(p))
+            row_layout.addWidget(btn_dl)
+
+            self.pkg_widgets[pkg["id"]] = {
+                "frame": row_frame,
+                "status_badge": status_badge,
+                "btn_dl": btn_dl,
+                "pkg": pkg,
+            }
+            dl_layout.addWidget(row_frame)
+
+        body_layout.addWidget(self.downloads_box)
+
+        self.engine_status = QLabel("")
+        body_layout.addWidget(self.engine_status)
+
+        self.apply_theme()
+        self.check_packages_status()
+
+    def is_expanded(self) -> bool:
+        return self._expanded
+
+    def toggle_expanded(self) -> None:
+        self.set_expanded(not self._expanded)
+
+    def set_expanded(self, expanded: bool) -> None:
+        self._expanded = bool(expanded)
+        self.body_widget.setVisible(self._expanded)
+        set_icon(
+            self.btn_collapse,
+            "chevron-up" if self._expanded else "chevron-down",
+            "muted",
+            14,
+        )
+        self.btn_collapse.setToolTip("Thu gọn" if self._expanded else "Mở rộng")
+
+    def _browse_dir(self) -> None:
+        start = self.path_edit.text().strip() or str(Path.home())
+        chosen = QFileDialog.getExistingDirectory(self, "Chọn thư mục PiperTTS", start)
+        if chosen:
+            chosen = str(Path(chosen).resolve().as_posix())
+            self.path_edit.setText(chosen)
+            self.check_packages_status()
+            self.changed.emit()
+
+    def _on_path_changed(self, _text: str) -> None:
+        self.check_packages_status()
+        self.changed.emit()
+
+    @staticmethod
+    def _is_pkg_installed(root: Path, pkg: Dict[str, Any]) -> bool:
+        if not root.exists():
+            return False
+        target = root / pkg["target_subpath"]
+        if not target.exists():
+            return False
+        for f in pkg.get("check_files", []):
+            if (target / f).exists() or (root / f).exists():
+                return True
+        return False
+
+    def check_packages_status(self, errors: Optional[Dict[str, str]] = None) -> None:
+        raw = self.path_edit.text().strip()
+        if not raw:
+            path = Path(default_piper_path())
+        else:
+            p = Path(raw)
+            path = (ROOT / p).resolve() if not p.is_absolute() else p
+        all_core_ok = True
+        has_any = False
+        errors = errors or {}
+
+        for pkg in PIPER_PACKAGES:
+            pkg_id = pkg["id"]
+            w = self.pkg_widgets.get(pkg_id)
+            if not w:
+                continue
+            is_installed = self._is_pkg_installed(path, pkg)
+            if is_installed:
+                has_any = True
+                w["status_badge"].setText("✓ Đã có")
+                w["status_badge"].setStyleSheet(
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
+                    "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+                )
+                w["btn_dl"].setText("Tải lại")
+            elif pkg_id in errors:
+                if pkg.get("core"):
+                    all_core_ok = False
+                w["status_badge"].setText("Lỗi tải")
+                w["status_badge"].setStyleSheet(
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
+                    "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+                )
+                w["btn_dl"].setText("Thử lại")
+            else:
+                if pkg.get("core"):
+                    all_core_ok = False
+                w["status_badge"].setText("Chưa tải")
+                w["status_badge"].setStyleSheet(
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
+                    "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+                )
+                w["btn_dl"].setText("Tải về")
+
+        if path.exists() and all_core_ok:
+            self.status_badge.setText("Đã cài đủ")
+            self.status_badge.setStyleSheet(
+                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
+                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+            )
+            self.btn_install.setText("🚀 Đã cài đủ gói khuyên dùng")
+        elif path.exists() and has_any:
+            self.status_badge.setText("Thiếu gói")
+            self.status_badge.setStyleSheet(
+                f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
+                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+            )
+            self.btn_install.setText("🚀 Tải gói khuyên dùng (~145 MB)")
+        else:
+            self.status_badge.setText("Chưa cài")
+            self.status_badge.setStyleSheet(
+                f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
+                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+            )
+            self.btn_install.setText("🚀 Tải gói khuyên dùng (~145 MB)")
+
+    def _download_single_clicked(self, pkg: Dict[str, Any]) -> None:
+        self._start_download([pkg])
+
+    def _download_recommended_clicked(self) -> None:
+        recommended = [p for p in PIPER_PACKAGES if p.get("core")]
+        self._start_download(recommended)
+
+    def _download_all_clicked(self) -> None:
+        self._start_download(PIPER_PACKAGES)
+
+    def _start_download(self, pkgs: List[Dict[str, Any]]) -> None:
+        if self._downloader is not None and self._downloader.isRunning():
+            return
+        root_path = self.path_edit.text().strip()
+        if not root_path:
+            paint_status(self.engine_status, "warning")
+            self.engine_status.setText("Vui lòng chọn thư mục cài đặt PiperTTS trước khi tải.")
+            return
+
+        self.progress_container.setVisible(True)
+        self.progress_bar.setValue(0)
+        self.lbl_progress.setText("Đang khởi tạo kết nối tải PiperTTS…")
+        self.btn_cancel_dl.setText("Hủy")
+        self.btn_cancel_dl.setEnabled(True)
+        self.btn_install.setEnabled(False)
+        self.btn_dl_all.setEnabled(False)
+
+        self._downloader = PiperDownloadWorker(root_path, pkgs, parent=self)
+        self._downloader.progress.connect(self._on_download_progress)
+        self._downloader.pkg_status_changed.connect(self._on_pkg_status_changed)
+        self._downloader.all_finished.connect(self._on_download_finished)
+        self._downloader.start()
+
+    def _on_download_progress(self, percent: int, text: str) -> None:
+        self.progress_bar.setValue(percent)
+        self.lbl_progress.setText(text)
+
+    def _on_pkg_status_changed(self, pkg_id: str, status_kind: str, text: str) -> None:
+        w = self.pkg_widgets.get(pkg_id)
+        if not w:
+            return
+        w["status_badge"].setText(text)
+        if status_kind == "downloading":
+            w["status_badge"].setStyleSheet(
+                f"background: {theme.SURFACE_RAISED}; color: {theme.BLUE}; "
+                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+            )
+        elif status_kind == "installed":
+            w["status_badge"].setStyleSheet(
+                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
+                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+            )
+            w["btn_dl"].setText("Tải lại")
+        elif status_kind == "error":
+            w["status_badge"].setStyleSheet(
+                f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
+                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+            )
+            w["btn_dl"].setText("Thử lại")
+
+    def _on_download_finished(self, success: bool, message: str) -> None:
+        errors = dict(getattr(self._downloader, "errors", {})) if self._downloader else {}
+        self._downloader = None
+        self.btn_install.setEnabled(True)
+        self.btn_dl_all.setEnabled(True)
+        self.btn_cancel_dl.setText("Đóng")
+        self.btn_cancel_dl.setEnabled(True)
+        self.lbl_progress.setText(message)
+        paint_status(self.engine_status, "success" if success else "warning")
+        self.engine_status.setText(message)
+        self.check_packages_status(errors=errors)
+        self.changed.emit()
+
+    def _cancel_download_clicked(self) -> None:
+        if self._downloader and self._downloader.isRunning():
+            self._downloader.cancel()
+            self.lbl_progress.setText("Đang dừng tiến trình tải…")
+            self.btn_cancel_dl.setEnabled(False)
+        else:
+            self.progress_container.setVisible(False)
+
+    def apply_theme(self) -> None:
+        self.setStyleSheet(
+            f"QFrame#PiperTTSCard {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 8px; }}"
+        )
+        if hasattr(self, "downloads_box"):
+            self.downloads_box.setStyleSheet(
+                f"QFrame#DownloadsBox {{ background-color: {theme.SURFACE_ALT}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
+            )
+        if hasattr(self, "pkg_widgets"):
+            for w in self.pkg_widgets.values():
+                w["frame"].setStyleSheet(
+                    f"QFrame#PkgRow {{ background-color: {theme.SURFACE}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
+                )
+
+
 class GeneralSettingsPage(QWidget):
     """General application settings & tool paths."""
 
@@ -1826,6 +2413,15 @@ class GeneralSettingsPage(QWidget):
         h2_row.addWidget(self.h2mtts_edit, 1)
         h2_row.addWidget(btn_h2)
         paths_form.addRow("Thư mục H2MTTS", self._wrap(h2_row))
+
+        # PiperTTS path
+        piper_row = QHBoxLayout()
+        self.piper_edit = QLineEdit(default_piper_path())
+        btn_piper = icon_button("folder", "Chọn thư mục PiperTTS", role="muted", size=14, side=30)
+        btn_piper.clicked.connect(lambda: self._browse_dir(self.piper_edit, "Chọn thư mục PiperTTS"))
+        piper_row.addWidget(self.piper_edit, 1)
+        piper_row.addWidget(btn_piper)
+        paths_form.addRow("Thư mục PiperTTS", self._wrap(piper_row))
 
         # FFmpeg
         ff_row = QHBoxLayout()
@@ -1988,6 +2584,23 @@ class SettingsTab(QWidget):
         self.card_h2mtts.path_edit.textChanged.connect(_sync_h2_from_card)
         self.general_page.h2mtts_edit.textChanged.connect(_sync_h2_from_general)
 
+        # Two-way sync between General page and PiperTTS card path inputs
+        def _sync_piper_from_card(text: str) -> None:
+            if self.general_page.piper_edit.text() != text:
+                self.general_page.piper_edit.blockSignals(True)
+                self.general_page.piper_edit.setText(text)
+                self.general_page.piper_edit.blockSignals(False)
+
+        def _sync_piper_from_general(text: str) -> None:
+            if self.card_piper.path_edit.text() != text:
+                self.card_piper.path_edit.blockSignals(True)
+                self.card_piper.path_edit.setText(text)
+                self.card_piper.path_edit.blockSignals(False)
+                self.card_piper.check_packages_status()
+
+        self.card_piper.path_edit.textChanged.connect(_sync_piper_from_card)
+        self.general_page.piper_edit.textChanged.connect(_sync_piper_from_general)
+
         self.inner_tabs.addTab(api_wrapper, "API")
 
     # ── Page 1: Văn bản ──────────────────────────────────────────────────────
@@ -2048,7 +2661,7 @@ class SettingsTab(QWidget):
         layout.addWidget(
             PageHeader(
                 "Giọng đọc",
-                "Thuyết minh đa ngôn ngữ cho video với Edge-TTS và H2MTTS offline.",
+                "Thuyết minh đa ngôn ngữ cho video với Edge-TTS, H2MTTS và PiperTTS offline.",
             )
         )
 
@@ -2075,6 +2688,11 @@ class SettingsTab(QWidget):
         self.card_h2mtts = H2MTTSCard(parent=page)
         self.card_h2mtts.changed.connect(self._on_changed)
         layout.addWidget(self.card_h2mtts)
+
+        # Local PiperTTS (Đa ngôn ngữ · Siêu nhẹ)
+        self.card_piper = PiperTTSCard(parent=page)
+        self.card_piper.changed.connect(self._on_changed)
+        layout.addWidget(self.card_piper)
 
         layout.addStretch(1)
         self.api_tabs.addTab(wrap_scroll(page), "Giọng đọc")
@@ -2150,6 +2768,12 @@ class SettingsTab(QWidget):
             self.general_page.h2mtts_edit.setText(h2)
             self.card_h2mtts.path_edit.setText(h2)
             self.card_h2mtts.detect_specs()
+
+            raw_piper = str(paths.get("piper") or "").strip()
+            piper_norm = normalize_piper_path(raw_piper)
+            self.general_page.piper_edit.setText(piper_norm)
+            self.card_piper.path_edit.setText(piper_norm)
+            self.card_piper.check_packages_status()
 
             self.general_page.ffmpeg_edit.setText(str(paths.get("ffmpeg") or "ffmpeg"))
             self.general_page.ffprobe_edit.setText(str(paths.get("ffprobe") or "ffprobe"))
@@ -2239,6 +2863,21 @@ class SettingsTab(QWidget):
                 paths["h2mtts"] = h2_norm
         except Exception:
             paths["h2mtts"] = h2_norm
+
+        piper_val = self.card_piper.path_edit.text().strip() or self.general_page.piper_edit.text().strip()
+        piper_norm = normalize_piper_path(piper_val)
+        try:
+            piper_p = Path(piper_norm).resolve()
+            root_p = ROOT.resolve()
+            if piper_p == (root_p / "PiperTTS").resolve():
+                paths["piper"] = "PiperTTS"
+            elif piper_p == (root_p / "tts" / "PiperTTS").resolve():
+                paths["piper"] = "tts/PiperTTS"
+            else:
+                paths["piper"] = piper_norm
+        except Exception:
+            paths["piper"] = piper_norm
+
         paths["ffmpeg"] = self.general_page.ffmpeg_edit.text().strip() or "ffmpeg"
         paths["ffprobe"] = self.general_page.ffprobe_edit.text().strip() or "ffprobe"
 
@@ -2286,6 +2925,8 @@ class SettingsTab(QWidget):
             self.card_edge_tts.apply_theme()
         if hasattr(self, "card_h2mtts"):
             self.card_h2mtts.apply_theme()
+        if hasattr(self, "card_piper"):
+            self.card_piper.apply_theme()
         if hasattr(self, "card_cloudflare_image"):
             self.card_cloudflare_image.apply_theme()
 

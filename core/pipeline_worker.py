@@ -20,6 +20,7 @@ from PySide6.QtCore import QThread, Signal
 
 from core.dubbing import DubbingEngine, DubbingError, load_cues
 from core.edge_tts_engine import EdgeTTSEngine
+from core.piper_tts_engine import PiperTTSEngine, resolve_tts_engine_for_language
 from core.ffmpeg_renderer import (
     FFmpegRenderer,
     RenderCancelled,
@@ -543,13 +544,21 @@ class PipelineWorker(QThread):
             return normalize_language(
                 getattr(item, "language", "") or self.manager.default_language)
 
-        local_items = [item for item in targets if language_of(item) == "vi"]
-        online_items = [item for item in targets if language_of(item) != "vi"]
+        def engine_of(item) -> str:
+            return resolve_tts_engine_for_language(self.settings, language_of(item))
+
+        local_items = [item for item in targets if engine_of(item) == "h2mtts"]
+        piper_items = [item for item in targets if engine_of(item) == "piper"]
+        online_items = [item for item in targets if engine_of(item) == "edge"]
         local_engine = TTSEngine(self.settings) if local_items else None
+        piper_engine = PiperTTSEngine(self.settings) if piper_items else None
         online_engine = EdgeTTSEngine(self.settings) if online_items else None
         if online_items:
             logger.info("TTS: %d file dùng edge-tts (%s).", len(online_items),
                         ", ".join(sorted({language_of(item) for item in online_items})))
+        if piper_items:
+            logger.info("TTS: %d file dùng PiperTTS (%s).", len(piper_items),
+                        ", ".join(sorted({language_of(item) for item in piper_items})))
         errors: List[str] = []
         total = len(targets)
         skipped = sum(1 for item in self.manager.get_items() if item.text.strip()) - total
@@ -615,7 +624,8 @@ class PipelineWorker(QThread):
                         continue
 
                     language = language_of(item)
-                    if language == "vi":
+                    eng_choice = engine_of(item)
+                    if eng_choice == "h2mtts" and local_engine is not None:
                         result = local_engine.synthesize(
                             item.text,
                             item.audio_path,
@@ -624,7 +634,19 @@ class PipelineWorker(QThread):
                             pause_cb=self.is_paused,
                             cancel_cb=self.is_cancelled,
                         )
+                    elif eng_choice == "piper" and piper_engine is not None:
+                        result = piper_engine.synthesize(
+                            item.text,
+                            item.audio_path,
+                            language=language,
+                            progress_cb=report,
+                            message_cb=lambda msg: self.status_changed.emit(msg, True),
+                            pause_cb=self.is_paused,
+                            cancel_cb=self.is_cancelled,
+                        )
                     else:
+                        if online_engine is None:
+                            online_engine = EdgeTTSEngine(self.settings)
                         result = online_engine.synthesize(
                             item.text,
                             item.audio_path,
@@ -683,6 +705,8 @@ class PipelineWorker(QThread):
             if local_engine is not None:
                 local_engine.close()
                 logger.info("Đã đóng TTS engine, giải phóng bộ nhớ.")
+            if piper_engine is not None:
+                piper_engine.close()
         self.task_changed.emit(100)
         return errors
 

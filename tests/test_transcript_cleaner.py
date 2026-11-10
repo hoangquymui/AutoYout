@@ -29,7 +29,8 @@ def test_clean_transcript_heuristics_strips_noise():
     assert "tuổi thơ và chơi đồ chơi." in cleaned
 
 
-def test_clean_transcript_without_api_key_returns_heuristic():
+def test_clean_transcript_without_api_key_returns_heuristic(monkeypatch):
+    monkeypatch.setattr("core.ai_client.get_cloudflare_text_config", lambda: ("", "", ""))
     raw = "Xin chào [âm nhạc] >> hôm nay mình review [tiếng ồn] đồ chơi."
     out = clean_transcript(raw, api_key="")
     assert "[âm nhạc]" not in out
