@@ -41,6 +41,7 @@ from core.thumbnail import (
     generate_image,
     render_thumbnail,
     suggest_titles,
+    translate_thumbnail_keywords,
     translate_thumbnail_titles,
 )
 from ui import theme
@@ -87,24 +88,39 @@ class TranslateWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, title: str, target_langs: List[str], api_key: str,
-                 source_lang: str = "vi", model: str = DEFAULT_MODEL, parent=None) -> None:
+                 source_lang: str = "vi", model: str = DEFAULT_MODEL,
+                 keywords: Optional[List[Tuple[str, str]]] = None,
+                 parent=None) -> None:
         super().__init__(parent)
         self._title = title
         self._target_langs = target_langs
         self._api_key = api_key
         self._source_lang = source_lang
         self._model = model
+        self._keywords = list(keywords or [])
 
     def run(self) -> None:
         try:
-            res = translate_thumbnail_titles(
+            titles = translate_thumbnail_titles(
                 self._title,
                 self._target_langs,
                 self._api_key,
                 source_language=self._source_lang,
                 model=self._model,
             )
-            self.done.emit(res)
+            kw_map = {}
+            if self._keywords:
+                try:
+                    kw_map = translate_thumbnail_keywords(
+                        self._keywords,
+                        self._target_langs,
+                        self._api_key,
+                        source_language=self._source_lang,
+                        model=self._model,
+                    )
+                except Exception as kw_exc:
+                    logger.warning("Dịch keywords thumbnail lỗi (tiếp tục): %s", kw_exc)
+            self.done.emit({"titles": titles, "keywords": kw_map})
         except Exception as exc:
             logger.error("Dịch tiêu đề thumbnail lỗi: %s", exc)
             self.failed.emit(str(exc))
@@ -226,6 +242,7 @@ class ThumbnailPanel(QWidget):
         self._preview_file: Optional[Path] = None
         self._pixmap: Optional[QPixmap] = None
         self._highlights: List[Tuple[str, str]] = []
+        self._highlights_by_lang: Dict[str, List[Tuple[str, str]]] = {}
         self._title_worker: Optional[TitleWorker] = None
         self._image_worker: Optional[ImageWorker] = None
         self._translate_worker: Optional[TranslateWorker] = None
@@ -804,6 +821,7 @@ class ThumbnailPanel(QWidget):
         self._bg_path = None
         self._preview_file = None
         self._highlights = []
+        self._highlights_by_lang.clear()
         self.highlight_list.clear()
         self.suggest_list.clear()
         self._refresh_items(previous_base)
@@ -830,6 +848,7 @@ class ThumbnailPanel(QWidget):
         self.suggest_list.clear()
         self.highlight_list.clear()
         self._highlights = []
+        self._highlights_by_lang.clear()
         self._bg_path = None
         self._preview_file = None
         item = self._manager.get_item(self._base) if (self._manager and self._base) else None
@@ -1080,7 +1099,8 @@ class ThumbnailPanel(QWidget):
         if hasattr(self, "translate_btn"):
             self.translate_btn.setEnabled(False)
         self._translate_worker = TranslateWorker(
-            title, targets, key, source_lang=base_lang, parent=self
+            title, targets, key, source_lang=base_lang,
+            keywords=self._highlights, parent=self
         )
         self._translate_worker.done.connect(self._on_translate_done)
         self._translate_worker.failed.connect(self._on_translate_failed)
@@ -1088,15 +1108,23 @@ class ThumbnailPanel(QWidget):
         self._translate_worker.start()
 
     def _on_translate_done(self, results: dict) -> None:
-        for code, trans in results.items():
-            if not trans:
-                continue
-            self._titles_by_lang[code] = trans
-            if code in self._title_edits and self._title_edits[code] != self.title_edit:
-                self._title_edits[code].blockSignals(True)
-                self._title_edits[code].setPlainText(trans)
-                self._title_edits[code].blockSignals(False)
-        self._set_status(f"Đã dịch tiêu đề sang: {', '.join(results.keys())}.", "success")
+        titles = results.get("titles") if (isinstance(results, dict) and "titles" in results) else results
+        kw_map = results.get("keywords") if (isinstance(results, dict) and isinstance(results.get("keywords"), dict)) else {}
+        if isinstance(titles, dict):
+            for code, trans in titles.items():
+                if not trans:
+                    continue
+                self._titles_by_lang[code] = trans
+                if code in self._title_edits and self._title_edits[code] != self.title_edit:
+                    self._title_edits[code].blockSignals(True)
+                    self._title_edits[code].setPlainText(trans)
+                    self._title_edits[code].blockSignals(False)
+        if isinstance(kw_map, dict):
+            for code, kws in kw_map.items():
+                if kws:
+                    self._highlights_by_lang[code] = kws
+        label_keys = list(titles.keys()) if isinstance(titles, dict) else []
+        self._set_status(f"Đã dịch tiêu đề sang: {', '.join(label_keys)}.", "success")
         self._schedule_preview()
 
     def _on_translate_failed(self, error: str) -> None:
@@ -1112,6 +1140,16 @@ class ThumbnailPanel(QWidget):
         self._refresh_buttons()
 
     # ── highlights ───────────────────────────────────────────────────────────
+    def _get_highlights_for_lang(self, lang: str) -> List[Tuple[str, str]]:
+        lang_norm = normalize_language_code(lang)
+        combined: List[Tuple[str, str]] = list(self._highlights)
+        if lang_norm:
+            extra = self._highlights_by_lang.get(lang_norm, [])
+            for w, c in extra:
+                if not any(w.casefold() == ex.casefold() for ex, _ in combined):
+                    combined.append((w, c))
+        return combined
+
     def _add_highlight(self) -> None:
         word = self.highlight_edit.text().strip()
         if not word:
@@ -1126,6 +1164,20 @@ class ThumbnailPanel(QWidget):
         entry.setIcon(self._color_icon(color))
         self.highlight_list.addItem(entry)
         self.highlight_edit.clear()
+
+        # Quick translation of keyword for other selected languages if API key available
+        other_langs = [l for l in self.get_selected_languages() if l != "vi"]
+        key = self._api_key()
+        if other_langs and key:
+            try:
+                kw_trans = translate_thumbnail_keywords([(word, color)], other_langs, key, source_language="vi")
+                for c, kws in kw_trans.items():
+                    if c not in self._highlights_by_lang:
+                        self._highlights_by_lang[c] = []
+                    self._highlights_by_lang[c].extend(kws)
+            except Exception as e:
+                logger.debug("Quick translate keyword failed: %s", e)
+
         self._schedule_preview()
 
     def _remove_highlight(self) -> None:
@@ -1321,14 +1373,11 @@ class ThumbnailPanel(QWidget):
 
     def _palette(self) -> Dict[str, str]:
         thumb = self._settings.get("thumbnail") or {}
-        colors = {
+        return {
             "text": "#FFFFFF",
             "green": str(thumb.get("color_primary") or "#3BFF35"),
             "red": str(thumb.get("color_secondary") or "#FF3B30"),
         }
-        if str(self.palette_combo.currentData() or "default") == "default":
-            return {}
-        return colors
 
     def _render_preview(self) -> None:
         if self._bg_path is None or not self._bg_path.is_file():
@@ -1343,9 +1392,11 @@ class ThumbnailPanel(QWidget):
         out_dir.mkdir(parents=True, exist_ok=True)
         out = out_dir / f"thumb_{(self._base or 'item')}_{lang}.jpg"
         try:
+            highlights = self._get_highlights_for_lang(lang)
             render_thumbnail(
-                self._bg_path, title, self._highlights, self._current_template_id(),
-                self._palette(), out, font_size=int(self.font_spin.value()))
+                self._bg_path, title, highlights, self._current_template_id(),
+                self._palette(), out, font_size=int(self.font_spin.value()),
+                language=lang)
         except Exception as exc:
             logger.error("Render thumbnail lỗi: %s", exc)
             self._set_status(str(exc), "error")
@@ -1415,18 +1466,22 @@ class ThumbnailPanel(QWidget):
                         # Direct thumbnail render when no specific language item exists
                         target_name = f"{root_stem}_{lang_norm}.jpg" if root_stem else f"{self._base}_{lang_norm}.jpg"
                         target = thumbs_lang_dir / target_name
+                        highlights = self._get_highlights_for_lang(lang_norm)
                         render_thumbnail(
-                            self._bg_path, lang_title, self._highlights, self._current_template_id(),
-                            self._palette(), target, font_size=int(self.font_spin.value()))
+                            self._bg_path, lang_title, highlights, self._current_template_id(),
+                            self._palette(), target, font_size=int(self.font_spin.value()),
+                            language=lang_norm)
                         saved_targets.append(target)
                         continue
 
                 for it in lang_items:
                     item_title = lang_title or str(it.metadata.get("title") or base_title or it.base)
                     draft = thumbs_lang_dir / f"{it.base}_draft.jpg"
+                    highlights = self._get_highlights_for_lang(lang_norm)
                     render_thumbnail(
-                        self._bg_path, item_title, self._highlights, self._current_template_id(),
-                        self._palette(), draft, font_size=int(self.font_spin.value()))
+                        self._bg_path, item_title, highlights, self._current_template_id(),
+                        self._palette(), draft, font_size=int(self.font_spin.value()),
+                        language=lang_norm)
                     target = attach_thumbnail(self._manager, it.base, draft, language=lang_norm)
                     Path(draft).unlink(missing_ok=True)
                     saved_targets.append(target)

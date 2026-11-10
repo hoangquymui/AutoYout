@@ -187,6 +187,67 @@ def translate_thumbnail_titles(
     return {}
 
 
+def translate_thumbnail_keywords(
+    keywords: Sequence[Tuple[str, str]],
+    target_languages: Sequence[str],
+    api_key: str,
+    source_language: str = "vi",
+    model: str = DEFAULT_MODEL,
+    generate_fn: Optional[Callable[[str, str, str], str]] = None,
+) -> Dict[str, List[Tuple[str, str]]]:
+    """Translate highlight keywords into target languages, preserving their colors."""
+    if not keywords:
+        return {}
+    targets = [
+        normalize_language_code(l)
+        for l in target_languages
+        if normalize_language_code(l) != normalize_language_code(source_language)
+    ]
+    if not targets:
+        return {}
+    generator = generate_fn or gemini_generate
+    if generate_fn is None and not str(api_key or "").strip():
+        return {}
+
+    word_list = [str(w).strip() for w, _ in keywords if str(w).strip()]
+    if not word_list:
+        return {}
+
+    color_by_word = {str(w).strip().casefold(): str(c) for w, c in keywords}
+    prompt = (
+        f"Dịch danh sách các từ/cụm từ nổi bật sau sang các ngôn ngữ: {', '.join(targets)}.\n"
+        f"Ngôn ngữ gốc ({source_language}): {json.dumps(word_list, ensure_ascii=False)}\n\n"
+        f"Yêu cầu:\n"
+        f"- Dịch ngắn gọn, tự nhiên, tương ứng với từ/cụm từ gốc khi dùng trên tiêu đề thumbnail YouTube.\n"
+        f"- Trả về DUY NHẤT một JSON map dạng:\n"
+        f"{{\n"
+        f'  "{targets[0]}": {{"từ gốc": "từ đã dịch"}}\n'
+        f"}}\n"
+        f"Không giải thích, không thêm bất kỳ ký tự nào ngoài JSON."
+    )
+    try:
+        raw = generator(prompt, api_key, model)
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group(0))
+            if isinstance(parsed, dict):
+                results: Dict[str, List[Tuple[str, str]]] = {}
+                for lang_code, trans_map in parsed.items():
+                    norm_code = normalize_language_code(lang_code)
+                    if isinstance(trans_map, dict):
+                        kw_list: List[Tuple[str, str]] = []
+                        for orig, trans in trans_map.items():
+                            color = color_by_word.get(str(orig).strip().casefold(), "green")
+                            if str(trans).strip():
+                                kw_list.append((str(trans).strip(), color))
+                        if kw_list:
+                            results[norm_code] = kw_list
+                return results
+    except Exception as exc:
+        logger.warning("Không phân tích được JSON dịch từ khoá: %s", exc)
+    return {}
+
+
 # ── image prompts ────────────────────────────────────────────────────────────
 def build_image_prompt(title: str, transcript_excerpt: str,
                        style: str, template_id: str) -> str:
@@ -338,20 +399,81 @@ TEMPLATES: Dict[str, ThumbTemplate] = {
     ),
 }
 
-_FONT_CANDIDATES = (
+_CJK_FONT_CANDIDATES = (
+    Path("C:/Windows/Fonts/msyhbd.ttc"),
+    Path("C:/Windows/Fonts/msyh.ttc"),
+    Path("C:/Windows/Fonts/simhei.ttf"),
+    Path("C:/Windows/Fonts/YuGothB.ttc"),
+    Path("C:/Windows/Fonts/meiryob.ttc"),
+    Path("C:/Windows/Fonts/malgunbd.ttf"),
+)
+
+_JA_FONT_CANDIDATES = (
+    Path("C:/Windows/Fonts/YuGothB.ttc"),
+    Path("C:/Windows/Fonts/meiryob.ttc"),
+    Path("C:/Windows/Fonts/msyhbd.ttc"),
+)
+
+_KO_FONT_CANDIDATES = (
+    Path("C:/Windows/Fonts/malgunbd.ttf"),
+    Path("C:/Windows/Fonts/malgun.ttf"),
+    Path("C:/Windows/Fonts/msyhbd.ttc"),
+)
+
+_LATIN_FONT_CANDIDATES = (
     Path(__file__).resolve().parent.parent / "ui" / "assets" / "fonts" / "Anton.ttf",
     Path(__file__).resolve().parent.parent / "ui" / "assets" / "fonts" / "Montserrat-ExtraBold.ttf",
     Path("C:/Windows/Fonts/arialbd.ttf"),
+    Path("C:/Windows/Fonts/segoeuib.ttf"),
     Path("C:/Windows/Fonts/seguisb.ttf"),
+    Path("C:/Windows/Fonts/arial.ttf"),
+    Path("C:/Windows/Fonts/msyhbd.ttc"),
 )
 
+_FONT_CANDIDATES = _LATIN_FONT_CANDIDATES
 
-@lru_cache(maxsize=1)
-def default_font_path() -> Optional[str]:
-    for candidate in _FONT_CANDIDATES:
+
+def is_cjk(text: str) -> bool:
+    """Check if text contains any Chinese, Japanese, or Korean characters."""
+    for ch in str(text or ""):
+        code = ord(ch)
+        if (
+            0x4E00 <= code <= 0x9FFF
+            or 0x3400 <= code <= 0x4DBF
+            or 0x20000 <= code <= 0x2A6DF
+            or 0x3040 <= code <= 0x309F
+            or 0x30A0 <= code <= 0x30FF
+            or 0xAC00 <= code <= 0xD7AF
+            or 0x1100 <= code <= 0x11FF
+            or 0xFF00 <= code <= 0xFFEF
+        ):
+            return True
+    return False
+
+
+@lru_cache(maxsize=64)
+def _find_font_cached(is_cjk_flag: bool, is_ja_flag: bool, is_ko_flag: bool, lang_prefix: str) -> Optional[str]:
+    candidates = []
+    if lang_prefix.startswith("ja") or is_ja_flag:
+        candidates.extend(_JA_FONT_CANDIDATES)
+    elif lang_prefix.startswith("ko") or is_ko_flag:
+        candidates.extend(_KO_FONT_CANDIDATES)
+    elif lang_prefix.startswith("zh") or is_cjk_flag:
+        candidates.extend(_CJK_FONT_CANDIDATES)
+    candidates.extend(_LATIN_FONT_CANDIDATES)
+    for candidate in candidates:
         if candidate.is_file():
             return str(candidate)
     return None
+
+
+def default_font_path(text: str = "", language: str = "") -> Optional[str]:
+    raw = str(text or "")
+    lang = (language or "").strip().lower()
+    cjk = is_cjk(raw)
+    ja = any(0x3040 <= ord(c) <= 0x30FF for c in raw)
+    ko = any(0xAC00 <= ord(c) <= 0xD7AF for c in raw)
+    return _find_font_cached(cjk, ja, ko, lang[:2])
 
 
 def _load_font(path: Optional[str], size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -365,28 +487,47 @@ def _load_font(path: Optional[str], size: int) -> ImageFont.FreeTypeFont | Image
 
 def wrap_title_lines(draw: ImageDraw.ImageDraw, text: str, font,
                      max_width: int) -> List[str]:
-    """Greedy word wrap on the uppercased title, never splitting words."""
-    words = str(text or "").upper().split()
-    if not words:
+    """Wrap title lines cleanly. Uses word wrap for Western/Vietnamese, character-level for CJK."""
+    raw = str(text or "").strip()
+    if not raw:
         return []
+    if not is_cjk(raw):
+        words = raw.upper().split()
+        if not words:
+            return []
+        lines: List[str] = []
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            if not current or draw.textlength(candidate, font=font) <= max_width:
+                current = candidate
+                continue
+            lines.append(current)
+            current = word
+        if current:
+            lines.append(current)
+        return lines
+
+    # CJK character-level wrapping
     lines: List[str] = []
     current = ""
-    for word in words:
-        candidate = f"{current} {word}".strip()
+    for ch in raw:
+        candidate = current + ch
         if not current or draw.textlength(candidate, font=font) <= max_width:
             current = candidate
-            continue
-        lines.append(current)
-        current = word
+        else:
+            if current:
+                lines.append(current)
+            current = ch
     if current:
         lines.append(current)
     return lines
 
 
 def autosize_font(text: str, box_w: int, box_h: int, max_font: int, min_font: int,
-                  line_height: float, font_path: Optional[str] = None):
+                  line_height: float, font_path: Optional[str] = None, language: str = ""):
     """Largest font size (within bounds) whose wrapped title fits the box."""
-    path = font_path or default_font_path()
+    path = font_path or default_font_path(text, language)
     top = max(8, int(max_font))
     bottom = max(8, min(int(min_font), top))
     probe = ImageDraw.Draw(Image.new("RGB", (8, 8)))
@@ -452,19 +593,80 @@ def _gradient_mask(size: Tuple[int, int], mode: str, box: Sequence[int]) -> Opti
     return None
 
 
-def _draw_word_line(draw, x: float, y: float, line: str, font,
-                    default_color: str, highlight: Dict[str, str],
-                    stroke_width: int) -> None:
-    space = draw.textlength(" ", font=font)
-    cursor = x
-    for token in line.split():
-        core = re.sub(r"^[^\w]+|[^\w]+$", "", token, flags=re.UNICODE)
-        color = highlight.get(core.casefold(), default_color)
-        draw.text((cursor + 4, y + 4), token, font=font, fill=(0, 0, 0),
+def _segment_line_highlights(
+    line: str,
+    highlights: Iterable[Tuple[str, str]],
+    default_color: str,
+    palette_colors: Dict[str, str],
+) -> List[Tuple[str, str]]:
+    """Segment a line into text runs with resolved colors for matching keywords/phrases."""
+    if not line:
+        return []
+    char_colors = [default_color] * len(line)
+    line_lower = line.casefold()
+
+    # Sort keywords by length descending so longer phrases match first
+    sorted_kw = sorted(highlights, key=lambda item: len(str(item[0])), reverse=True)
+
+    for kw, col in sorted_kw:
+        kw_str = str(kw).strip()
+        if not kw_str:
+            continue
+        kw_lower = kw_str.casefold()
+        col_lower = str(col).strip().lower()
+        resolved_col = palette_colors.get(col_lower, col_lower)
+
+        start_idx = 0
+        while True:
+            idx = line_lower.find(kw_lower, start_idx)
+            if idx == -1:
+                break
+            end_idx = idx + len(kw_lower)
+            if all(char_colors[i] == default_color for i in range(idx, end_idx)):
+                for i in range(idx, end_idx):
+                    char_colors[i] = resolved_col
+            start_idx = idx + 1
+
+    segments: List[Tuple[str, str]] = []
+    curr_text = [line[0]]
+    curr_color = char_colors[0]
+    for ch, col in zip(line[1:], char_colors[1:]):
+        if col == curr_color:
+            curr_text.append(ch)
+        else:
+            segments.append(("".join(curr_text), curr_color))
+            curr_text = [ch]
+            curr_color = col
+    if curr_text:
+        segments.append(("".join(curr_text), curr_color))
+    return segments
+
+
+def _draw_word_line(
+    draw: ImageDraw.ImageDraw,
+    x: float,
+    y: float,
+    line: str,
+    font,
+    default_color: str,
+    highlights: Iterable[Tuple[str, str]],
+    palette_colors: Dict[str, str],
+    stroke_width: int,
+) -> None:
+    # 1. Drop shadow for the full line
+    draw.text((x + 4, y + 4), line, font=font, fill=(0, 0, 0),
+              stroke_width=stroke_width, stroke_fill=(0, 0, 0))
+    # 2. Black outline underlay for the full line
+    draw.text((x, y), line, font=font, fill=(0, 0, 0),
+              stroke_width=stroke_width, stroke_fill=(0, 0, 0))
+    # 3. Colored runs over the stroke
+    segments = _segment_line_highlights(line, highlights, default_color, palette_colors)
+    prefix = ""
+    for seg_text, color in segments:
+        seg_x = x + draw.textlength(prefix, font=font)
+        draw.text((seg_x, y), seg_text, font=font, fill=color,
                   stroke_width=stroke_width, stroke_fill=(0, 0, 0))
-        draw.text((cursor, y), token, font=font, fill=color,
-                  stroke_width=stroke_width, stroke_fill=(0, 0, 0))
-        cursor += draw.textlength(token, font=font) + space
+        prefix += seg_text
 
 
 def render_thumbnail(
@@ -476,6 +678,7 @@ def render_thumbnail(
     out_path: str | os.PathLike,
     size: Tuple[int, int] = (1280, 720),
     font_size: int = 0,
+    language: str = "",
 ) -> Path:
     """Composite the title over the background and save a JPEG/PNG."""
     background = Path(bg_path)
@@ -508,24 +711,20 @@ def render_thumbnail(
         max_font = max(8, int(template.max_font * sy))
         min_font = max(8, int(template.min_font * sy))
     font = autosize_font(title, scaled_box[2], scaled_box[3], max_font, min_font,
-                         template.line_height)
+                         template.line_height, language=language)
     lines = wrap_title_lines(draw, title, font, scaled_box[2])
     font_size = getattr(font, "size", min_font)
     stroke = max(2, int(font_size * template.stroke_ratio))
     line_h = font_size * template.line_height
     total_h = len(lines) * line_h
     y = scaled_box[1] + max(0.0, (scaled_box[3] - total_h) / 2.0)
-    highlight_map = {
-        str(word).strip().casefold(): str(color).lower()
-        for word, color in highlights if str(word).strip()
-    }
     for line in lines:
         line_w = draw.textlength(line, font=font)
         if template.align == "center":
             x = scaled_box[0] + max(0.0, (scaled_box[2] - line_w) / 2.0)
         else:
             x = float(scaled_box[0])
-        _draw_word_line(draw, x, y, line, font, colors["text"], highlight_map, stroke)
+        _draw_word_line(draw, x, y, line, font, colors["text"], highlights, colors, stroke)
         y += line_h
 
     target = Path(out_path)

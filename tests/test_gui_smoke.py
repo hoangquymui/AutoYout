@@ -31,6 +31,7 @@ def window(app, monkeypatch, tmp_path: Path):
     settings.setdefault("thumbnail", {})["provider"] = "pollinations"
     # A retired model also exercises the migration back to the current default.
     settings.setdefault("script", {})["model"] = "gemini-2.0-flash"
+    settings.setdefault("dubbing", {})["gap"] = 0.0
     win = main_window.MainWindow(settings)
     yield win
     win.close()

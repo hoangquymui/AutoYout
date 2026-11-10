@@ -10,8 +10,12 @@ pytest.importorskip("PIL")
 from PIL import Image, ImageDraw  # noqa: E402
 
 from core.thumbnail import (  # noqa: E402
+    _segment_line_highlights,
     autosize_font,
+    default_font_path,
+    is_cjk,
     render_thumbnail,
+    translate_thumbnail_keywords,
     wrap_title_lines,
 )
 
@@ -70,3 +74,69 @@ def test_render_tolerates_empty_or_unmatched_highlights(
     assert out.is_file()
     with Image.open(out) as image:
         assert image.size == (320, 180)
+
+
+def test_is_cjk_detection() -> None:
+    assert not is_cjk("Tiêu đề tiếng Việt có dấu")
+    assert not is_cjk("English YouTube Title 123")
+    assert is_cjk("校门口玩具的惊人真相")
+    assert is_cjk("学校前の伝説の玩具の正体")
+    assert is_cjk("학교 앞 장난감의 진실")
+
+
+def test_default_font_path_picks_cjk_font() -> None:
+    zh_font = default_font_path("校门口玩具的惊人真相", "zh")
+    assert zh_font is not None
+    # On Windows, should pick YaHei or similar CJK font
+    assert any(c in zh_font.lower() for c in ("msyh", "simhei", "yugoth"))
+
+    vi_font = default_font_path("Sự thật về những món đồ chơi", "vi")
+    assert vi_font is not None
+    assert any(c in vi_font.lower() for c in ("arial", "segoe", "anton", "montserrat"))
+
+
+def test_wrap_title_lines_cjk() -> None:
+    draw = _draw()
+    font = autosize_font("校门口玩具的惊人真相", 300, 200, 60, 40, 1.05, language="zh")
+    lines = wrap_title_lines(draw, "校门口玩具的惊人真相", font, 300)
+    assert len(lines) >= 2
+    assert "".join(lines) == "校门口玩具的惊人真相"
+
+
+def test_multi_word_segment_line_highlights() -> None:
+    palette = {"text": "#FFFFFF", "green": "#3BFF35", "red": "#FF3B30"}
+    line = "SỰ THẬT VỀ NHỮNG MÓN ĐỒ CHƠI CỔNG TRƯỜNG"
+    highlights = [("Sự thật", "green"), ("đồ chơi", "red")]
+    segments = _segment_line_highlights(line, highlights, "#FFFFFF", palette)
+
+    # Must segment into [('SỰ THẬT', '#3BFF35'), (' VỀ NHỮNG MÓN ', '#FFFFFF'), ('ĐỒ CHƠI', '#FF3B30'), (' CỔNG TRƯỜNG', '#FFFFFF')]
+    assert segments[0] == ("SỰ THẬT", "#3BFF35")
+    assert segments[1] == (" VỀ NHỮNG MÓN ", "#FFFFFF")
+    assert segments[2] == ("ĐỒ CHƠI", "#FF3B30")
+    assert segments[3] == (" CỔNG TRƯỜNG", "#FFFFFF")
+
+
+def test_render_thumbnail_cjk_and_highlights(tmp_path: Path) -> None:
+    out = tmp_path / "thumb_zh.jpg"
+    result = render_thumbnail(
+        _background(tmp_path), "校门口玩具的惊人真相",
+        [("玩具", "red"), ("真相", "green")], "drama_left",
+        {"green": "#3BFF35", "red": "#FF3B30"},
+        out, size=(640, 360), language="zh")
+
+    assert result == out and out.is_file() and out.stat().st_size > 1000
+    with Image.open(out) as image:
+        assert image.size == (640, 360)
+
+
+def test_translate_thumbnail_keywords_mock() -> None:
+    def fake_gen(prompt: str, key: str, model: str) -> str:
+        return '{"zh": {"Sự thật": "真相", "đồ chơi": "玩具"}}'
+
+    res = translate_thumbnail_keywords(
+        [("Sự thật", "green"), ("đồ chơi", "red")],
+        ["zh"], "test-key", source_language="vi",
+        generate_fn=fake_gen,
+    )
+    assert "zh" in res
+    assert res["zh"] == [("真相", "green"), ("玩具", "red")]
