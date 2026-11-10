@@ -7,6 +7,7 @@ purpose so the app does not need an extra SDK.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import urllib.error
@@ -14,6 +15,9 @@ import urllib.request
 from typing import Callable, List, Optional
 
 from core.languages import language_name, normalize_language
+from utils.logger import get_logger
+
+logger = get_logger("ai.client")
 
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
 GEMINI_TEXT_MODELS: List[tuple[str, str]] = [
@@ -108,6 +112,29 @@ def clean_transcript_heuristics(text: str) -> str:
     return cleaned.strip()
 
 
+def get_cloudflare_text_config() -> tuple[str, str, str]:
+    """Retrieve Cloudflare credentials (account_id, api_token, model) from settings or env."""
+    acc = os.environ.get("CF_ACCOUNT_ID", "").strip()
+    tok = os.environ.get("CF_API_TOKEN", "").strip()
+    model = os.environ.get("CF_TEXT_MODEL", "").strip()
+    try:
+        from core.settings import load_settings
+
+        settings = load_settings()
+        api_cfg = settings.get("api") or {}
+        if not acc:
+            acc = str(api_cfg.get("cloudflare_account_id") or "").strip()
+        if not tok:
+            tok = str(api_cfg.get("cloudflare_token") or "").strip()
+        if not model:
+            model = str(api_cfg.get("cloudflare_text_model") or "").strip()
+    except Exception as exc:
+        logger.debug("Không thể đọc settings cho Cloudflare: %s", exc)
+    if not model:
+        model = "@cf/meta/llama-3.1-8b-instruct"
+    return acc, tok, model
+
+
 def gemini_generate(
     prompt: str,
     api_key: str,
@@ -115,18 +142,31 @@ def gemini_generate(
     timeout: float = 120.0,
     temperature: float = 0.4,
     retries: int = 3,
+    fallback_to_cloudflare: bool = True,
 ) -> str:
     """Send one prompt to Gemini and return the concatenated answer text.
 
     Includes automatic retries for transient HTTP 503 (high demand), 429 (rate limit),
     and network timeouts, plus model fallback when candidate models are retired.
+    If Gemini is unavailable or fails, automatically falls back to Cloudflare Workers AI.
     """
-    key = str(api_key or "").strip()
-    if not key:
-        raise AIError("Thiếu API key Gemini. Nhập key ở tab Kịch bản hoặc Cài đặt.")
     body = str(prompt or "").strip()
     if not body:
         raise AIError("Prompt rỗng, không có gì để gửi AI.")
+
+    key = str(api_key or "").strip()
+
+    # Nếu không có Gemini key, thử chuyển thẳng sang Cloudflare Worker AI nếu có cấu hình
+    if not key:
+        if fallback_to_cloudflare:
+            cf_acc, cf_tok, cf_model = get_cloudflare_text_config()
+            if cf_acc and cf_tok:
+                logger.info(
+                    "Không có Gemini API key; tự động chuyển sang Cloudflare Worker AI (%s)...",
+                    cf_model,
+                )
+                return cloudflare_generate(body, cf_acc, cf_tok, model=cf_model, timeout=timeout)
+        raise AIError("Thiếu API key Gemini. Nhập key ở tab Kịch bản hoặc Cài đặt.")
 
     chosen_model = normalize_model(model)
     candidate_models = [chosen_model]
@@ -166,12 +206,29 @@ def gemini_generate(
                     time.sleep(1.5 * (attempt + 1))
                     continue
                 if exc.code not in (429, 500, 502, 503, 504):
-                    raise last_exc from exc
+                    break
             except (urllib.error.URLError, OSError, ValueError) as exc:
                 last_exc = AIError(f"Gọi Gemini thất bại: {exc}")
                 if attempt < retries - 1:
                     time.sleep(1.5 * (attempt + 1))
                     continue
+
+    # Gemini thất bại -> Fallback sang Cloudflare Workers AI
+    if fallback_to_cloudflare:
+        cf_acc, cf_tok, cf_model = get_cloudflare_text_config()
+        if cf_acc and cf_tok:
+            logger.warning(
+                "Gemini gặp lỗi (%s). Tự động fallback sang Cloudflare Worker AI (%s)...",
+                last_exc,
+                cf_model,
+            )
+            try:
+                return cloudflare_generate(body, cf_acc, cf_tok, model=cf_model, timeout=timeout)
+            except Exception as cf_exc:
+                logger.error("Cloudflare Worker AI fallback cũng thất bại: %s", cf_exc)
+                raise AIError(
+                    f"Gemini lỗi ({last_exc}) và Cloudflare Worker AI fallback cũng thất bại: {cf_exc}"
+                ) from cf_exc
 
     if last_exc:
         raise last_exc
@@ -324,7 +381,9 @@ def clean_transcript(
     pre_cleaned = clean_transcript_heuristics(text)
     key = str(api_key or "").strip()
     if not key and generate_fn is None:
-        return pre_cleaned
+        cf_acc, cf_tok, _ = get_cloudflare_text_config()
+        if not (cf_acc and cf_tok):
+            return pre_cleaned
 
     generator = generate_fn or gemini_generate
     prompt_template = str(instruction or "").strip() or DEFAULT_CLEAN_PROMPT
@@ -430,7 +489,9 @@ def translate_text(
     if not chunks:
         return ""
     if not str(api_key or "").strip() and generate_fn is None:
-        raise AIError("Thiếu API key Gemini — không thể chuyển thể.")
+        cf_acc, cf_tok, _ = get_cloudflare_text_config()
+        if not (cf_acc and cf_tok):
+            raise AIError("Thiếu API key Gemini hoặc cấu hình Cloudflare Worker AI — không thể chuyển thể.")
     generator = generate_fn or gemini_generate
     translated: List[str] = []
     total = len(chunks)

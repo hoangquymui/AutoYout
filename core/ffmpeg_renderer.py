@@ -314,7 +314,7 @@ class VideoConfig:
             problems.append(f"Kiểu gộp audio không hợp lệ: {self.grouping}")
         if self.visual not in ("image", "slideshow", "video", "video_pool", "ai"):
             problems.append(f"Kiểu hình nền không hợp lệ: {self.visual}")
-        if self.ai_mode not in ("manual", "imagen", "gemini"):
+        if self.ai_mode not in ("manual", "imagen", "gemini", "cloudflare", "cf", "ai"):
             problems.append(f"Chế độ ảnh AI không hợp lệ: {self.ai_mode}")
         if not (1 <= self.ai_count <= 10):
             problems.append("Số ảnh AI mỗi chương phải trong khoảng 1–10.")
@@ -893,11 +893,24 @@ class FFmpegRenderer:
                 raise RenderError(f"Thư mục slideshow không có ảnh: {cfg.slideshow_dir or folder}")
         if cfg.visual == "ai":
             folder = resolve_ai_dir(manager, cfg.ai_dir)
-            if cfg.ai_mode in ("imagen", "gemini") and not cfg.ai_api_key.strip():
-                raise RenderError(
-                    "Chưa có API key Gemini. Nhập key trong tab Cài đặt hoặc tab Video "
-                    "(hoặc đặt biến môi trường GEMINI_API_KEY)."
-                )
+            if cfg.ai_mode in ("imagen", "gemini", "cloudflare", "cf", "ai"):
+                cf_acc = os.environ.get("CF_ACCOUNT_ID", "").strip()
+                cf_tok = os.environ.get("CF_API_TOKEN", "").strip()
+                if not cf_acc or not cf_tok:
+                    try:
+                        from core.settings import load_settings
+
+                        _s = load_settings()
+                        _api = _s.get("api") or {}
+                        cf_acc = str(_api.get("cloudflare_account_id") or "").strip()
+                        cf_tok = str(_api.get("cloudflare_token") or "").strip()
+                    except Exception:
+                        pass
+                if not (cf_acc and cf_tok) and not cfg.ai_api_key.strip() and not os.environ.get("GEMINI_API_KEY", "").strip():
+                    raise RenderError(
+                        "Chưa có cấu hình Cloudflare Workers AI hoặc API key Gemini. "
+                        "Vui lòng cấu hình trong tab Cài đặt."
+                    )
             if cfg.ai_mode == "manual" and not folder.is_dir():
                 raise RenderError(
                     f"Thư mục ảnh chương chưa có: {folder}. Tạo thư mục và đặt ảnh "

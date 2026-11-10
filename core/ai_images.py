@@ -394,23 +394,42 @@ def ensure_images(
     report: Report = None,
     cancel_cb: CancelCb = None,
     variants: int = 1,
+    account_id: str = "",
+    api_token: str = "",
+    steps: int = 4,
 ) -> List[ChapterImages]:
     """Return the images for every chapter, generating them when needed.
 
-    With ``variants > 1`` and mode ``imagen``, each chapter gets ``variants``
-    distinct candidate images named ``<base>-1.png``, ``<base>-2.png``, … —
-    existing files with those names are reused instead of regenerated.
+    Supports Cloudflare Workers AI and Google Gemini image providers.
     """
     mode = (mode or "manual").lower()
     count = max(1, int(count))
     variants = max(1, int(variants))
-    per_chapter = variants if mode in ("imagen", "gemini") and variants > 1 else (
-        count if mode in ("imagen", "gemini") else 1)
-    provider: Optional[GeminiImageProvider] = None
+    is_ai = mode in ("imagen", "gemini", "cloudflare", "cf", "ai")
+    per_chapter = variants if is_ai and variants > 1 else (count if is_ai else 1)
+    provider: Any = None
     results: List[ChapterImages] = []
     total = max(1, len(segments))
     estimate = total * per_chapter
     done = 0
+
+    # Auto-load Cloudflare credentials if not passed
+    cf_acc = (account_id or os.environ.get("CF_ACCOUNT_ID", "")).strip()
+    cf_tok = (api_token or os.environ.get("CF_API_TOKEN", "")).strip()
+    if is_ai and (not cf_acc or not cf_tok):
+        try:
+            from core.settings import load_settings
+
+            _s = load_settings()
+            _api = _s.get("api") or {}
+            if not cf_acc:
+                cf_acc = str(_api.get("cloudflare_account_id") or "").strip()
+            if not cf_tok:
+                cf_tok = str(_api.get("cloudflare_token") or "").strip()
+            if not model or model.startswith("gemini-") or model.startswith("imagen"):
+                model = str(_api.get("cloudflare_image_model") or "@cf/black-forest-labs/flux-1-schnell").strip()
+        except Exception:
+            pass
 
     def emit(message: str) -> None:
         if report is not None:
@@ -419,7 +438,7 @@ def ensure_images(
     for chapter_index, (item, start, duration) in enumerate(segments):
         _check(cancel_cb)
         paths = chapter_images(folder, item.base)
-        if mode in ("imagen", "gemini"):
+        if is_ai:
             if variants > 1:
                 for variant, stem in enumerate(variant_stems(folder, item.base, variants), start=1):
                     _check(cancel_cb)
@@ -428,7 +447,12 @@ def ensure_images(
                         paths.append(cached)
                         continue
                     if provider is None:
-                        provider = GeminiImageProvider(api_key, model)
+                        if cf_acc and cf_tok:
+                            provider = CloudflareImageProvider(
+                                cf_acc, cf_tok, model or "@cf/black-forest-labs/flux-1-schnell", steps=steps
+                            )
+                        else:
+                            provider = GeminiImageProvider(api_key, model)
                     prompt = build_prompt(item, variant, variants, style)
                     emit(f"Đang tạo ảnh AI {chapter_index + 1}/{total} "
                          f"(bản {variant}/{variants})…")
@@ -439,7 +463,12 @@ def ensure_images(
             else:
                 missing = count - len(paths)
                 if missing > 0 and provider is None:
-                    provider = GeminiImageProvider(api_key, model)
+                    if cf_acc and cf_tok:
+                        provider = CloudflareImageProvider(
+                            cf_acc, cf_tok, model or "@cf/black-forest-labs/flux-1-schnell", steps=steps
+                        )
+                    else:
+                        provider = GeminiImageProvider(api_key, model)
                 next_index = _next_ai_index(paths, item.base)
                 for offset in range(missing):
                     _check(cancel_cb)
@@ -454,9 +483,9 @@ def ensure_images(
                     logger.info("Đã tạo ảnh AI %s", created.name)
         if not paths:
             expected = folder / f"{item.base}_01.png"
-            if mode in ("imagen", "gemini"):
+            if is_ai:
                 raise AIImageError(
-                    f"Gemini không tạo được ảnh cho '{item.base}'."
+                    f"Không tạo được ảnh cho '{item.base}'."
                 )
             raise AIImageError(
                 "Thiếu ảnh cho chương '{}'. Đặt ảnh vào {} "

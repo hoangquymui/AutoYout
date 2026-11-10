@@ -113,9 +113,21 @@
     "browser_profile": "",
     "browser_headless": false
   },
+  "api": {
+    "gemini_key": "",
+    "gemini_enabled": true,
+    "gemini_model": "gemini-3.8-flash",
+    "cloudflare_account_id": "",
+    "cloudflare_token": "",
+    "cloudflare_text_model": "@cf/meta/llama-3.1-8b-instruct",
+    "cloudflare_text_enabled": true,
+    "cloudflare_image_model": "@cf/black-forest-labs/flux-1-schnell",
+    "cloudflare_image_enabled": true,
+    "edge_tts_enabled": true
+  },
   "thumbnail": {
-    "provider": "gemini",
-    "image_model": "gemini-3.1-flash-image",
+    "provider": "cloudflare",
+    "image_model": "@cf/black-forest-labs/flux-1-schnell",
     "image_style": "cinematic dramatic lighting, photo-realistic",
     "template": "drama_left",
     "palette": "default",

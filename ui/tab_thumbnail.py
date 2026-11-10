@@ -54,7 +54,6 @@ logger = get_logger("ui.thumbnail")
 
 _PROVIDERS = [
     ("Cloudflare Workers AI", "cloudflare"),
-    ("Gemini (AI)", "gemini"),
     ("Pollinations (miễn phí)", "pollinations"),
     ("Frame từ video đã render", "frame"),
 ]
@@ -762,9 +761,9 @@ class ThumbnailPanel(QWidget):
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
         thumb = settings.get("thumbnail") or {}
-        provider_val = str(thumb.get("provider") or "gemini")
-        if provider_val == "imagen":
-            provider_val = "gemini"
+        provider_val = str(thumb.get("provider") or "cloudflare")
+        if provider_val in ("gemini", "imagen"):
+            provider_val = "cloudflare"
         index = self.provider_combo.findData(provider_val)
         if index < 0:
             index = 0
@@ -790,18 +789,14 @@ class ThumbnailPanel(QWidget):
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         thumb = settings.setdefault("thumbnail", {})
-        thumb["provider"] = self.provider_combo.currentData() or "gemini"
+        thumb["provider"] = self.provider_combo.currentData() or "cloudflare"
         api_cfg = settings.get("api") or {}
-        video_cfg = settings.get("video") or {}
         raw_model = (
-            api_cfg.get("gemini_image_model")
-            or video_cfg.get("ai_image_model")
+            api_cfg.get("cloudflare_image_model")
             or thumb.get("image_model")
-            or video_cfg.get("ai_model")
-            or "gemini-3.1-flash-image"
+            or "@cf/black-forest-labs/flux-1-schnell"
         )
-        from core.ai_images import normalize_image_model
-        thumb["image_model"] = normalize_image_model(str(raw_model))
+        thumb["image_model"] = str(raw_model).strip()
         thumb["image_style"] = self.style_edit.text().strip()
         thumb["template"] = self._current_template_id()
         thumb["palette"] = self.palette_combo.currentData() or "default"
@@ -1008,9 +1003,9 @@ class ThumbnailPanel(QWidget):
         language = getattr(item, "language", "") or "vi"
         script = self._settings.get("script") or {}
         key = self._api_key()
-        if not key:
+        if not key and not self._has_text_ai_credentials():
             self._set_status(
-                "Thiếu API key Gemini — vui lòng cấu hình API key trong tab Cài đặt.",
+                "Chưa có API key Gemini hoặc cấu hình Cloudflare Worker AI — vui lòng cấu hình trong tab Cài đặt.",
                 "warning")
             return
         self._title_worker = TitleWorker(
@@ -1036,7 +1031,7 @@ class ThumbnailPanel(QWidget):
             self._titles_by_lang[base_lang] = first_title
             selected_langs = self.get_selected_languages()
             other_langs = [l for l in selected_langs if l != base_lang]
-            if other_langs and self._api_key():
+            if other_langs and self._has_text_ai_credentials():
                 self._translate_titles(first_title)
 
     def _on_titles_failed(self, message: str) -> None:
@@ -1078,7 +1073,7 @@ class ThumbnailPanel(QWidget):
 
         selected_langs = self.get_selected_languages()
         other_langs = [l for l in selected_langs if l != base_lang]
-        if other_langs and self._api_key():
+        if other_langs and self._has_text_ai_credentials():
             self._translate_titles(chosen_title)
         else:
             self._schedule_preview()
@@ -1096,8 +1091,8 @@ class ThumbnailPanel(QWidget):
             self._set_status("Chưa tick thêm ngôn ngữ nào khác để dịch.", "warning")
             return
         key = self._api_key()
-        if not key:
-            self._set_status("Chưa có API key Gemini để dịch tiêu đề. Hãy cấu hình ở tab Cài đặt.", "warning")
+        if not key and not self._has_text_ai_credentials():
+            self._set_status("Chưa có API key Gemini hoặc cấu hình Cloudflare để dịch tiêu đề. Hãy cấu hình ở tab Cài đặt.", "warning")
             return
         if self._translate_worker is not None:
             return
@@ -1175,7 +1170,7 @@ class ThumbnailPanel(QWidget):
         # Quick translation of keyword for other selected languages if API key available
         other_langs = [l for l in self.get_selected_languages() if l != "vi"]
         key = self._api_key()
-        if other_langs and key:
+        if other_langs and self._has_text_ai_credentials():
             try:
                 kw_trans = translate_thumbnail_keywords([(word, color)], other_langs, key, source_language="vi")
                 for c, kws in kw_trans.items():
@@ -1208,9 +1203,9 @@ class ThumbnailPanel(QWidget):
         self.frame_spin.setEnabled(is_frame)
         self.style_edit.setEnabled(not is_frame)
         self.prompt_edit.setEnabled(not is_frame)
-        if provider in ("gemini", "imagen"):
+        if provider in ("cloudflare", "cf"):
             paint_status(self.image_status, "muted")
-            self.image_status.setText("Sử dụng API key Gemini từ tab Cài đặt.")
+            self.image_status.setText("Tạo ảnh nền bằng Cloudflare Workers AI từ tab Cài đặt.")
         elif provider == "pollinations":
             paint_status(self.image_status, "muted")
             self.image_status.setText("Tạo ảnh miễn phí qua Pollinations AI (không cần API key).")
@@ -1250,7 +1245,9 @@ class ThumbnailPanel(QWidget):
         if self._manager is None or not self._base:
             self._set_status("Hãy chọn file trước.", "warning")
             return
-        provider = str(self.provider_combo.currentData() or "gemini")
+        provider = str(self.provider_combo.currentData() or "cloudflare")
+        if provider in ("gemini", "imagen"):
+            provider = "cloudflare"
         prompt = self.prompt_edit.toPlainText().strip()
         if provider != "frame" and not prompt:
             self._set_status("Prompt ảnh đang trống.", "warning")
@@ -1276,21 +1273,12 @@ class ThumbnailPanel(QWidget):
             prompt = str(video)
 
         key = self._api_key()
-        if provider in ("gemini", "imagen") and not key:
-            self._set_status(
-                "Chưa có API key Gemini — hãy cấu hình key trong tab Cài đặt.",
-                "warning")
-            paint_status(self.image_status, "warning")
-            self.image_status.setText("Chưa có API key Gemini. Hãy cấu hình ở tab Cài đặt.")
-            return
-
         thumb = self._settings.get("thumbnail") or {}
         api_cfg = self._settings.get("api") or {}
-        video_cfg = self._settings.get("video") or {}
 
         cf_account = str(api_cfg.get("cloudflare_account_id") or os.environ.get("CF_ACCOUNT_ID", "")).strip()
         cf_token = str(api_cfg.get("cloudflare_token") or os.environ.get("CF_API_TOKEN", "")).strip()
-        cf_model = str(api_cfg.get("cloudflare_image_model") or thumb.get("cloudflare_image_model") or "@cf/black-forest-labs/flux-1-schnell").strip()
+        cf_model = str(api_cfg.get("cloudflare_image_model") or thumb.get("image_model") or "@cf/black-forest-labs/flux-1-schnell").strip()
 
         if provider in ("cloudflare", "cf") and (not cf_account or not cf_token):
             self._set_status(
@@ -1300,25 +1288,7 @@ class ThumbnailPanel(QWidget):
             self.image_status.setText("Chưa có Cloudflare credentials. Hãy cấu hình ở tab Cài đặt.")
             return
 
-        if provider in ("gemini", "imagen") and not key:
-            self._set_status(
-                "Chưa có API key Gemini — hãy cấu hình key trong tab Cài đặt.",
-                "warning")
-            paint_status(self.image_status, "warning")
-            self.image_status.setText("Chưa có API key Gemini. Hãy cấu hình ở tab Cài đặt.")
-            return
-
-        raw_model = (
-            cf_model if provider in ("cloudflare", "cf") else (
-                thumb.get("image_model")
-                or api_cfg.get("gemini_image_model")
-                or video_cfg.get("ai_image_model")
-                or video_cfg.get("ai_model")
-                or "gemini-3.1-flash-image"
-            )
-        )
-        from core.ai_images import normalize_image_model
-        model = cf_model if provider in ("cloudflare", "cf") else normalize_image_model(str(raw_model))
+        model = cf_model if provider in ("cloudflare", "cf") else ""
         ffmpeg = str((self._settings.get("paths") or {}).get("ffmpeg") or "")
         self._image_worker = ImageWorker(
             provider, prompt, out, api_key=key, model=model,
@@ -1349,7 +1319,7 @@ class ThumbnailPanel(QWidget):
 
     def _on_background_failed(self, message: str) -> None:
         paint_status(self.image_status, "error")
-        clean_msg = re.sub(r"^(Imagen|Gemini)\s*lỗi:\s*", "", str(message).strip())
+        clean_msg = re.sub(r"^(Imagen|Gemini|Cloudflare Workers AI|Cloudflare)\s*lỗi:\s*", "", str(message).strip(), flags=re.IGNORECASE)
         self.image_status.setText(f"Lỗi: {clean_msg}")
         self._set_status(f"Tạo ảnh thất bại: {clean_msg}", "error")
 
@@ -1578,6 +1548,14 @@ class ThumbnailPanel(QWidget):
             or ""
         )
         return str(key).strip()
+
+    def _has_text_ai_credentials(self) -> bool:
+        if bool(self._api_key()):
+            return True
+        api = (self._settings or {}).get("api") or {}
+        cf_acc = str(api.get("cloudflare_account_id") or os.environ.get("CF_ACCOUNT_ID", "")).strip()
+        cf_tok = str(api.get("cloudflare_token") or os.environ.get("CF_API_TOKEN", "")).strip()
+        return bool(cf_acc and cf_tok)
 
     def _refresh_buttons(self) -> None:
         busy = (

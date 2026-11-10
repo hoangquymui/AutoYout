@@ -59,7 +59,8 @@ def test_suggest_titles_uses_injected_generator() -> None:
     assert "Ngày xưa có một ngôi làng bí ẩn." in captured["prompt"]
 
 
-def test_suggest_titles_requires_key_without_generator() -> None:
+def test_suggest_titles_requires_key_without_generator(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("core.ai_client.get_cloudflare_text_config", lambda: ("", "", ""))
     with pytest.raises(AIError):
         suggest_titles("Nội dung", "")
 

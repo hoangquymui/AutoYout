@@ -132,12 +132,15 @@ def suggest_titles(
         raise AIError("Không có transcript để gợi ý tiêu đề.")
     generator = generate_fn or gemini_generate
     if generate_fn is None and not str(api_key or "").strip():
-        raise AIError(
-            "Thiếu API key Gemini — nhập key ở tab Video.")
+        from core.ai_client import get_cloudflare_text_config
+
+        cf_acc, cf_tok, _ = get_cloudflare_text_config()
+        if not (cf_acc and cf_tok):
+            raise AIError("Thiếu API key Gemini hoặc Cloudflare Worker AI — vui lòng cấu hình trong Cài đặt.")
     raw = generator(build_title_prompt(transcript, language, limit), api_key, model)
     titles = parse_title_suggestions(raw, limit=limit)
     if not titles:
-        raise AIError("Gemini không trả về tiêu đề hợp lệ.")
+        raise AIError("AI không trả về tiêu đề hợp lệ.")
     return titles
 
 
@@ -162,7 +165,11 @@ def translate_thumbnail_titles(
         return {}
     generator = generate_fn or gemini_generate
     if generate_fn is None and not str(api_key or "").strip():
-        raise AIError("Thiếu API key Gemini để dịch tiêu đề.")
+        from core.ai_client import get_cloudflare_text_config
+
+        cf_acc, cf_tok, _ = get_cloudflare_text_config()
+        if not (cf_acc and cf_tok):
+            raise AIError("Thiếu API key Gemini hoặc Cloudflare Worker AI để dịch tiêu đề.")
 
     prompt = (
         f"Bạn là chuyên gia tối ưu tiêu đề video YouTube giật gân, cuốn hút trên Thumbnail.\n"
@@ -207,7 +214,11 @@ def translate_thumbnail_keywords(
         return {}
     generator = generate_fn or gemini_generate
     if generate_fn is None and not str(api_key or "").strip():
-        return {}
+        from core.ai_client import get_cloudflare_text_config
+
+        cf_acc, cf_tok, _ = get_cloudflare_text_config()
+        if not (cf_acc and cf_tok):
+            return {}
 
     word_list = [str(w).strip() for w, _ in keywords if str(w).strip()]
     if not word_list:
@@ -282,14 +293,36 @@ def generate_image(
     api_token: str = "",
     steps: int = 4,
 ) -> Path:
-    """Create a background image with Cloudflare, Gemini, Pollinations or a video frame."""
+    """Create a background image with Cloudflare, Pollinations or a video frame."""
     name = str(provider or "").strip().lower()
     target = Path(out_path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    if name in ("cloudflare", "cf", "worker_ai", "workers_ai"):
-        return _cloudflare_image(prompt, target, account_id, api_token, model, width, height, steps)
-    if name in ("gemini", "imagen"):
-        return _gemini_image(prompt, target, api_key, model, width, height)
+
+    # Đảm bảo lấy thông tin Cloudflare từ settings hoặc biến môi trường nếu chưa có
+    cf_acc = (account_id or os.environ.get("CF_ACCOUNT_ID", "")).strip()
+    cf_tok = (api_token or os.environ.get("CF_API_TOKEN", "")).strip()
+    cf_model = str(model or "").strip()
+    try:
+        from core.settings import load_settings
+
+        _s = load_settings()
+        _api = _s.get("api") or {}
+        if not cf_acc:
+            cf_acc = str(_api.get("cloudflare_account_id") or "").strip()
+        if not cf_tok:
+            cf_tok = str(_api.get("cloudflare_token") or "").strip()
+        if not cf_model or cf_model.startswith("gemini-") or cf_model.startswith("imagen"):
+            cf_model = str(_api.get("cloudflare_image_model") or "@cf/black-forest-labs/flux-1-schnell").strip()
+    except Exception:
+        pass
+
+    # Yêu cầu: Đối với Hình ảnh dùng Cloudflare thôi
+    if name in ("cloudflare", "cf", "worker_ai", "workers_ai", "gemini", "imagen", "ai"):
+        if cf_acc and cf_tok:
+            return _cloudflare_image(prompt, target, cf_acc, cf_tok, cf_model, width, height, steps)
+        if name in ("gemini", "imagen") and str(api_key).strip():
+            return _gemini_image(prompt, target, api_key, model, width, height)
+        return _cloudflare_image(prompt, target, cf_acc, cf_tok, cf_model, width, height, steps)
     if name == "pollinations":
         return _pollinations_image(prompt, target, width, height, seed)
     if name == "frame":
