@@ -11,7 +11,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.languages import DEFAULT_LANGUAGE, language_name, normalize_language
-from core.settings import ROOT, default_piper_path, normalize_piper_path
+from core.settings import (
+    ROOT,
+    default_f5tts_path,
+    default_piper_path,
+    normalize_f5tts_path,
+    normalize_piper_path,
+)
 from core.text_processor import chunk_text
 from core.tts_engine import SynthesisCancelled, SynthResult, TTSError
 from utils.logger import get_logger
@@ -140,8 +146,82 @@ H2M_DEFAULT_VOICES: List[Tuple[str, str]] = [
 ]
 
 
+_GPU_OVERRIDE: Optional[Tuple[bool, str]] = None
+_GPU_CACHE: Optional[Tuple[bool, str]] = None
+
+
+def set_gpu_override(has_gpu: Optional[bool], info: str = "") -> None:
+    """Override GPU detection result (useful for testing or manual simulation)."""
+    global _GPU_OVERRIDE
+    if has_gpu is None:
+        _GPU_OVERRIDE = None
+    else:
+        _GPU_OVERRIDE = (
+            bool(has_gpu),
+            info or ("GPU NVIDIA sẵn sàng" if has_gpu else "Chỉ có CPU (Không phát hiện GPU NVIDIA)"),
+        )
+
+
+def detect_gpu_status(force_refresh: bool = False) -> Tuple[bool, str]:
+    """Return (has_gpu, gpu_description) for local GPU-dependent TTS engines (F5-TTS / E2-TTS)."""
+    global _GPU_CACHE
+    if _GPU_OVERRIDE is not None:
+        return _GPU_OVERRIDE
+    if _GPU_CACHE is not None and not force_refresh:
+        return _GPU_CACHE
+
+    gpu_name = ""
+    gpu_vram = 0.0
+    driver = ""
+    try:
+        out = subprocess.check_output(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total,driver_version",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            timeout=2,
+            creationflags=_CREATE_NO_WINDOW,
+        )
+        parts = [p.strip() for p in out.strip().split(",")]
+        if len(parts) >= 3 and parts[0]:
+            gpu_name = parts[0]
+            gpu_vram = round(float(parts[1]) / 1024, 1)
+            driver = parts[2]
+    except Exception:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                gpu_name = torch.cuda.get_device_name(0)
+                gpu_vram = round(
+                    torch.cuda.get_device_properties(0).total_memory / (1024**3), 1
+                )
+        except Exception:
+            pass
+
+    if gpu_name:
+        desc = (
+            f"{gpu_name} · {gpu_vram} GB · driver {driver}"
+            if driver
+            else f"{gpu_name} · {gpu_vram} GB"
+        )
+        _GPU_CACHE = (True, desc)
+    else:
+        _GPU_CACHE = (False, "Chỉ có CPU (Không phát hiện GPU NVIDIA)")
+    return _GPU_CACHE
+
+
+F5_MODELS_CATALOG: List[Tuple[str, str]] = [
+    ("F5-TTS v1 Base (Đa ngôn ngữ · Zero-Shot)", "F5TTS_v1_Base"),
+    ("E2-TTS Base (Đa ngôn ngữ · Zero-Shot)", "E2TTS_Base"),
+    ("F5-TTS Tiếng Việt (ViVoice · Zero-Shot)", "F5TTS_Vietnamese"),
+    ("F5-TTS Base (24kHz · Zero-Shot)", "F5TTS_Base"),
+]
+
+
 def resolve_tts_engine_for_language(settings: Optional[Dict[str, Any]], language: str) -> str:
-    """Return the configured TTS engine ID ('h2mtts', 'edge', or 'piper') for a language."""
+    """Return the configured TTS engine ID ('h2mtts', 'edge', 'piper', or 'f5tts') for a language."""
     code = normalize_language(language)
     cfg = settings if isinstance(settings, dict) else {}
     tts_cfg = cfg.get("tts") if isinstance(cfg.get("tts"), dict) else {}
@@ -151,6 +231,8 @@ def resolve_tts_engine_for_language(settings: Optional[Dict[str, Any]], language
         return "h2mtts"
     if chosen in ("piper", "pipertts"):
         return "piper"
+    if chosen in ("f5tts", "f5", "e2tts", "f5-tts", "e2-tts"):
+        return "f5tts"
     if chosen in ("edge", "edgetts", "edge_tts"):
         return "edge"
     # Default: Vietnamese uses h2mtts, other languages use edge
@@ -174,6 +256,10 @@ def resolve_voice_for_language_engine(
             or PIPER_DEFAULT_VOICES.get(code)
             or "vi_VN-vais1000-medium"
         ).strip()
+    if engine_id == "f5tts":
+        f5_voices = tts_cfg.get("f5_voices") if isinstance(tts_cfg.get("f5_voices"), dict) else {}
+        default_f5 = "F5TTS_Vietnamese" if code == "vi" else "F5TTS_v1_Base"
+        return str(f5_voices.get(code) or default_f5).strip()
     # edge
     edge_voices = tts_cfg.get("edge_voices") if isinstance(tts_cfg.get("edge_voices"), dict) else {}
     from core.languages import edge_voice
@@ -469,3 +555,150 @@ class PiperTTSEngine:
             )
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+class F5TTSEngine:
+    """Offline F5-TTS / E2-TTS GPU engine for high-quality zero-shot voice synthesis."""
+
+    def __init__(self, settings: Optional[Dict[str, Any] | str | Path] = None) -> None:
+        if isinstance(settings, (str, Path)):
+            self.settings: Dict[str, Any] = {}
+            raw_f5 = str(settings).strip()
+            paths: Dict[str, Any] = {"f5tts": raw_f5}
+            tts: Dict[str, Any] = {}
+        elif isinstance(settings, dict):
+            self.settings = settings
+            paths = self.settings.get("paths") if isinstance(self.settings.get("paths"), dict) else {}
+            tts = self.settings.get("tts") if isinstance(self.settings.get("tts"), dict) else {}
+        else:
+            self.settings = {}
+            paths = {}
+            tts = {}
+        self.root = Path(normalize_f5tts_path(paths.get("f5tts") or default_f5tts_path()))
+        self.ffmpeg = resolve_tool(str(paths.get("ffmpeg") or "ffmpeg"), "ffmpeg")
+        self.bitrate = str(tts.get("bitrate") or "192k")
+        try:
+            self.default_speed = float(tts.get("speed", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            self.default_speed = 1.0
+
+    def close(self) -> None:
+        pass
+
+    def installed_voices(self, language: str = "") -> List[Tuple[str, str]]:
+        """Return list of (label, model_id) actually installed inside F5TTS directory."""
+        if not self.root.is_dir():
+            return []
+        known = {mid: label for label, mid in F5_MODELS_CATALOG}
+        found_list: List[Tuple[str, str]] = []
+        seen: set[str] = set()
+        for ext in ("*.safetensors", "*.pt", "*.ckpt"):
+            for f in self.root.rglob(ext):
+                if not f.is_file():
+                    continue
+                parent_name = f.parent.name
+                mid = parent_name if parent_name in known else f.stem
+                if mid not in seen:
+                    seen.add(mid)
+                    found_list.append((known.get(mid, f"{mid} (Đã tải)"), mid))
+        return found_list
+
+    def check_ready(self, language: str = "") -> Tuple[bool, str]:
+        has_gpu, gpu_desc = detect_gpu_status()
+        if not has_gpu:
+            return (
+                False,
+                f"F5-TTS / E2-TTS yêu cầu GPU NVIDIA (CUDA) để hoạt động ({gpu_desc}).",
+            )
+        voices = self.installed_voices(language)
+        if not voices:
+            return (
+                False,
+                f"Chưa cài đặt model F5-TTS / E2-TTS trong thư mục '{self.root}'. "
+                "Vui lòng vào Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS để tải model.",
+            )
+        return True, f"F5-TTS / E2-TTS đã sẵn sàng ({gpu_desc})."
+
+    def synthesize(
+        self,
+        text: str,
+        out_path: str | os.PathLike,
+        language: str = DEFAULT_LANGUAGE,
+        voice: Optional[str] = None,
+        speed: Optional[float] = None,
+        progress_cb: ProgressCb = None,
+        message_cb: MessageCb = None,
+        pause_cb: PauseCb = None,
+        cancel_cb: CancelCb = None,
+    ) -> SynthResult:
+        ok, reason = self.check_ready(language)
+        if not ok:
+            raise TTSError(reason)
+
+        clean_text = " ".join(str(text or "").split())
+        if not clean_text:
+            raise TTSError("Văn bản rỗng, không có gì để đọc.")
+
+        code = normalize_language(language)
+        chosen_model = (voice or ("F5TTS_Vietnamese" if code == "vi" else "F5TTS_v1_Base")).strip()
+        cli_bin = shutil.which("f5-tts_infer-cli")
+        if not cli_bin:
+            raise TTSError(
+                "Chưa tìm thấy công cụ dòng lệnh 'f5-tts_infer-cli'. "
+                "Vui lòng cài đặt gói f5-tts hoặc tải đầy đủ tài nguyên trong Cài đặt → API → Giọng đọc."
+            )
+
+        target = Path(out_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temp_dir = Path(tempfile.mkdtemp(prefix="ay_f5tts_", dir=str(target.parent)))
+        try:
+            out_wav = temp_dir / "infer_cli_out.wav"
+            cmd = [
+                cli_bin,
+                "--model",
+                chosen_model,
+                "--gen_text",
+                clean_text,
+                "--output_dir",
+                str(temp_dir),
+                "--output_file",
+                out_wav.name,
+            ]
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=300,
+                creationflags=_CREATE_NO_WINDOW,
+            )
+            if proc.returncode != 0 or not out_wav.is_file():
+                err = proc.stderr.decode("utf-8", errors="replace")[:300]
+                raise TTSError(f"F5-TTS / E2-TTS lỗi tạo audio: {err}")
+            if progress_cb:
+                progress_cb(100)
+            if target.suffix.lower() == ".wav":
+                os.replace(out_wav, target)
+            else:
+                cmd_ff = [
+                    self.ffmpeg,
+                    "-y",
+                    "-i",
+                    str(out_wav),
+                    "-c:a",
+                    "libmp3lame",
+                    "-b:a",
+                    self.bitrate,
+                    str(target),
+                ]
+                subprocess.run(cmd_ff, capture_output=True, timeout=120, creationflags=_CREATE_NO_WINDOW)
+            dur = probe_duration(target)
+            return SynthResult(
+                path=target,
+                duration=dur,
+                chunks=1,
+                voice=chosen_model,
+                engine="f5tts",
+                backend="gpu",
+            )
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+

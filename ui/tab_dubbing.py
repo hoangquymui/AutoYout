@@ -52,10 +52,12 @@ from core.language_profiles import load_profiles
 from core.languages import LANGUAGES, language_name, normalize_language, normalize_language_code
 from core.piper_tts_engine import (
     EDGE_VOICES_BY_LANG,
+    F5TTSEngine,
     H2M_DEFAULT_VOICES,
     PIPER_DEFAULT_VOICES,
     PIPER_VOICES_BY_LANG,
     PiperTTSEngine,
+    detect_gpu_status,
     get_edge_voices_for_language,
     resolve_tts_engine_for_language,
     resolve_voice_for_language_engine,
@@ -504,10 +506,20 @@ class DubbingTab(QWidget):
                 row_layout.addWidget(lbl_eng)
 
                 eng_combo = QComboBox()
-                eng_combo.setMinimumWidth(140)
+                eng_combo.setMinimumWidth(145)
                 eng_combo.addItem("H2MTTS", "h2mtts")
                 eng_combo.addItem("EdgeTTS", "edge")
                 eng_combo.addItem("PiperTTS", "piper")
+                has_gpu, _ = detect_gpu_status()
+                eng_combo.addItem(
+                    "F5-TTS / E2-TTS" if has_gpu else "F5-TTS / E2-TTS (Cần GPU)",
+                    "f5tts",
+                )
+                f5_idx = eng_combo.findData("f5tts")
+                if f5_idx >= 0 and not has_gpu:
+                    c_model = eng_combo.model()
+                    if hasattr(c_model, "item") and c_model.item(f5_idx) is not None:
+                        c_model.item(f5_idx).setEnabled(False)
                 eng_id = resolve_tts_engine_for_language(self._settings, code)
                 eng_idx = eng_combo.findData(eng_id)
                 if eng_idx >= 0:
@@ -580,6 +592,20 @@ class DubbingTab(QWidget):
                     "⚠ Chưa cài đặt PiperTTS / chưa tải model (Vào Cài đặt → Giọng đọc để tải)",
                     "",
                 )
+        elif engine_id == "f5tts":
+            has_gpu, _ = detect_gpu_status()
+            f5_engine = F5TTSEngine(self._settings)
+            installed = f5_engine.installed_voices(lang_code)
+            if not has_gpu:
+                voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Không phát hiện GPU)", "")
+            elif installed:
+                for label, val in installed:
+                    voice_combo.addItem(label, val)
+            else:
+                voice_combo.addItem(
+                    "⚠ Chưa cài đặt model F5-TTS / E2-TTS (Vào Cài đặt → Giọng đọc để tải)",
+                    "",
+                )
         else:
             voices = get_edge_voices_for_language(lang_code)
             for label, val in voices:
@@ -629,6 +655,17 @@ class DubbingTab(QWidget):
                     self.lang_status_label.setVisible(True)
                     if self.isVisible():
                         QMessageBox.warning(self, "Chưa cài đặt PiperTTS", err_msg)
+                else:
+                    self.lang_status_label.setVisible(False)
+            elif engine_id == "f5tts":
+                f5_engine = F5TTSEngine(self._settings)
+                ok, err_msg = f5_engine.check_ready(lang_code)
+                if not ok:
+                    paint_status(self.lang_status_label, "error")
+                    self.lang_status_label.setText(f"⚠ {err_msg}")
+                    self.lang_status_label.setVisible(True)
+                    if self.isVisible():
+                        QMessageBox.warning(self, "Chưa cài đặt F5-TTS / E2-TTS", err_msg)
                 else:
                     self.lang_status_label.setVisible(False)
             elif engine_id == "h2mtts" and lang_code != "vi":
@@ -720,6 +757,7 @@ class DubbingTab(QWidget):
         lang_engines = tts_cfg.setdefault("language_engines", {})
         edge_voices = tts_cfg.setdefault("edge_voices", {})
         piper_voices = tts_cfg.setdefault("piper_voices", {})
+        f5_voices = tts_cfg.setdefault("f5_voices", {})
         h2m_voices = tts_cfg.setdefault("h2m_voices", {})
 
         for code, eng_combo in self.lang_engine_combos.items():
@@ -733,6 +771,8 @@ class DubbingTab(QWidget):
                         edge_voices[code] = v_val
                     elif eng_id == "piper":
                         piper_voices[code] = v_val
+                    elif eng_id == "f5tts":
+                        f5_voices[code] = v_val
                     elif eng_id == "h2mtts":
                         h2m_voices[code] = v_val
                         if code == "vi":

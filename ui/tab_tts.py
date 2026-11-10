@@ -29,7 +29,13 @@ from PySide6.QtWidgets import (
 
 from core.edge_tts_engine import EdgeTTSEngine
 from core.languages import language_choices, normalize_language
-from core.piper_tts_engine import ALL_EDGE_VOICES, H2M_DEFAULT_VOICES, PiperTTSEngine
+from core.piper_tts_engine import (
+    ALL_EDGE_VOICES,
+    F5TTSEngine,
+    H2M_DEFAULT_VOICES,
+    PiperTTSEngine,
+    detect_gpu_status,
+)
 from core.settings import ROOT, default_h2mtts_path, normalize_h2mtts_path
 from core.tts_engine import SynthesisCancelled, TTSEngine
 from ui.components.audio_player import AudioPreview
@@ -72,6 +78,8 @@ class _PreviewWorker(QThread):
             engine = EdgeTTSEngine(self._settings)
         elif self._provider == "piper":
             engine = PiperTTSEngine(self._settings)
+        elif self._provider == "f5tts":
+            engine = F5TTSEngine(self._settings)
         else:
             engine = TTSEngine(self._settings)
         try:
@@ -79,11 +87,11 @@ class _PreviewWorker(QThread):
             out_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now().strftime("%H%M%S_%f")
             out_path = out_dir / f"preview_{stamp}.mp3"
-            if self._provider in ("edge", "piper"):
+            if self._provider in ("edge", "piper", "f5tts"):
                 lang = "vi"
                 if self._voice and "-" in self._voice and "_" not in self._voice:
                     lang = self._voice.split("-")[0].lower()
-                elif self._voice and "_" in self._voice:
+                elif self._voice and "_" in self._voice and self._provider == "piper":
                     lang = self._voice.split("_")[0].lower()
                 engine.synthesize(
                     self._text,
@@ -174,6 +182,7 @@ class TTSConfigTab(QWidget):
         self.provider_combo.addItem("H2MTTS (v3 Turbo — Giọng Việt Offline)", "h2mtts")
         self.provider_combo.addItem("EdgeTTS (Đa ngôn ngữ — Miễn phí)", "edge")
         self.provider_combo.addItem("PiperTTS (Đa ngôn ngữ — Siêu nhẹ Offline)", "piper")
+        self.provider_combo.addItem("F5-TTS / E2-TTS (GPU — Zero-Shot Voice Cloning)", "f5tts")
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         model_form.addRow("Model", self.provider_combo)
 
@@ -307,6 +316,28 @@ class TTSConfigTab(QWidget):
         right.addStretch(1)
 
         self.engine_combo.currentIndexChanged.connect(self._on_engine_changed)
+        self.refresh_gpu_state()
+
+    def refresh_gpu_state(self) -> None:
+        """Enable F5-TTS / E2-TTS in provider_combo if GPU is present; dim/disable if no GPU."""
+        has_gpu, _ = detect_gpu_status()
+        idx = self.provider_combo.findData("f5tts")
+        if idx < 0:
+            return
+        model = self.provider_combo.model()
+        item = model.item(idx) if hasattr(model, "item") else None
+        if has_gpu:
+            self.provider_combo.setItemText(
+                idx, "F5-TTS / E2-TTS (GPU — Zero-Shot Voice Cloning)"
+            )
+            if item is not None:
+                item.setEnabled(True)
+        else:
+            self.provider_combo.setItemText(
+                idx, "F5-TTS / E2-TTS (Yêu cầu GPU — Đã làm mờ)"
+            )
+            if item is not None:
+                item.setEnabled(False)
 
     @staticmethod
     def _caption(text: str) -> QLabel:
@@ -326,11 +357,12 @@ class TTSConfigTab(QWidget):
     # ── settings ─────────────────────────────────────────────────────────────
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
+        self.refresh_gpu_state()
         tts = settings.get("tts") or {}
         raw_h2m = normalize_h2mtts_path(str((settings.get("paths") or {}).get("h2mtts") or "").strip())
         self.h2m_edit.setText(raw_h2m)
         provider = str(tts.get("provider") or "h2mtts").strip().lower()
-        if provider not in ("h2mtts", "edge", "piper"):
+        if provider not in ("h2mtts", "edge", "piper", "f5tts"):
             provider = "h2mtts"
         self.provider_combo.blockSignals(True)
         self._set_combo(self.provider_combo, provider)
@@ -410,6 +442,7 @@ class TTSConfigTab(QWidget):
         self.preview_button.setEnabled(self._can_preview())
 
     def _refresh_voice_list(self) -> None:
+        self.refresh_gpu_state()
         provider = str(self.provider_combo.currentData() or "h2mtts")
         is_h2m = provider == "h2mtts"
         self.region_label.setVisible(is_h2m)
@@ -431,8 +464,8 @@ class TTSConfigTab(QWidget):
             p_eng = PiperTTSEngine(self._settings)
             installed = p_eng.installed_voices()
             if installed:
-                for v in installed:
-                    self.voice_combo.addItem(v.label, v.model_id)
+                for label, model_id in installed:
+                    self.voice_combo.addItem(label, model_id)
                 self.model_status.setText(
                     f"Đã nạp {len(installed)} giọng PiperTTS đã cài đặt ({p_eng.root})."
                 )
@@ -445,6 +478,27 @@ class TTSConfigTab(QWidget):
                 )
                 paint_status(self.model_status, "warning")
                 self.model_status.setToolTip(str(p_eng.root))
+        elif provider == "f5tts":
+            has_gpu, gpu_desc = detect_gpu_status()
+            f5_eng = F5TTSEngine(self._settings)
+            installed = f5_eng.installed_voices()
+            if not has_gpu:
+                self.voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Máy hiện tại không có GPU)", "")
+                self.model_status.setText(f"F5-TTS / E2-TTS yêu cầu GPU: {gpu_desc}")
+                paint_status(self.model_status, "warning")
+            elif installed:
+                for label, model_id in installed:
+                    self.voice_combo.addItem(label, model_id)
+                self.model_status.setText(
+                    f"Đã nạp {len(installed)} model F5-TTS / E2-TTS ({gpu_desc})."
+                )
+                paint_status(self.model_status, "success")
+            else:
+                self.voice_combo.addItem("⚠ Chưa cài đặt model F5-TTS / E2-TTS", "")
+                self.model_status.setText(
+                    "Chưa tải model F5-TTS / E2-TTS (Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS)."
+                )
+                paint_status(self.model_status, "warning")
         else:
             # H2MTTS
             if self._engine is None:
