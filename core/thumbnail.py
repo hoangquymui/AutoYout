@@ -23,8 +23,15 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 from PIL import Image, ImageDraw, ImageFont
 
 from core.ai_client import DEFAULT_MODEL, AIError, gemini_generate
-from core.ai_images import AIImageError, DEFAULT_MODEL as IMAGEN_MODEL, ImagenProvider
+from core.ai_images import (
+    AIImageError,
+    DEFAULT_MODEL as GEMINI_IMAGE_MODEL,
+    GeminiImageProvider,
+    ImagenProvider,
+)
 from core.languages import language_name
+
+IMAGEN_MODEL = GEMINI_IMAGE_MODEL
 from utils.files import load_json, write_json_atomic
 from utils.logger import get_logger
 
@@ -165,12 +172,12 @@ def generate_image(
     seconds: float = 5.0,
     ffmpeg: str = "",
 ) -> Path:
-    """Create a background image with Imagen, Pollinations or a video frame."""
+    """Create a background image with Gemini, Pollinations or a video frame."""
     name = str(provider or "").strip().lower()
     target = Path(out_path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    if name == "imagen":
-        return _imagen_image(prompt, target, api_key, model, width, height)
+    if name in ("gemini", "imagen"):
+        return _gemini_image(prompt, target, api_key, model, width, height)
     if name == "pollinations":
         return _pollinations_image(prompt, target, width, height, seed)
     if name == "frame":
@@ -178,16 +185,19 @@ def generate_image(
     raise RuntimeError(f"Provider ảnh không hợp lệ: {provider!r}.")
 
 
-def _imagen_image(prompt: str, target: Path, api_key: str, model: str,
+def _gemini_image(prompt: str, target: Path, api_key: str, model: str,
                   width: int, height: int) -> Path:
     try:
-        provider = ImagenProvider(api_key, model or IMAGEN_MODEL)
+        provider = GeminiImageProvider(api_key, model or GEMINI_IMAGE_MODEL)
         created = provider.generate(prompt, target.with_suffix(""), width, height)
     except AIImageError as exc:
-        raise RuntimeError(f"Imagen lỗi: {exc}") from exc
+        raise RuntimeError(f"Gemini lỗi: {exc}") from exc
     if created != target:
         os.replace(created, target)
     return target
+
+
+_imagen_image = _gemini_image
 
 
 def _pollinations_image(prompt: str, target: Path, width: int, height: int,

@@ -314,7 +314,7 @@ class VideoConfig:
             problems.append(f"Kiểu gộp audio không hợp lệ: {self.grouping}")
         if self.visual not in ("image", "slideshow", "video", "video_pool", "ai"):
             problems.append(f"Kiểu hình nền không hợp lệ: {self.visual}")
-        if self.ai_mode not in ("manual", "imagen"):
+        if self.ai_mode not in ("manual", "imagen", "gemini"):
             problems.append(f"Chế độ ảnh AI không hợp lệ: {self.ai_mode}")
         if not (1 <= self.ai_count <= 10):
             problems.append("Số ảnh AI mỗi chương phải trong khoảng 1–10.")
@@ -893,9 +893,9 @@ class FFmpegRenderer:
                 raise RenderError(f"Thư mục slideshow không có ảnh: {cfg.slideshow_dir or folder}")
         if cfg.visual == "ai":
             folder = resolve_ai_dir(manager, cfg.ai_dir)
-            if cfg.ai_mode == "imagen" and not cfg.ai_api_key.strip():
+            if cfg.ai_mode in ("imagen", "gemini") and not cfg.ai_api_key.strip():
                 raise RenderError(
-                    "Chưa có API key Google Imagen. Nhập key trong tab Video "
+                    "Chưa có API key Gemini. Nhập key trong tab Cài đặt hoặc tab Video "
                     "(hoặc đặt biến môi trường GEMINI_API_KEY)."
                 )
             if cfg.ai_mode == "manual" and not folder.is_dir():

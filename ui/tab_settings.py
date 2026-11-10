@@ -62,13 +62,12 @@ GEMINI_TTS_MODELS: List[Tuple[str, str]] = [
 ]
 
 GEMINI_IMAGE_MODELS: List[Tuple[str, str]] = [
-    ("Nano Banana 2 (Gemini 3.1 Flash Image)", "nano-banana-2"),
-    ("Nano Banana 2 Lite (Gemini 3.1 Flash Lite Image)", "nano-banana-2-lite"),
-    ("Nano Banana (Gemini 2.5 Flash Preview Image)", "nano-banana"),
-    ("Nano Banana Pro (Gemini 3 Pro Image)", "nano-banana-pro"),
+    ("Gemini 3.1 Flash Image (Khuyên dùng)", "gemini-3.1-flash-image"),
+    ("Gemini 3.1 Flash Lite Image (Bản nhẹ)", "gemini-3.1-flash-lite-image"),
+    ("Gemini 2.5 Flash Image", "gemini-2.5-flash-image"),
+    ("Gemini 3 Pro Image (Chất lượng cao)", "gemini-3-pro-image"),
     ("Gemini Nano Banana 2.1", "gemini-nano-banana-2.1"),
-    ("Imagen 3.0 (Google Imagen 3)", "imagen-3.0-generate-002"),
-    ("Imagen 4.0 (Google Imagen 4)", "imagen-4.0-generate-001"),
+    ("Nano Banana 2", "nano-banana-2"),
 ]
 
 VEO_VIDEO_MODELS: List[Tuple[str, str]] = [

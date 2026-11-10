@@ -59,7 +59,7 @@
     "ai_dir": "",
     "ai_count": 1,
     "ai_style": "cinematic lighting, highly detailed, 16:9 composition, no text, no watermark",
-    "ai_model": "imagen-3.0-generate-002",
+    "ai_model": "gemini-3.1-flash-image",
     "ai_api_key": "",
     "ai_xfade": 0.5,
     "ai_motion": true,
@@ -114,8 +114,8 @@
     "browser_headless": false
   },
   "thumbnail": {
-    "provider": "pollinations",
-    "image_model": "imagen-3.0-generate-002",
+    "provider": "gemini",
+    "image_model": "gemini-3.1-flash-image",
     "image_style": "cinematic dramatic lighting, photo-realistic",
     "template": "drama_left",
     "palette": "default",

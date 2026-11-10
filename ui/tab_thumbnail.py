@@ -50,8 +50,8 @@ from utils.logger import get_logger
 logger = get_logger("ui.thumbnail")
 
 _PROVIDERS = [
+    ("Gemini (AI)", "gemini"),
     ("Pollinations (miễn phí)", "pollinations"),
-    ("Imagen (Gemini API)", "imagen"),
     ("Frame từ video đã render", "frame"),
 ]
 _COLOR_LABELS = {"green": "Xanh", "red": "Đỏ"}
@@ -483,8 +483,13 @@ class ThumbnailPanel(QWidget):
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
         thumb = settings.get("thumbnail") or {}
-        index = self.provider_combo.findData(str(thumb.get("provider") or "pollinations"))
-        self.provider_combo.setCurrentIndex(max(0, index))
+        provider_val = str(thumb.get("provider") or "gemini")
+        if provider_val == "imagen":
+            provider_val = "gemini"
+        index = self.provider_combo.findData(provider_val)
+        if index < 0:
+            index = 0
+        self.provider_combo.setCurrentIndex(index)
         self.style_edit.setText(str(thumb.get("image_style") or ""))
         self.api_key_edit.setText(str(thumb.get("api_key") or ""))
         self.frame_spin.setValue(float(thumb.get("frame_seconds", 5.0) or 0.0))
@@ -506,7 +511,7 @@ class ThumbnailPanel(QWidget):
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         thumb = settings.setdefault("thumbnail", {})
-        thumb["provider"] = self.provider_combo.currentData() or "pollinations"
+        thumb["provider"] = self.provider_combo.currentData() or "gemini"
         api_cfg = settings.get("api") or {}
         video_cfg = settings.get("video") or {}
         raw_model = (
@@ -514,7 +519,7 @@ class ThumbnailPanel(QWidget):
             or video_cfg.get("ai_image_model")
             or thumb.get("image_model")
             or video_cfg.get("ai_model")
-            or "imagen-3.0-generate-002"
+            or "gemini-3.1-flash-image"
         )
         from core.ai_images import normalize_image_model
         thumb["image_model"] = normalize_image_model(str(raw_model))
@@ -781,7 +786,7 @@ class ThumbnailPanel(QWidget):
         self.frame_spin.setEnabled(is_frame)
         self.style_edit.setEnabled(not is_frame)
         self.prompt_edit.setEnabled(not is_frame)
-        if provider == "imagen":
+        if provider in ("gemini", "imagen"):
             paint_status(self.image_status, "muted")
             self.image_status.setText("Sử dụng API key Gemini từ tab Cài đặt.")
         elif provider == "pollinations":
@@ -823,7 +828,7 @@ class ThumbnailPanel(QWidget):
         if self._manager is None or not self._base:
             self._set_status("Hãy chọn file trước.", "warning")
             return
-        provider = str(self.provider_combo.currentData() or "pollinations")
+        provider = str(self.provider_combo.currentData() or "gemini")
         prompt = self.prompt_edit.toPlainText().strip()
         if provider != "frame" and not prompt:
             self._set_status("Prompt ảnh đang trống.", "warning")
@@ -849,7 +854,7 @@ class ThumbnailPanel(QWidget):
             prompt = str(video)
 
         key = self._api_key()
-        if provider == "imagen" and not key:
+        if provider in ("gemini", "imagen") and not key:
             self._set_status(
                 "Chưa có API key Gemini — hãy cấu hình key trong tab Cài đặt.",
                 "warning")
@@ -865,7 +870,7 @@ class ThumbnailPanel(QWidget):
             or api_cfg.get("gemini_image_model")
             or video_cfg.get("ai_image_model")
             or video_cfg.get("ai_model")
-            or "imagen-3.0-generate-002"
+            or "gemini-3.1-flash-image"
         )
         from core.ai_images import normalize_image_model
         model = normalize_image_model(str(raw_model))
@@ -892,14 +897,15 @@ class ThumbnailPanel(QWidget):
     def _on_background_done(self, path: str) -> None:
         self._bg_path = Path(path)
         paint_status(self.image_status, "success")
-        self.image_status.setText(f"Đã tạo {self._bg_path.name}.")
-        self._set_status("Đã tạo ảnh nền.", "success")
+        self.image_status.setText(f"Ảnh nền: {self._bg_path.name}")
+        self._set_status("Đã tạo ảnh nền thành công.", "success")
         self._render_preview()
 
     def _on_background_failed(self, message: str) -> None:
         paint_status(self.image_status, "error")
-        self.image_status.setText(message)
-        self._set_status(message, "error")
+        clean_msg = re.sub(r"^(Imagen|Gemini)\s*lỗi:\s*", "", str(message).strip())
+        self.image_status.setText(f"Lỗi: {clean_msg}")
+        self._set_status(f"Tạo ảnh thất bại: {clean_msg}", "error")
 
     def _on_image_worker_finished(self) -> None:
         worker = self._image_worker

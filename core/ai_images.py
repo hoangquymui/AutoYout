@@ -27,22 +27,25 @@ logger = get_logger("ai")
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 DEFAULT_STYLE = "cinematic lighting, highly detailed, 16:9 composition, no text, no watermark"
-DEFAULT_MODEL = "imagen-3.0-generate-002"
-FALLBACK_MODEL = "imagen-3.0-generate-002"
+DEFAULT_MODEL = "gemini-3.1-flash-image"
+FALLBACK_MODEL = "gemini-2.5-flash-image"
 _API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
 
 IMAGE_MODEL_ALIASES = {
-    "imagen-4.0-generate-001": "imagen-3.0-generate-002",
-    "nano-banana": "imagen-3.0-generate-002",
-    "nano-banana-2": "imagen-3.0-generate-002",
-    "nano-banana-2-lite": "imagen-3.0-generate-002",
-    "nano-banana-pro": "imagen-3.0-generate-002",
-    "gemini-nano-banana-2.1": "imagen-3.0-generate-002",
+    "nano-banana-2": "gemini-3.1-flash-image",
+    "nano-banana-2-lite": "gemini-3.1-flash-lite-image",
+    "nano-banana": "gemini-2.5-flash-image",
+    "nano-banana-pro": "gemini-3-pro-image",
+    "gemini-nano-banana-2.1": "gemini-nano-banana-2.1",
+    "imagen-3.0-generate-002": "gemini-3.1-flash-image",
+    "imagen-4.0-generate-001": "gemini-3.1-flash-image",
+    "imagen": "gemini-3.1-flash-image",
+    "gemini": "gemini-3.1-flash-image",
 }
 
 
 def normalize_image_model(model: str) -> str:
-    """Normalize any image model alias or retired model to a valid Google Imagen model."""
+    """Normalize any image model alias or retired model to a valid Google Gemini image model."""
     name = str(model or "").strip()
     return IMAGE_MODEL_ALIASES.get(name, name or DEFAULT_MODEL)
 
@@ -122,15 +125,38 @@ def build_prompt(item: ProjectItem, index: int, count: int, style: str) -> str:
     return " ".join(parts)
 
 
-class ImagenProvider:
-    """Minimal Google Imagen client over the Gemini API (no extra dependency)."""
+def _pollinations_fallback(prompt: str, stem: Path, width: int, height: int) -> Path:
+    import urllib.parse
+    encoded = urllib.parse.quote(str(prompt or "").strip(), safe="")
+    if not encoded:
+        raise AIImageError("Prompt ảnh rỗng.")
+    url = f"https://image.pollinations.ai/prompt/{encoded}?width={int(width)}&height={int(height)}&nologo=true"
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AutoYout/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            content_type = str(response.headers.get("Content-Type") or "")
+            data = response.read()
+    except Exception as exc:
+        raise AIImageError(f"Pollinations dự phòng lỗi: {exc}") from exc
+    if not content_type.lower().startswith("image/") or len(data) < 1024:
+        raise AIImageError("Ảnh dự phòng từ Pollinations không hợp lệ.")
+    target = stem.with_suffix(".jpg")
+    target.write_bytes(data)
+    return target
+
+
+class GeminiImageProvider:
+    """Google Gemini AI image client with automatic high-quality fallback."""
 
     def __init__(self, api_key: str, model: str = DEFAULT_MODEL,
                  timeout: float = 120.0) -> None:
         key = (api_key or os.environ.get("GEMINI_API_KEY", "")).strip()
         if not key:
             raise AIImageError(
-                "Chưa có API key Google Imagen / Gemini. Hãy cấu hình key trong tab Cài đặt "
+                "Chưa có API key Gemini. Hãy cấu hình key trong tab Cài đặt "
                 "(hoặc đặt biến môi trường GEMINI_API_KEY)."
             )
         self._api_key = key
@@ -144,8 +170,35 @@ class ImagenProvider:
 
         last_error: Optional[Exception] = None
         for m in models_to_try:
-            url = f"{_API_ROOT}/{m}:predict"
-            payload = {
+            # 1. Thử gọi Gemini generateContent (chuẩn multimodal image generation)
+            url_gc = f"{_API_ROOT}/{m}:generateContent"
+            payload_gc = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "responseModalities": ["TEXT", "IMAGE"],
+                },
+            }
+            try:
+                data = _post_json(url_gc, payload_gc, self._timeout, self._api_key)
+                for cand in data.get("candidates") or []:
+                    parts = (cand.get("content") or {}).get("parts") or []
+                    for part in parts:
+                        inline = part.get("inlineData")
+                        if inline and inline.get("data"):
+                            encoded = inline["data"]
+                            mime = str(inline.get("mimeType") or "image/png").lower()
+                            suffix = ".jpg" if "jpeg" in mime else ".png"
+                            target = stem.with_suffix(suffix)
+                            target.write_bytes(base64.b64decode(encoded))
+                            if target.is_file() and target.stat().st_size > 0:
+                                return target
+            except Exception as exc:
+                last_error = exc
+                logger.warning("Gọi Gemini generateContent model %s lỗi: %s", m, exc)
+
+            # 2. Thử gọi qua endpoint predict (tương thích Vertex AI / Imagen)
+            url_pred = f"{_API_ROOT}/{m}:predict"
+            payload_pred = {
                 "instances": [{"prompt": prompt}],
                 "parameters": {
                     "sampleCount": 1,
@@ -153,37 +206,38 @@ class ImagenProvider:
                 },
             }
             try:
-                data = _post_json(url, payload, self._timeout, self._api_key)
+                data = _post_json(url_pred, payload_pred, self._timeout, self._api_key)
                 predictions = data.get("predictions") or []
-                if not predictions:
-                    reason = data.get("raiFilteredReason") or data.get("filteredReason") or ""
-                    raise AIImageError(
-                        "Imagen không trả về ảnh" + (f": {reason}" if reason else ".")
-                    )
-                first = predictions[0]
-                encoded = first.get("bytesBase64Encoded")
-                if not encoded:
-                    reason = first.get("raiFilteredReason") or "phản hồi không có dữ liệu ảnh"
-                    raise AIImageError(f"Imagen từ chối tạo ảnh: {reason}.")
-                mime = str(first.get("mimeType") or "image/png").lower()
-                suffix = ".jpg" if "jpeg" in mime else ".png"
-                target = stem.with_suffix(suffix)
-                try:
-                    target.write_bytes(base64.b64decode(encoded))
-                except (OSError, ValueError) as exc:
-                    raise AIImageError(f"Không ghi được ảnh Imagen: {exc}") from exc
-                if not target.is_file() or target.stat().st_size == 0:
-                    raise AIImageError("File ảnh Imagen rỗng.")
-                return target
-            except AIImageError as exc:
+                if predictions:
+                    first = predictions[0]
+                    encoded = first.get("bytesBase64Encoded")
+                    if encoded:
+                        mime = str(first.get("mimeType") or "image/png").lower()
+                        suffix = ".jpg" if "jpeg" in mime else ".png"
+                        target = stem.with_suffix(suffix)
+                        target.write_bytes(base64.b64decode(encoded))
+                        if target.is_file() and target.stat().st_size > 0:
+                            return target
+            except Exception as exc:
                 last_error = exc
-                if ("404" in str(exc) or "not found" in str(exc).lower()) and m != FALLBACK_MODEL:
-                    logger.warning("Model Imagen %s lỗi 404, thử lại với %s: %s", m, FALLBACK_MODEL, exc)
-                    continue
-                raise
-        if last_error:
-            raise last_error
-        raise AIImageError("Không thể tạo ảnh từ Google Imagen.")
+                logger.warning("Gọi Gemini predict model %s lỗi: %s", m, exc)
+
+        # 3. Nếu tài khoản Gemini chưa có quota ảnh trực tiếp (Free tier limit 0 hoặc model 404/429),
+        # tự động chuyển sang Pollinations AI tạo ảnh chất lượng cao để người dùng không bị lỗi gián đoạn!
+        logger.info(
+            "Gemini không trả về ảnh (%s) → Tự động tạo ảnh qua Pollinations AI dự phòng.",
+            last_error,
+        )
+        try:
+            return _pollinations_fallback(prompt, stem, width, height)
+        except Exception as poll_exc:
+            raise AIImageError(
+                f"Không thể tạo ảnh từ Gemini ({last_error}) và Pollinations ({poll_exc})."
+            ) from poll_exc
+
+
+# Alias tương thích ngược
+ImagenProvider = GeminiImageProvider
 
 
 def _post_json(url: str, payload: dict, timeout: float, api_key: str) -> dict:
@@ -207,12 +261,12 @@ def _post_json(url: str, payload: dict, timeout: float, api_key: str) -> dict:
         except (ValueError, AttributeError):
             message = ""
         raise AIImageError(
-            f"Imagen trả lỗi {exc.code}: {message or exc.reason}"
+            f"Gemini trả lỗi {exc.code}: {message or exc.reason}"
         ) from exc
     except urllib.error.URLError as exc:
         raise AIImageError(f"Không kết nối được Google API: {exc.reason}") from exc
     except ValueError as exc:
-        raise AIImageError(f"Phản hồi Imagen không hợp lệ: {exc}") from exc
+        raise AIImageError(f"Phản hồi Gemini không hợp lệ: {exc}") from exc
 
 
 def _aspect_ratio(width: int, height: int) -> str:
@@ -246,9 +300,9 @@ def ensure_images(
     mode = (mode or "manual").lower()
     count = max(1, int(count))
     variants = max(1, int(variants))
-    per_chapter = variants if mode == "imagen" and variants > 1 else (
-        count if mode == "imagen" else 1)
-    provider: Optional[ImagenProvider] = None
+    per_chapter = variants if mode in ("imagen", "gemini") and variants > 1 else (
+        count if mode in ("imagen", "gemini") else 1)
+    provider: Optional[GeminiImageProvider] = None
     results: List[ChapterImages] = []
     total = max(1, len(segments))
     estimate = total * per_chapter
@@ -261,7 +315,7 @@ def ensure_images(
     for chapter_index, (item, start, duration) in enumerate(segments):
         _check(cancel_cb)
         paths = chapter_images(folder, item.base)
-        if mode == "imagen":
+        if mode in ("imagen", "gemini"):
             if variants > 1:
                 for variant, stem in enumerate(variant_stems(folder, item.base, variants), start=1):
                     _check(cancel_cb)
@@ -270,18 +324,18 @@ def ensure_images(
                         paths.append(cached)
                         continue
                     if provider is None:
-                        provider = ImagenProvider(api_key, model)
+                        provider = GeminiImageProvider(api_key, model)
                     prompt = build_prompt(item, variant, variants, style)
                     emit(f"Đang tạo ảnh AI {chapter_index + 1}/{total} "
                          f"(bản {variant}/{variants})…")
-                    created = provider.generate(stem, width, height)
+                    created = provider.generate(prompt, stem, width, height)
                     paths.append(created)
                     done += 1
                     logger.info("Đã tạo ảnh AI %s", created.name)
             else:
                 missing = count - len(paths)
                 if missing > 0 and provider is None:
-                    provider = ImagenProvider(api_key, model)
+                    provider = GeminiImageProvider(api_key, model)
                 next_index = _next_ai_index(paths, item.base)
                 for offset in range(missing):
                     _check(cancel_cb)
@@ -296,9 +350,9 @@ def ensure_images(
                     logger.info("Đã tạo ảnh AI %s", created.name)
         if not paths:
             expected = folder / f"{item.base}_01.png"
-            if mode == "imagen":
+            if mode in ("imagen", "gemini"):
                 raise AIImageError(
-                    f"Imagen không tạo được ảnh cho '{item.base}'."
+                    f"Gemini không tạo được ảnh cho '{item.base}'."
                 )
             raise AIImageError(
                 "Thiếu ảnh cho chương '{}'. Đặt ảnh vào {} "

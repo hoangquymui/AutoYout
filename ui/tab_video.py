@@ -242,7 +242,7 @@ class VideoConfigTab(QWidget):
         ai_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.ai_mode_combo = QComboBox()
         self.ai_mode_combo.addItem("Thủ công (ảnh có sẵn)", "manual")
-        self.ai_mode_combo.addItem("Google Imagen (tạo ảnh AI)", "imagen")
+        self.ai_mode_combo.addItem("Google Gemini (tạo ảnh AI)", "imagen")
         ai_form.addRow("Chế độ ảnh", self.ai_mode_combo)
         self.ai_dir_edit = QLineEdit()
         self.ai_dir_edit.setPlaceholderText("Mặc định assets/ai — ảnh tên <chương>_01.png…")
