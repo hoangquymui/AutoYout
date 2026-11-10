@@ -723,7 +723,8 @@ class _CheckCloudflareWorker(QThread):
 
         try:
             task_param = urllib.parse.quote(self.task)
-            url = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/models/search?task={task_param}"
+            # Query Cloudflare Workers AI models search endpoint with task and source=1 (Cloudflare-hosted)
+            url = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/models/search?task={task_param}&source=1"
             req = urllib.request.Request(
                 url,
                 headers={
@@ -739,7 +740,10 @@ class _CheckCloudflareWorker(QThread):
                     discovered: List[Tuple[str, str]] = []
                     for m in results:
                         name = m.get("name", "").strip()
-                        if not name:
+                        # Strictly verify Cloudflare-hosted model
+                        if not name or not name.startswith("@cf/"):
+                            continue
+                        if m.get("source") is not None and m.get("source") != 1:
                             continue
                         short_name = name.split("/")[-1]
                         display_name = f"{short_name} ({name})"
@@ -784,6 +788,7 @@ class CloudflareCard(QFrame):
         super().__init__(parent)
         self.service_id = service_id
         self.title_text = title
+        self.tag_text = tag
         self.task = task
         self._checker: Optional[_CheckCloudflareWorker] = None
 
@@ -889,12 +894,12 @@ class CloudflareCard(QFrame):
         act_row = QHBoxLayout()
         act_row.setSpacing(8)
 
-        self.btn_save = QPushButton("Lưu cấu hình")
+        self.btn_save = QPushButton("Lưu key")
         set_icon(self.btn_save, "key", "muted", 12)
         self.btn_save.clicked.connect(self._save_clicked)
         act_row.addWidget(self.btn_save)
 
-        self.btn_check = QPushButton("Check Connection & Tải models")
+        self.btn_check = QPushButton("Check Connection")
         set_icon(self.btn_check, "check-circle", "accent", 12)
         self.btn_check.clicked.connect(self.check_connection)
         act_row.addWidget(self.btn_check)
@@ -2008,9 +2013,9 @@ class SettingsTab(QWidget):
 
         self.card_cloudflare_text = CloudflareCard(
             service_id="cloudflare_text",
-            title="Cloudflare Workers AI (Văn bản)",
-            tag="Llama / DeepSeek / Qwen",
-            subtitle="Chạy mô hình ngôn ngữ Llama 3, DeepSeek, Qwen trên hạ tầng serverless của Cloudflare.",
+            title="Cloudflare Worker AI",
+            tag="",
+            subtitle="",
             task="Text Generation",
             models=CLOUDFLARE_TEXT_MODELS,
             default_model=DEFAULT_CF_TEXT_MODEL,
@@ -2082,9 +2087,9 @@ class SettingsTab(QWidget):
 
         self.card_cloudflare_image = CloudflareCard(
             service_id="cloudflare_image",
-            title="Cloudflare Workers AI (Ảnh)",
-            tag="Flux-1 / Flux-2 / Leonardo / SDXL",
-            subtitle="Tạo ảnh AI cực nhanh và chân thực với Flux-1 [schnell], Leonardo Phoenix, SDXL Lightning trên Cloudflare.",
+            title="Cloudflare Worker AI",
+            tag="",
+            subtitle="",
             task="Text-to-Image",
             models=CLOUDFLARE_IMAGE_MODELS,
             default_model=DEFAULT_CF_IMAGE_MODEL,

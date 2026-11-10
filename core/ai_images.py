@@ -324,7 +324,7 @@ def fetch_cloudflare_models(
     url = f"https://api.cloudflare.com/client/v4/accounts/{acc}/ai/models/search"
     headers = {"Authorization": f"Bearer {token}", "User-Agent": "AutoYout/1.0"}
     try:
-        resp = requests.get(url, headers=headers, params={"task": task}, timeout=15)
+        resp = requests.get(url, headers=headers, params={"task": task, "source": "1"}, timeout=15)
     except Exception as exc:
         raise AIImageError(f"Lỗi kết nối tới Cloudflare: {exc}") from exc
 
@@ -335,7 +335,9 @@ def fetch_cloudflare_models(
     results: List[Tuple[str, str]] = []
     for m in models:
         name = m.get("name", "")
-        if not name:
+        if not name or not name.startswith("@cf/"):
+            continue
+        if m.get("source") is not None and m.get("source") != 1:
             continue
         clean_name = name.split("/")[-1].replace("-", " ").title()
         results.append((f"{clean_name} ({name})", name))

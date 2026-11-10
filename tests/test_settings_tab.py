@@ -60,6 +60,16 @@ def test_settings_tab_structure_and_cards(app) -> None:
     assert not hasattr(tab, "card_seedance_piapi")
     assert not hasattr(tab, "card_kling_fal")
 
+    # Verify titles, tags, and button texts
+    assert tab.card_cloudflare_text.title_text == "Cloudflare Worker AI"
+    assert tab.card_cloudflare_image.title_text == "Cloudflare Worker AI"
+    assert tab.card_cloudflare_text.tag_text == ""
+    assert tab.card_cloudflare_image.tag_text == ""
+    assert tab.card_cloudflare_text.btn_save.text() == "Lưu key"
+    assert tab.card_cloudflare_text.btn_check.text() == "Check Connection"
+    assert tab.card_cloudflare_image.btn_save.text() == "Lưu key"
+    assert tab.card_cloudflare_image.btn_check.text() == "Check Connection"
+
     # Verify model counts
     assert tab.card_gemini.model_combo.count() >= 10
     assert tab.card_cloudflare_text.model_combo.count() >= 5
