@@ -1874,10 +1874,13 @@ class PiperDownloadWorker(QThread):
     def cancel(self) -> None:
         self._is_cancelled = True
 
-    def _download_url_to_file(self, url: str, dest: Path) -> None:
+    def _download_url_to_file(self, url: str, dest: Path, progress_prefix: str = "") -> None:
         dest.parent.mkdir(parents=True, exist_ok=True)
         req = urllib.request.Request(url, headers={"User-Agent": "AutoYout/1.0"})
         with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as out_f:
+            total_size = int(resp.headers.get("Content-Length", 0) or 0)
+            downloaded = 0
+            last_emit = time.time()
             while True:
                 if self._is_cancelled:
                     raise H2MDownloadCancelled("Đã hủy tiến trình tải.")
@@ -1885,6 +1888,18 @@ class PiperDownloadWorker(QThread):
                 if not chunk:
                     break
                 out_f.write(chunk)
+                downloaded += len(chunk)
+                now = time.time()
+                if now - last_emit > 0.4:
+                    last_emit = now
+                    if total_size > 0:
+                        dl_mb = downloaded / (1024 * 1024)
+                        tot_mb = total_size / (1024 * 1024)
+                        sub_pct = int((downloaded / total_size) * 100)
+                        self.progress.emit(
+                            sub_pct,
+                            f"{progress_prefix} ({dl_mb:.1f} MB / {tot_mb:.1f} MB)" if progress_prefix else f"Đang tải {dl_mb:.1f}/{tot_mb:.1f} MB…"
+                        )
 
     def run(self) -> None:
         total_pkgs = len(self.packages)
@@ -1899,13 +1914,14 @@ class PiperDownloadWorker(QThread):
 
             pkg_id = pkg["id"]
             current_pct = int((idx / max(total_pkgs, 1)) * 100)
-            self.progress.emit(current_pct, f"Đang tải {pkg['name']} ({idx + 1}/{total_pkgs})…")
+            prefix = f"Đang tải {pkg['name']} ({idx + 1}/{total_pkgs})"
+            self.progress.emit(current_pct, f"{prefix}…")
             self.pkg_status_changed.emit(pkg_id, "downloading", "Đang tải…")
 
             try:
                 if pkg.get("is_zip_url"):
                     zip_path = self.target_root / "piper_runtime.zip"
-                    self._download_url_to_file(pkg["url"], zip_path)
+                    self._download_url_to_file(pkg["url"], zip_path, progress_prefix=prefix)
                     with zipfile.ZipFile(zip_path, "r") as zf:
                         zf.extractall(self.target_root)
                     try:
@@ -1920,12 +1936,12 @@ class PiperDownloadWorker(QThread):
                         dest_file = self.target_root / local_rel
                         url = f"https://huggingface.co/{repo}/resolve/main/{remote_rel}"
                         try:
-                            self._download_url_to_file(url, dest_file)
+                            self._download_url_to_file(url, dest_file, progress_prefix=prefix)
                         except H2MDownloadCancelled:
                             raise
                         except Exception:
                             mirror_url = f"https://hf-mirror.com/{repo}/resolve/main/{remote_rel}"
-                            self._download_url_to_file(mirror_url, dest_file)
+                            self._download_url_to_file(mirror_url, dest_file, progress_prefix=prefix)
 
                 success_count += 1
                 self.pkg_status_changed.emit(pkg_id, "installed", "✓ Đã có")
@@ -1940,9 +1956,9 @@ class PiperDownloadWorker(QThread):
         self.progress.emit(100, "Hoàn tất quá trình tải.")
         all_ok = success_count == total_pkgs
         msg = (
-            f"Đã tải thành công {success_count}/{total_pkgs} gói PiperTTS."
+            f"Đã tải thành công {success_count}/{total_pkgs} gói tài nguyên."
             if all_ok
-            else f"Tải xong {success_count}/{total_pkgs} gói PiperTTS."
+            else f"Tải xong {success_count}/{total_pkgs} gói tài nguyên."
         )
         self.all_finished.emit(all_ok, msg)
 
@@ -2416,10 +2432,9 @@ F5_PACKAGES: List[Dict[str, Any]] = [
         "tag": "Bắt buộc · E2-TTS",
         "tag_color": theme.ACCENT,
         "tag_bg": theme.SURFACE_RAISED,
-        "repo": "SWivid/F5-TTS",
+        "repo": "SWivid/E2-TTS",
         "files": [
             ("E2TTS_Base/model_1200000.safetensors", "models/E2TTS_Base/model_1200000.safetensors"),
-            ("E2TTS_Base/vocab.txt", "models/E2TTS_Base/vocab.txt"),
         ],
         "size": "~1.3 GB",
         "desc": "Model E2-TTS (Embarrassingly Easy Fully Non-Autoregressive Zero-Shot TTS) chạy trên GPU.",
@@ -2952,6 +2967,8 @@ XTTS_PACKAGES: List[Dict[str, Any]] = [
             ("config.json", "models/XTTS_v2/config.json"),
             ("vocab.json", "models/XTTS_v2/vocab.json"),
             ("speakers_xtts.pth", "models/XTTS_v2/speakers_xtts.pth"),
+            ("dvae.pth", "models/XTTS_v2/dvae.pth"),
+            ("mel_stats.pth", "models/XTTS_v2/mel_stats.pth"),
         ],
         "size": "~1.87 GB",
         "desc": "Model chính Coqui XTTS-v2 hỗ trợ đa ngôn ngữ và clone giọng từ 6 giây âm thanh mẫu trên GPU.",
@@ -2971,7 +2988,7 @@ XTTS_PACKAGES: List[Dict[str, Any]] = [
             ("model.pth", "models/viXTTS/model.pth"),
             ("config.json", "models/viXTTS/config.json"),
             ("vocab.json", "models/viXTTS/vocab.json"),
-            ("speakers_xtts.pth", "models/viXTTS/speakers_xtts.pth"),
+            ("vi_sample.wav", "models/viXTTS/vi_sample.wav"),
         ],
         "size": "~1.87 GB",
         "desc": "Bản tinh chỉnh Coqui XTTS-v2 chuyên biệt cho Tiếng Việt (viXTTS) tự nhiên và chuẩn dấu.",

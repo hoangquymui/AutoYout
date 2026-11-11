@@ -625,4 +625,65 @@ def test_f5tts_e2tts_gpu_detection_enables_or_dims(app) -> None:
         set_gpu_override(None)
 
 
+def test_strict_model_filtering_and_no_edge_fallback(app, tmp_path) -> None:
+    """Verify that only downloaded model checkpoints appear, and F5/XTTS never fall back to Edge."""
+    from core.piper_tts_engine import F5TTSEngine, XTTSEngine, set_gpu_override
+    from ui.tab_dubbing import DubbingTab
+    from ui.tab_tts import TTSConfigTab
+
+    try:
+        set_gpu_override(True, "Quadro P2200 · 5.0 GB")
+
+        # 1. Custom mock root with ONLY F5TTS_v1_Base (no Vietnamese, no E2-TTS)
+        mock_f5 = tmp_path / "mock_f5"
+        (mock_f5 / "models" / "F5TTS_v1_Base").mkdir(parents=True, exist_ok=True)
+        (mock_f5 / "models" / "F5TTS_v1_Base" / "model_1250000.safetensors").write_text("dummy")
+
+        f5_eng = F5TTSEngine({"paths": {"f5tts": str(mock_f5)}})
+        installed = f5_eng.installed_voices()
+        installed_ids = [vid for _, vid in installed]
+        # Only F5TTS_v1_Base voices should exist
+        assert len(installed) == 4
+        assert all(vid.startswith("F5TTS_v1_Base::") for vid in installed_ids)
+        # Vietnamese voices must NOT be returned!
+        vi_voices = f5_eng.installed_voices("vi")
+        assert len(vi_voices) == 0
+
+        # In TTSConfigTab, loading this mock path should show only Emma, Clara, Liam, Ryan
+        tts_tab = TTSConfigTab()
+        tts_tab.load_from({"paths": {"f5tts": str(mock_f5)}, "tts": {"provider": "f5tts"}})
+        f5_labels = [tts_tab.voice_combo.itemText(i) for i in range(tts_tab.voice_combo.count())]
+        assert len(f5_labels) == 4
+        assert not any("Ngọc Ánh" in lbl for lbl in f5_labels)
+        assert not any("Thanh Hà" in lbl for lbl in f5_labels)
+
+        # In DubbingTab, Vietnamese row with F5-TTS must show warning "Chưa tải model F5-TTS cho Tiếng Việt"
+        dub_tab = DubbingTab()
+        dub_tab.load_from({"paths": {"f5tts": str(mock_f5)}})
+        dub_tab.lang_engine_combos["vi"].setCurrentIndex(dub_tab.lang_engine_combos["vi"].findData("f5tts"))
+        vi_text = dub_tab.lang_voice_combos["vi"].currentText()
+        assert "Chưa tải model F5-TTS cho Tiếng Việt" in vi_text
+
+        # 2. Custom mock root with ONLY XTTS_v2 (no viXTTS)
+        mock_xtts = tmp_path / "mock_xtts"
+        (mock_xtts / "models" / "XTTS_v2").mkdir(parents=True, exist_ok=True)
+        (mock_xtts / "models" / "XTTS_v2" / "model.pth").write_text("dummy")
+
+        xtts_eng = XTTSEngine({"paths": {"xtts": str(mock_xtts)}})
+        installed_xtts = xtts_eng.installed_voices()
+        assert len(installed_xtts) == 14  # Only 14 studio speakers
+        assert all(vid.startswith("XTTS_v2::") for _, vid in installed_xtts)
+        # Vietnamese viXTTS voices must NOT be returned!
+        assert len(xtts_eng.installed_voices("vi")) == 0
+
+        # In DubbingTab, Vietnamese row with XTTS must show warning "Chưa tải model Coqui XTTS cho Tiếng Việt"
+        dub_tab.load_from({"paths": {"xtts": str(mock_xtts)}})
+        dub_tab.lang_engine_combos["vi"].setCurrentIndex(dub_tab.lang_engine_combos["vi"].findData("xtts"))
+        vi_xtts_text = dub_tab.lang_voice_combos["vi"].currentText()
+        assert "Chưa tải model Coqui XTTS cho Tiếng Việt" in vi_xtts_text
+    finally:
+        set_gpu_override(None)
+
+
+
 

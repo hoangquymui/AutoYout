@@ -96,6 +96,11 @@ class _PreviewWorker(QThread):
                     lang = self._voice.split("-")[0].lower()
                 elif self._voice and "_" in self._voice and self._provider == "piper":
                     lang = self._voice.split("_")[0].lower()
+                elif self._provider in ("f5tts", "xtts"):
+                    if "Vietnamese" in self._voice or "viXTTS" in self._voice:
+                        lang = "vi"
+                    else:
+                        lang = "en"
                 engine.synthesize(
                     self._text,
                     out_path,
@@ -510,43 +515,49 @@ class TTSConfigTab(QWidget):
         elif provider == "f5tts":
             has_gpu, gpu_desc = detect_gpu_status()
             f5_eng = F5TTSEngine(self._settings)
-            voices = f5_eng.available_voices(gender=gender_filter)
-            installed = f5_eng.installed_voices()
-            for label, model_id in voices:
-                self.voice_combo.addItem(label, model_id)
+            installed = f5_eng.installed_voices(gender=gender_filter)
             if not has_gpu:
+                self.voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Không phát hiện GPU)", "")
                 self.model_status.setText(f"F5-TTS / E2-TTS yêu cầu GPU: {gpu_desc}")
                 paint_status(self.model_status, "warning")
             elif installed:
+                for label, model_id in installed:
+                    self.voice_combo.addItem(label, model_id)
                 self.model_status.setText(
-                    f"Đã nạp {len(voices)} giọng đọc Nam & Nữ F5-TTS / E2-TTS ({gpu_desc})."
+                    f"Đã nạp {len(installed)} giọng đọc Nam & Nữ F5-TTS / E2-TTS ({gpu_desc})."
                 )
                 paint_status(self.model_status, "success")
+                self.model_status.setToolTip(str(f5_eng.root))
             else:
+                self.voice_combo.addItem("⚠ Chưa tải model F5-TTS / E2-TTS nào (Vào Cài đặt để tải)", "")
                 self.model_status.setText(
-                    f"Danh sách {len(voices)} giọng Nam & Nữ F5-TTS / E2-TTS — Chưa tải model gốc (Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS)."
+                    "Chưa tải model F5-TTS / E2-TTS phù hợp (Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS)."
                 )
                 paint_status(self.model_status, "warning")
+                self.model_status.setToolTip(str(f5_eng.root))
         elif provider == "xtts":
             has_gpu, gpu_desc = detect_gpu_status()
             xtts_eng = XTTSEngine(self._settings)
-            voices = xtts_eng.available_voices(gender=gender_filter)
-            installed = xtts_eng.installed_voices()
-            for label, model_id in voices:
-                self.voice_combo.addItem(label, model_id)
+            installed = xtts_eng.installed_voices(gender=gender_filter)
             if not has_gpu:
+                self.voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Không phát hiện GPU)", "")
                 self.model_status.setText(f"Coqui XTTS-v2 yêu cầu GPU: {gpu_desc}")
                 paint_status(self.model_status, "warning")
             elif installed:
+                for label, model_id in installed:
+                    self.voice_combo.addItem(label, model_id)
                 self.model_status.setText(
-                    f"Đã nạp {len(voices)} giọng đọc Nam & Nữ Coqui XTTS-v2 ({gpu_desc})."
+                    f"Đã nạp {len(installed)} giọng đọc Nam & Nữ Coqui XTTS-v2 ({gpu_desc})."
                 )
                 paint_status(self.model_status, "success")
+                self.model_status.setToolTip(str(xtts_eng.root))
             else:
+                self.voice_combo.addItem("⚠ Chưa tải model Coqui XTTS-v2 nào (Vào Cài đặt để tải)", "")
                 self.model_status.setText(
-                    f"Danh sách {len(voices)} giọng Nam & Nữ Coqui XTTS-v2 — Chưa tải model gốc (Cài đặt → API → Giọng đọc → Coqui XTTS-v2)."
+                    "Chưa tải model Coqui XTTS-v2 phù hợp (Cài đặt → API → Giọng đọc → Coqui XTTS-v2)."
                 )
                 paint_status(self.model_status, "warning")
+                self.model_status.setToolTip(str(xtts_eng.root))
         else:
             # H2MTTS
             if self._engine is None:

@@ -248,7 +248,7 @@ F5_VOICES_CATALOG: List[Tuple[str, str, str, str]] = [
 ]
 
 XTTS_MODELS_CATALOG: List[Tuple[str, str]] = [
-    ("Coqui XTTS-v2 Multilingual (17+ ngôn ngữ · Zero-Shot)", "XTTS_v2_Base"),
+    ("Coqui XTTS-v2 Multilingual (17+ ngôn ngữ · Zero-Shot)", "XTTS_v2"),
     ("viXTTS – Coqui XTTS-v2 Tiếng Việt (Zero-Shot)", "viXTTS"),
 ]
 
@@ -267,21 +267,21 @@ XTTS_VOICES_CATALOG: List[Tuple[str, str, str, str]] = [
     ("Hoàng Long — Nam · Trầm ấm (viXTTS Tiếng Việt)", "viXTTS::Hoàng Long", "Nam", "vi"),
     ("Quốc Khánh — Nam · Miền Trung (viXTTS Tiếng Việt)", "viXTTS::Quốc Khánh", "Nam", "vi"),
     # Coqui XTTS-v2 Studio Speakers — Nữ (Đa ngôn ngữ)
-    ("Claribel Dervla — Nữ · Trầm ấm (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Claribel Dervla", "Nữ", "multi"),
-    ("Daisy Studious — Nữ · Thuyết minh (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Daisy Studious", "Nữ", "multi"),
-    ("Gracie Wise — Nữ · Kể chuyện (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Gracie Wise", "Nữ", "multi"),
-    ("Ana Florence — Nữ · Tin tức (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Ana Florence", "Nữ", "multi"),
-    ("Sofia Hellen — Nữ · Tự nhiên (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Sofia Hellen", "Nữ", "multi"),
-    ("Tammie Ema — Nữ · Trẻ trung (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Tammie Ema", "Nữ", "multi"),
-    ("Asya Anara — Nữ · Podcast (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Asya Anara", "Nữ", "multi"),
+    ("Claribel Dervla — Nữ · Trầm ấm (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Claribel Dervla", "Nữ", "multi"),
+    ("Daisy Studious — Nữ · Thuyết minh (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Daisy Studious", "Nữ", "multi"),
+    ("Gracie Wise — Nữ · Kể chuyện (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Gracie Wise", "Nữ", "multi"),
+    ("Ana Florence — Nữ · Tin tức (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Ana Florence", "Nữ", "multi"),
+    ("Sofia Hellen — Nữ · Tự nhiên (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Sofia Hellen", "Nữ", "multi"),
+    ("Tammie Ema — Nữ · Trẻ trung (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Tammie Ema", "Nữ", "multi"),
+    ("Asya Anara — Nữ · Podcast (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Asya Anara", "Nữ", "multi"),
     # Coqui XTTS-v2 Studio Speakers — Nam (Đa ngôn ngữ)
-    ("Andrew Chipper — Nam · Trẻ trung (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Andrew Chipper", "Nam", "multi"),
-    ("Badr Odhiambo — Nam · Trầm ấm (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Badr Odhiambo", "Nam", "multi"),
-    ("Dionisio Schuyler — Nam · Kể chuyện (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Dionisio Schuyler", "Nam", "multi"),
-    ("Royston Min — Nam · Tin tức (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Royston Min", "Nam", "multi"),
-    ("Viktor Eka — Nam · Documentary (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Viktor Eka", "Nam", "multi"),
-    ("Damien Black — Nam · Điện ảnh (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Damien Black", "Nam", "multi"),
-    ("Craig Gutsy — Nam · Mạnh mẽ (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Craig Gutsy", "Nam", "multi"),
+    ("Andrew Chipper — Nam · Trẻ trung (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Andrew Chipper", "Nam", "multi"),
+    ("Badr Odhiambo — Nam · Trầm ấm (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Badr Odhiambo", "Nam", "multi"),
+    ("Dionisio Schuyler — Nam · Kể chuyện (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Dionisio Schuyler", "Nam", "multi"),
+    ("Royston Min — Nam · Tin tức (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Royston Min", "Nam", "multi"),
+    ("Viktor Eka — Nam · Documentary (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Viktor Eka", "Nam", "multi"),
+    ("Damien Black — Nam · Điện ảnh (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Damien Black", "Nam", "multi"),
+    ("Craig Gutsy — Nam · Mạnh mẽ (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2::Craig Gutsy", "Nam", "multi"),
 ]
 
 
@@ -634,108 +634,6 @@ class PiperTTSEngine:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-_SPEAKER_NEURAL_MAP: Dict[str, Tuple[str, str, str]] = {
-    # Vietnamese Female
-    "Ngọc Ánh": ("Nữ", "vi", "vi-VN-HoaiMyNeural"),
-    "Thanh Hà": ("Nữ", "vi", "vi-VN-HoaiMyNeural"),
-    "Mai Phương": ("Nữ", "vi", "vi-VN-HoaiMyNeural"),
-    "Khánh Linh": ("Nữ", "vi", "vi-VN-HoaiMyNeural"),
-    "Thu Trang": ("Nữ", "vi", "vi-VN-HoaiMyNeural"),
-    # Vietnamese Male
-    "Hải Đăng": ("Nam", "vi", "vi-VN-NamMinhNeural"),
-    "Minh Quân": ("Nam", "vi", "vi-VN-NamMinhNeural"),
-    "Bảo Nam": ("Nam", "vi", "vi-VN-NamMinhNeural"),
-    "Hoàng Long": ("Nam", "vi", "vi-VN-NamMinhNeural"),
-    "Quốc Khánh": ("Nam", "vi", "vi-VN-NamMinhNeural"),
-    # F5-TTS / E2-TTS Multilingual Female & Male
-    "Emma_Female": ("Nữ", "multi", "en-US-EmmaMultilingualNeural"),
-    "Clara_Female": ("Nữ", "multi", "en-US-AvaMultilingualNeural"),
-    "Aria_Female": ("Nữ", "multi", "en-US-AriaNeural"),
-    "Jenny_Female": ("Nữ", "multi", "en-US-JennyNeural"),
-    "Liam_Male": ("Nam", "multi", "en-US-AndrewMultilingualNeural"),
-    "Ryan_Male": ("Nam", "multi", "en-GB-RyanNeural"),
-    "Guy_Male": ("Nam", "multi", "en-US-GuyNeural"),
-    "Christopher_Male": ("Nam", "multi", "en-US-ChristopherNeural"),
-    # Coqui XTTS-v2 Studio Speakers — Female & Male
-    "Claribel Dervla": ("Nữ", "multi", "en-US-EmmaMultilingualNeural"),
-    "Daisy Studious": ("Nữ", "multi", "en-US-AvaMultilingualNeural"),
-    "Gracie Wise": ("Nữ", "multi", "en-US-AriaNeural"),
-    "Ana Florence": ("Nữ", "multi", "en-GB-SoniaNeural"),
-    "Sofia Hellen": ("Nữ", "multi", "en-US-JennyNeural"),
-    "Tammie Ema": ("Nữ", "multi", "en-AU-NatashaNeural"),
-    "Asya Anara": ("Nữ", "multi", "en-CA-ClaraNeural"),
-    "Andrew Chipper": ("Nam", "multi", "en-US-AndrewMultilingualNeural"),
-    "Badr Odhiambo": ("Nam", "multi", "en-US-BrianMultilingualNeural"),
-    "Dionisio Schuyler": ("Nam", "multi", "en-US-GuyNeural"),
-    "Royston Min": ("Nam", "multi", "en-GB-RyanNeural"),
-    "Viktor Eka": ("Nam", "multi", "en-US-ChristopherNeural"),
-    "Damien Black": ("Nam", "multi", "en-US-EricNeural"),
-    "Craig Gutsy": ("Nam", "multi", "en-US-RogerNeural"),
-}
-
-
-def _synthesize_neural_speaker(
-    text: str,
-    target: Path,
-    raw_voice: str,
-    speaker_name: str,
-    language: str,
-    speed: Optional[float],
-    settings: Dict[str, Any],
-    engine_tag: str,
-    progress_cb: ProgressCb = None,
-    message_cb: MessageCb = None,
-    pause_cb: PauseCb = None,
-    cancel_cb: CancelCb = None,
-) -> SynthResult:
-    """Synthesize speech matching the selected Male/Female speaker persona."""
-    from core.edge_tts_engine import EdgeTTSEngine
-
-    code = normalize_language(language)
-    gender, scope, mapped_edge_voice = _SPEAKER_NEURAL_MAP.get(
-        speaker_name,
-        ("Nữ", "multi", "en-US-EmmaMultilingualNeural"),
-    )
-    if scope == "vi":
-        neural_voice = mapped_edge_voice
-        eff_lang = "vi"
-    elif "Multilingual" in mapped_edge_voice:
-        neural_voice = mapped_edge_voice
-        eff_lang = code
-    elif code and code not in ("vi", "en"):
-        lang_voices = get_edge_voices_for_language(code)
-        gender_tag = f"— {gender}"
-        matched = [vid for lbl, vid in lang_voices if gender_tag in lbl]
-        neural_voice = matched[0] if matched else mapped_edge_voice
-        eff_lang = code
-    else:
-        neural_voice = mapped_edge_voice
-        eff_lang = "en" if scope == "multi" else code
-
-    edge_eng = EdgeTTSEngine(settings)
-    res = edge_eng.synthesize(
-        text,
-        target,
-        language=eff_lang,
-        voice=neural_voice,
-        speed=speed,
-        progress_cb=progress_cb,
-        message_cb=message_cb,
-        pause_cb=pause_cb,
-        cancel_cb=cancel_cb,
-    )
-    return SynthResult(
-        path=res.path,
-        duration=res.duration,
-        sample_rate=res.sample_rate,
-        chunks=res.chunks,
-        characters=res.characters,
-        voice=raw_voice,
-        engine=engine_tag,
-        backend="gpu",
-    )
-
-
 class F5TTSEngine:
     """Offline F5-TTS / E2-TTS GPU engine for high-quality zero-shot voice synthesis."""
 
@@ -764,6 +662,37 @@ class F5TTSEngine:
     def close(self) -> None:
         pass
 
+    def installed_models(self) -> set[str]:
+        """Return set of model IDs that are physically downloaded on disk."""
+        if not self.root.is_dir():
+            return set()
+        installed: set[str] = set()
+        models_dir = self.root / "models"
+        if not models_dir.is_dir():
+            return installed
+
+        # F5TTS_v1_Base: model_1250000.safetensors or any .safetensors
+        m_v1 = models_dir / "F5TTS_v1_Base"
+        if m_v1.is_dir() and any(m_v1.glob("*.safetensors")):
+            installed.add("F5TTS_v1_Base")
+
+        # E2TTS_Base: model_1200000.safetensors or any .safetensors
+        m_e2 = models_dir / "E2TTS_Base"
+        if m_e2.is_dir() and any(m_e2.glob("*.safetensors")):
+            installed.add("E2TTS_Base")
+
+        # F5TTS_Vietnamese: model_last.pt or any .pt/.safetensors
+        m_vi = models_dir / "F5TTS_Vietnamese"
+        if m_vi.is_dir() and (any(m_vi.glob("*.pt")) or any(m_vi.glob("*.safetensors"))):
+            installed.add("F5TTS_Vietnamese")
+
+        # Generic fallback for any other subfolder containing weights
+        for d in models_dir.iterdir():
+            if d.is_dir() and d.name not in ("vocos-mel-24khz",):
+                if any(d.glob("*.safetensors")) or any(d.glob("*.pt")) or any(d.glob("*.ckpt")):
+                    installed.add(d.name)
+        return installed
+
     def available_voices(self, language: str = "", gender: str = "") -> List[Tuple[str, str]]:
         """Return Male (Nam) and Female (Nữ) voices for F5-TTS / E2-TTS filtered by language & gender."""
         code = normalize_language(language) if language else ""
@@ -772,33 +701,56 @@ class F5TTSEngine:
         for label, vid, v_gender, lang_scope in F5_VOICES_CATALOG:
             if g_filter and v_gender.lower() != g_filter:
                 continue
+            if code == "vi" and lang_scope != "vi":
+                continue
             if code and code != "vi" and lang_scope == "vi":
                 continue
             results.append((label, vid))
         return results
 
-    def installed_voices(self, language: str = "") -> List[Tuple[str, str]]:
+    def installed_voices(self, language: str = "", gender: str = "") -> List[Tuple[str, str]]:
         """Return list of (label, model_id) actually installed inside F5TTS directory."""
-        if not self.root.is_dir():
+        installed_mdls = self.installed_models()
+        if not installed_mdls:
             return []
-        known = {mid: label for label, mid in F5_MODELS_CATALOG}
-        found_models: set[str] = set()
-        for ext in ("*.safetensors", "*.pt", "*.ckpt"):
-            for f in self.root.rglob(ext):
-                if not f.is_file():
-                    continue
-                parent_name = f.parent.name
-                mid = parent_name if parent_name in known else f.stem
-                found_models.add(mid)
-        if not found_models:
-            return []
-        voices = self.available_voices(language)
-        matched = [
-            (label, vid)
-            for label, vid in voices
-            if vid.split("::")[0] in found_models
-        ]
-        return matched or voices
+        code = normalize_language(language) if language else ""
+        g_filter = str(gender or "").strip().lower()
+        results: List[Tuple[str, str]] = []
+        for label, vid, v_gender, lang_scope in F5_VOICES_CATALOG:
+            model_key = vid.split("::")[0]
+            if model_key not in installed_mdls:
+                continue
+            if g_filter and v_gender.lower() != g_filter:
+                continue
+            if code == "vi" and lang_scope != "vi":
+                continue
+            if code and code != "vi" and lang_scope == "vi":
+                continue
+            results.append((label, vid))
+        return results
+
+    def find_checkpoint(self, model_key: str) -> Optional[Tuple[Path, Optional[Path]]]:
+        """Locate (checkpoint_path, vocab_path) for model_key."""
+        models_dir = self.root / "models"
+        target_dir = models_dir / model_key
+        if not target_dir.is_dir():
+            return None
+        ckpts = (
+            list(target_dir.glob("*.safetensors"))
+            or list(target_dir.glob("*.pt"))
+            or list(target_dir.glob("*.ckpt"))
+        )
+        if not ckpts:
+            return None
+        ckpt_file = ckpts[0]
+        # Vocab file in target_dir or fallback to F5TTS_v1_Base/vocab.txt
+        vocab_files = list(target_dir.glob("vocab.txt")) or list(target_dir.glob("*.txt"))
+        if vocab_files:
+            vocab_file = vocab_files[0]
+        else:
+            fallback_vocab = models_dir / "F5TTS_v1_Base" / "vocab.txt"
+            vocab_file = fallback_vocab if fallback_vocab.is_file() else None
+        return ckpt_file, vocab_file
 
     def check_ready(self, language: str = "") -> Tuple[bool, str]:
         has_gpu, gpu_desc = detect_gpu_status()
@@ -807,12 +759,19 @@ class F5TTSEngine:
                 False,
                 f"F5-TTS / E2-TTS yêu cầu GPU NVIDIA (CUDA) để hoạt động ({gpu_desc}).",
             )
-        voices = self.installed_voices(language)
-        if not voices:
+        installed_mdls = self.installed_models()
+        if not installed_mdls:
             return (
                 False,
-                f"Chưa cài đặt model F5-TTS / E2-TTS trong thư mục '{self.root}'. "
+                f"Chưa cài đặt model F5-TTS / E2-TTS nào trong thư mục '{self.root}'. "
                 "Vui lòng vào Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS để tải model.",
+            )
+        code = normalize_language(language) if language else ""
+        if code == "vi" and "F5TTS_Vietnamese" not in installed_mdls:
+            return (
+                False,
+                f"Chưa tải model F5-TTS Tiếng Việt (ViVoice Fine-tuned) trong thư mục '{self.root}'. "
+                "Vui lòng vào Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS để tải model Tiếng Việt.",
             )
         return True, f"F5-TTS / E2-TTS đã sẵn sàng ({gpu_desc})."
 
@@ -837,86 +796,94 @@ class F5TTSEngine:
             raise TTSError("Văn bản rỗng, không có gì để đọc.")
 
         code = normalize_language(language)
-        raw_voice = (voice or ("F5TTS_Vietnamese::Ngọc Ánh" if code == "vi" else "F5TTS_v1_Base::Emma_Female")).strip()
+        raw_voice = (
+            voice
+            or ("F5TTS_Vietnamese::Ngọc Ánh" if code == "vi" else "F5TTS_v1_Base::Emma_Female")
+        ).strip()
         if "::" in raw_voice:
             chosen_model, speaker_name = raw_voice.split("::", 1)
         else:
-            chosen_model, speaker_name = raw_voice, "Emma_Female"
+            chosen_model = raw_voice or ("F5TTS_Vietnamese" if code == "vi" else "F5TTS_v1_Base")
+            speaker_name = "Emma_Female"
+
+        ckpt_info = self.find_checkpoint(chosen_model)
+        if ckpt_info is None:
+            raise TTSError(
+                f"Chưa tải model F5-TTS / E2-TTS '{chosen_model}' trong thư mục '{self.root}'. "
+                "Vui lòng vào Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS để tải model."
+            )
+        ckpt_path, vocab_path = ckpt_info
+
+        cli_bin = shutil.which("f5-tts_infer-cli")
+        if not cli_bin:
+            scripts_cand = Path(sys.prefix) / "Scripts" / "f5-tts_infer-cli.exe"
+            if scripts_cand.is_file():
+                cli_bin = str(scripts_cand)
+            else:
+                raise TTSError(
+                    "Chưa tìm thấy công cụ dòng lệnh 'f5-tts_infer-cli'. "
+                    "Vui lòng chạy lệnh: pip install f5-tts"
+                )
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if message_cb:
+            message_cb(f"F5-TTS ({device.upper()} · {chosen_model}): 1 đoạn, giọng {speaker_name}")
 
         target = Path(out_path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        cli_bin = shutil.which("f5-tts_infer-cli")
-        ref_wav = (self.root / "voices" / f"{speaker_name}.wav") if speaker_name else None
-        if not cli_bin or (ref_wav is not None and not ref_wav.is_file()):
-            return _synthesize_neural_speaker(
-                clean_text,
-                target,
-                raw_voice,
-                speaker_name,
-                code,
-                speed or self.default_speed,
-                self.settings,
-                "f5tts",
-                progress_cb=progress_cb,
-                message_cb=message_cb,
-                pause_cb=pause_cb,
-                cancel_cb=cancel_cb,
-            )
-
         temp_dir = Path(tempfile.mkdtemp(prefix="ay_f5tts_", dir=str(target.parent)))
         try:
-            out_wav = temp_dir / "infer_cli_out.wav"
+            out_wav = temp_dir / "f5_out.wav"
             cmd = [
-                cli_bin,
-                "--model",
-                chosen_model,
-                "--gen_text",
-                clean_text,
-                "--output_dir",
-                str(temp_dir),
-                "--output_file",
-                out_wav.name,
+                str(cli_bin),
+                "-m", chosen_model,
+                "-p", str(ckpt_path),
+                "-t", clean_text,
+                "-o", str(temp_dir),
+                "-w", out_wav.name,
+                "--device", device,
             ]
-            if ref_wav and ref_wav.is_file():
-                cmd.extend(["--ref_audio", str(ref_wav)])
+            if vocab_path and vocab_path.is_file():
+                cmd.extend(["-v", str(vocab_path)])
+            eff_speed = float(speed or self.default_speed or 1.0)
+            if eff_speed != 1.0:
+                cmd.extend(["--speed", str(round(eff_speed, 2))])
+
+            ref_wav = self.root / "voices" / f"{speaker_name}.wav"
+            if ref_wav.is_file():
+                cmd.extend(["-r", str(ref_wav)])
+
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
                 timeout=300,
                 creationflags=_CREATE_NO_WINDOW,
             )
-            if proc.returncode != 0 or not out_wav.is_file():
-                return _synthesize_neural_speaker(
-                    clean_text,
-                    target,
-                    raw_voice,
-                    speaker_name,
-                    code,
-                    speed or self.default_speed,
-                    self.settings,
-                    "f5tts",
-                    progress_cb=progress_cb,
-                    message_cb=message_cb,
-                    pause_cb=pause_cb,
-                    cancel_cb=cancel_cb,
-                )
+            if proc.returncode != 0 or not out_wav.is_file() or out_wav.stat().st_size == 0:
+                err = proc.stderr.decode("utf-8", errors="replace")[:400]
+                raise TTSError(f"F5-TTS tạo audio thất bại (mã {proc.returncode}): {err}")
+
             if progress_cb:
                 progress_cb(100)
+
             if target.suffix.lower() == ".wav":
-                os.replace(out_wav, target)
+                shutil.copy2(out_wav, target)
             else:
                 cmd_ff = [
                     self.ffmpeg,
                     "-y",
-                    "-i",
-                    str(out_wav),
-                    "-c:a",
-                    "libmp3lame",
-                    "-b:a",
-                    self.bitrate,
+                    "-i", str(out_wav),
+                    "-c:a", "libmp3lame",
+                    "-b:a", self.bitrate,
                     str(target),
                 ]
-                subprocess.run(cmd_ff, capture_output=True, timeout=120, creationflags=_CREATE_NO_WINDOW)
+                res_ff = subprocess.run(
+                    cmd_ff, capture_output=True, timeout=120, creationflags=_CREATE_NO_WINDOW
+                )
+                if res_ff.returncode != 0 or not target.is_file():
+                    err = res_ff.stderr.decode("utf-8", errors="replace")[:300]
+                    raise TTSError(f"FFmpeg chuyển audio F5-TTS sang MP3 lỗi: {err}")
+
             dur = probe_duration(target)
             return SynthResult(
                 path=target,
@@ -926,7 +893,7 @@ class F5TTSEngine:
                 characters=len(clean_text),
                 voice=raw_voice,
                 engine="f5tts",
-                backend="gpu",
+                backend=device,
             )
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -960,6 +927,28 @@ class XTTSEngine:
     def close(self) -> None:
         pass
 
+    def installed_models(self) -> set[str]:
+        """Return set of model IDs that are physically downloaded on disk."""
+        if not self.root.is_dir():
+            return set()
+        installed: set[str] = set()
+        models_dir = self.root / "models"
+        if not models_dir.is_dir():
+            return installed
+
+        # XTTS_v2 / XTTS_v2_Base
+        for cand in ("XTTS_v2", "XTTS_v2_Base"):
+            m_v2 = models_dir / cand
+            if m_v2.is_dir() and (m_v2 / "model.pth").is_file():
+                installed.add("XTTS_v2")
+                installed.add("XTTS_v2_Base")
+
+        # viXTTS
+        m_vi = models_dir / "viXTTS"
+        if m_vi.is_dir() and (m_vi / "model.pth").is_file():
+            installed.add("viXTTS")
+        return installed
+
     def available_voices(self, language: str = "", gender: str = "") -> List[Tuple[str, str]]:
         """Return Male (Nam) and Female (Nữ) voices for Coqui XTTS-v2 filtered by language & gender."""
         code = normalize_language(language) if language else ""
@@ -968,26 +957,47 @@ class XTTSEngine:
         for label, vid, v_gender, lang_scope in XTTS_VOICES_CATALOG:
             if g_filter and v_gender.lower() != g_filter:
                 continue
+            if code == "vi" and lang_scope != "vi":
+                continue
             if code and code != "vi" and lang_scope == "vi":
                 continue
             results.append((label, vid))
         return results
 
-    def installed_voices(self, language: str = "") -> List[Tuple[str, str]]:
+    def installed_voices(self, language: str = "", gender: str = "") -> List[Tuple[str, str]]:
         """Return list of (label, model_id) actually installed inside XTTSv2 directory."""
-        if not self.root.is_dir():
+        installed_mdls = self.installed_models()
+        if not installed_mdls:
             return []
-        known = {mid: label for label, mid in XTTS_MODELS_CATALOG}
-        found_models: set[str] = set()
-        for f in self.root.rglob("*.pth"):
-            if not f.is_file() or f.name == "speakers_xtts.pth":
+        code = normalize_language(language) if language else ""
+        g_filter = str(gender or "").strip().lower()
+        results: List[Tuple[str, str]] = []
+        for label, vid, v_gender, lang_scope in XTTS_VOICES_CATALOG:
+            model_key = vid.split("::")[0]
+            if model_key not in installed_mdls:
                 continue
-            parent_name = f.parent.name
-            mid = parent_name if parent_name in known else f.stem
-            found_models.add(mid)
-        if not found_models:
-            return []
-        return self.available_voices(language)
+            if g_filter and v_gender.lower() != g_filter:
+                continue
+            if code == "vi" and lang_scope != "vi":
+                continue
+            if code and code != "vi" and lang_scope == "vi":
+                continue
+            results.append((label, vid))
+        return results
+
+    def find_model_dir(self, model_key: str) -> Optional[Path]:
+        """Locate model directory containing model.pth and config.json."""
+        models_dir = self.root / "models"
+        aliases = [model_key]
+        if model_key == "XTTS_v2_Base":
+            aliases.append("XTTS_v2")
+        elif model_key == "XTTS_v2":
+            aliases.append("XTTS_v2_Base")
+        for alias in aliases:
+            cand = models_dir / alias
+            if cand.is_dir() and (cand / "model.pth").is_file():
+                return cand
+        return None
 
     def check_ready(self, language: str = "") -> Tuple[bool, str]:
         has_gpu, gpu_desc = detect_gpu_status()
@@ -996,12 +1006,19 @@ class XTTSEngine:
                 False,
                 f"Coqui XTTS-v2 yêu cầu GPU NVIDIA (CUDA) để hoạt động ({gpu_desc}).",
             )
-        voices = self.installed_voices(language)
-        if not voices:
+        installed_mdls = self.installed_models()
+        if not installed_mdls:
             return (
                 False,
-                f"Chưa cài đặt model Coqui XTTS-v2 trong thư mục '{self.root}'. "
+                f"Chưa cài đặt model Coqui XTTS-v2 nào trong thư mục '{self.root}'. "
                 "Vui lòng vào Cài đặt → API → Giọng đọc → Coqui XTTS-v2 để tải model.",
+            )
+        code = normalize_language(language) if language else ""
+        if code == "vi" and "viXTTS" not in installed_mdls:
+            return (
+                False,
+                f"Chưa tải model Coqui XTTS-v2 Tiếng Việt (viXTTS) trong thư mục '{self.root}'. "
+                "Vui lòng vào Cài đặt → API → Giọng đọc → Coqui XTTS-v2 để tải model Tiếng Việt.",
             )
         return True, f"Coqui XTTS-v2 đã sẵn sàng ({gpu_desc})."
 
@@ -1026,90 +1043,85 @@ class XTTSEngine:
             raise TTSError("Văn bản rỗng, không có gì để đọc.")
 
         code = normalize_language(language)
-        raw_voice = (voice or ("viXTTS::Ngọc Ánh" if code == "vi" else "XTTS_v2_Base::Claribel Dervla")).strip()
+        raw_voice = (
+            voice or ("viXTTS::Ngọc Ánh" if code == "vi" else "XTTS_v2::Claribel Dervla")
+        ).strip()
         if "::" in raw_voice:
             chosen_model, speaker_idx = raw_voice.split("::", 1)
         else:
-            chosen_model, speaker_idx = raw_voice, "Claribel Dervla"
+            chosen_model = raw_voice or ("viXTTS" if code == "vi" else "XTTS_v2")
+            speaker_idx = "Claribel Dervla"
+
+        model_dir = self.find_model_dir(chosen_model)
+        if model_dir is None:
+            raise TTSError(
+                f"Chưa tải model Coqui XTTS-v2 '{chosen_model}' trong thư mục '{self.root}'. "
+                "Vui lòng vào Cài đặt → API → Giọng đọc → Coqui XTTS-v2 để tải model."
+            )
+
+        cli_bin = shutil.which("tts")
+        if not cli_bin:
+            scripts_cand = Path(sys.prefix) / "Scripts" / "tts.exe"
+            if scripts_cand.is_file():
+                cli_bin = str(scripts_cand)
+            else:
+                raise TTSError(
+                    "Chưa tìm thấy công cụ dòng lệnh 'tts'. "
+                    "Vui lòng chạy lệnh: pip install coqui-tts"
+                )
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if message_cb:
+            message_cb(f"Coqui XTTS-v2 ({device.upper()} · {chosen_model}): 1 đoạn, giọng {speaker_idx}")
 
         target = Path(out_path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        cli_bin = shutil.which("tts")
-        if not cli_bin:
-            return _synthesize_neural_speaker(
-                clean_text,
-                target,
-                raw_voice,
-                speaker_idx,
-                code,
-                speed or self.default_speed,
-                self.settings,
-                "xtts",
-                progress_cb=progress_cb,
-                message_cb=message_cb,
-                pause_cb=pause_cb,
-                cancel_cb=cancel_cb,
-            )
-
         temp_dir = Path(tempfile.mkdtemp(prefix="ay_xtts_", dir=str(target.parent)))
         try:
             out_wav = temp_dir / "xtts_out.wav"
-            model_dir = self.root / "models" / chosen_model
             cmd = [
-                cli_bin,
-                "--text",
-                clean_text,
-                "--language_idx",
-                code,
-                "--speaker_idx",
-                speaker_idx,
-                "--out_path",
-                str(out_wav),
-                "--use_cuda",
-                "true",
+                str(cli_bin),
+                "--text", clean_text,
+                "--model_path", str(model_dir),
+                "--config_path", str(model_dir / "config.json"),
+                "--speaker_idx", speaker_idx,
+                "--language_idx", code if code in ("vi", "en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh", "hu", "ko", "ja", "hi") else "en",
+                "--out_path", str(out_wav),
             ]
-            if model_dir.is_dir():
-                cmd.extend(["--model_path", str(model_dir), "--config_path", str(model_dir / "config.json")])
-            else:
-                cmd.extend(["--model_name", "tts_models/multilingual/multi-dataset/xtts_v2"])
+            if device == "cuda":
+                cmd.append("--use_cuda")
+
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
                 timeout=300,
                 creationflags=_CREATE_NO_WINDOW,
             )
-            if proc.returncode != 0 or not out_wav.is_file():
-                return _synthesize_neural_speaker(
-                    clean_text,
-                    target,
-                    raw_voice,
-                    speaker_idx,
-                    code,
-                    speed or self.default_speed,
-                    self.settings,
-                    "xtts",
-                    progress_cb=progress_cb,
-                    message_cb=message_cb,
-                    pause_cb=pause_cb,
-                    cancel_cb=cancel_cb,
-                )
+            if proc.returncode != 0 or not out_wav.is_file() or out_wav.stat().st_size == 0:
+                err = proc.stderr.decode("utf-8", errors="replace")[:400]
+                raise TTSError(f"Coqui XTTS-v2 tạo audio thất bại (mã {proc.returncode}): {err}")
+
             if progress_cb:
                 progress_cb(100)
+
             if target.suffix.lower() == ".wav":
-                os.replace(out_wav, target)
+                shutil.copy2(out_wav, target)
             else:
                 cmd_ff = [
                     self.ffmpeg,
                     "-y",
-                    "-i",
-                    str(out_wav),
-                    "-c:a",
-                    "libmp3lame",
-                    "-b:a",
-                    self.bitrate,
+                    "-i", str(out_wav),
+                    "-c:a", "libmp3lame",
+                    "-b:a", self.bitrate,
                     str(target),
                 ]
-                subprocess.run(cmd_ff, capture_output=True, timeout=120, creationflags=_CREATE_NO_WINDOW)
+                res_ff = subprocess.run(
+                    cmd_ff, capture_output=True, timeout=120, creationflags=_CREATE_NO_WINDOW
+                )
+                if res_ff.returncode != 0 or not target.is_file():
+                    err = res_ff.stderr.decode("utf-8", errors="replace")[:300]
+                    raise TTSError(f"FFmpeg chuyển audio Coqui XTTS sang MP3 lỗi: {err}")
+
             dur = probe_duration(target)
             return SynthResult(
                 path=target,
@@ -1119,9 +1131,10 @@ class XTTSEngine:
                 characters=len(clean_text),
                 voice=raw_voice,
                 engine="xtts",
-                backend="gpu",
+                backend=device,
             )
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 
