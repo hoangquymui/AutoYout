@@ -8,6 +8,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import urllib.request
@@ -1875,30 +1876,43 @@ class PiperDownloadWorker(QThread):
 
     def _download_url_to_file(self, url: str, dest: Path, progress_prefix: str = "") -> None:
         dest.parent.mkdir(parents=True, exist_ok=True)
+        dest_part = dest.with_name(f"{dest.name}.part")
         req = urllib.request.Request(url, headers={"User-Agent": "AutoYout/1.0"})
-        with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as out_f:
-            total_size = int(resp.headers.get("Content-Length", 0) or 0)
-            downloaded = 0
-            last_emit = time.time()
-            while True:
-                if self._is_cancelled:
-                    raise H2MDownloadCancelled("Đã hủy tiến trình tải.")
-                chunk = resp.read(65536)
-                if not chunk:
-                    break
-                out_f.write(chunk)
-                downloaded += len(chunk)
-                now = time.time()
-                if now - last_emit > 0.4:
-                    last_emit = now
-                    if total_size > 0:
-                        dl_mb = downloaded / (1024 * 1024)
-                        tot_mb = total_size / (1024 * 1024)
-                        sub_pct = int((downloaded / total_size) * 100)
-                        self.progress.emit(
-                            sub_pct,
-                            f"{progress_prefix} ({dl_mb:.1f} MB / {tot_mb:.1f} MB)" if progress_prefix else f"Đang tải {dl_mb:.1f}/{tot_mb:.1f} MB…"
-                        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp, open(dest_part, "wb") as out_f:
+                total_size = int(resp.headers.get("Content-Length", 0) or 0)
+                downloaded = 0
+                last_emit = time.time()
+                while True:
+                    if self._is_cancelled:
+                        raise H2MDownloadCancelled("Đã hủy tiến trình tải.")
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    out_f.write(chunk)
+                    downloaded += len(chunk)
+                    now = time.time()
+                    if now - last_emit > 0.4:
+                        last_emit = now
+                        if total_size > 0:
+                            dl_mb = downloaded / (1024 * 1024)
+                            tot_mb = total_size / (1024 * 1024)
+                            sub_pct = int((downloaded / total_size) * 100)
+                            self.progress.emit(
+                                sub_pct,
+                                f"{progress_prefix} ({dl_mb:.1f} MB / {tot_mb:.1f} MB)" if progress_prefix else f"Đang tải {dl_mb:.1f}/{tot_mb:.1f} MB…"
+                            )
+            if dest_part.is_file():
+                if dest.is_file():
+                    dest.unlink()
+                dest_part.rename(dest)
+        except Exception:
+            if dest_part.is_file():
+                try:
+                    dest_part.unlink()
+                except OSError:
+                    pass
+            raise
 
     def run(self) -> None:
         total_pkgs = len(self.packages)
@@ -1949,6 +1963,7 @@ class PiperDownloadWorker(QThread):
                 self.all_finished.emit(False, "Đã hủy tiến trình tải.")
                 return
             except Exception as exc:
+                logger.error("Lỗi khi tải gói %s (%s): %s", pkg_id, pkg.get("name"), exc, exc_info=True)
                 self.errors[pkg_id] = str(exc)
                 self.pkg_status_changed.emit(pkg_id, "error", "Lỗi tải")
 
@@ -2277,6 +2292,7 @@ class PiperTTSCard(QFrame):
                 if w.get("state") != "error":
                     w["state"] = "error"
                     w["status_badge"].setText("Lỗi tải")
+                    w["status_badge"].setToolTip(f"Lỗi: {errors[pkg_id]}")
                     w["status_badge"].setStyleSheet(
                         f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
                         "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
@@ -2817,6 +2833,7 @@ class F5TTSCard(QFrame):
                 if w.get("state") != "error":
                     w["state"] = "error"
                     w["status_badge"].setText("Lỗi tải")
+                    w["status_badge"].setToolTip(f"Lỗi: {errors[pkg_id]}")
                     w["status_badge"].setStyleSheet(
                         f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
                         "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
@@ -3337,6 +3354,7 @@ class XTTSCard(QFrame):
                 if w.get("state") != "error":
                     w["state"] = "error"
                     w["status_badge"].setText("Lỗi tải")
+                    w["status_badge"].setToolTip(f"Lỗi: {errors[pkg_id]}")
                     w["status_badge"].setStyleSheet(
                         f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
                         "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
