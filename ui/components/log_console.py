@@ -22,7 +22,7 @@ _MAX_ENTRIES = 2000
 class LogConsole(QWidget):
     """Read-only log view fed by :class:`utils.logger.QtLogHandler`."""
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, title: str = "NHẬT KÝ HOẠT ĐỘNG", parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("LogConsole")
         self._entries: List[Tuple[str, str, str]] = []
@@ -33,9 +33,9 @@ class LogConsole(QWidget):
 
         header = QHBoxLayout()
         header.setSpacing(8)
-        title = QLabel("NHẬT KÝ HOẠT ĐỘNG")
-        title.setObjectName("PanelTitle")
-        header.addWidget(title)
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName("PanelTitle")
+        header.addWidget(self.title_label)
         self.count_label = QLabel("0 dòng")
         self.count_label.setObjectName("LogCount")
         header.addWidget(self.count_label)

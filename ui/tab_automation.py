@@ -685,7 +685,7 @@ class AutomationTab(QWidget):
         root.addLayout(status_row)
 
         # ── 5. Log Console ────────────────────────────────────────────────────
-        self.log_console = LogConsole()
+        self.log_console = LogConsole(title="NHẬT KÝ TIẾN TRÌNH TỰ ĐỘNG HOÁ")
         self.log_console.setMinimumHeight(160)
         root.addWidget(self.log_console, 1)
 

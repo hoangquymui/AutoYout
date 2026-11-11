@@ -462,13 +462,13 @@ class MainWindow(QMainWindow):
 
         self.btn_console = icon_button(
             "terminal",
-            "Mở cửa sổ Console (F12 hoặc Ctrl+`)",
+            "Mở cửa sổ Terminal Console (F12 hoặc Ctrl+`)",
             role="muted",
             size=16,
             side=32,
         )
-        self.btn_console.setAccessibleName("Cửa sổ Console log")
-        self.btn_console.setAccessibleDescription("Mở hoặc ẩn cửa sổ xem nhật ký hoạt động (F12 hoặc Ctrl+`)")
+        self.btn_console.setAccessibleName("Cửa sổ Terminal Console")
+        self.btn_console.setAccessibleDescription("Mở hoặc ẩn cửa sổ Terminal Console toàn bộ hệ thống (F12 hoặc Ctrl+`)")
         self.btn_console.clicked.connect(self._toggle_console_window)
         utility_cluster.addWidget(self.btn_console)
 
@@ -502,8 +502,8 @@ class MainWindow(QMainWindow):
     # ── logging ──────────────────────────────────────────────────────────────
     def _attach_logging(self) -> None:
         self._log_emitter = LogEmitter(self)
-        self._log_emitter.message.connect(self.automation_tab.log_console.append)
-        self._log_emitter.message.connect(self.console_window.append_log)
+        self._in_traceback = False
+        self._log_emitter.message.connect(self._dispatch_log)
 
         # 1. Catch AutoYout logger records
         self._log_handler = attach_qt_handler(
@@ -518,6 +518,84 @@ class MainWindow(QMainWindow):
         self._orig_stderr = sys.stderr
         sys.stdout = QtStreamWriter(self._log_emitter, level="INFO", fallback=self._orig_stdout)
         sys.stderr = QtStreamWriter(self._log_emitter, level="WARNING", fallback=self._orig_stderr)
+
+    def _dispatch_log(self, level: str, message: str) -> None:
+        """Route log messages:
+        - Developer Terminal Console Window receives 100% of everything (backend & frontend, stdout, stderr, tracebacks).
+        - Automation Tab receives only clean, user-facing application & workflow activities.
+        """
+        # 1. Developer Terminal Console: receives everything
+        if hasattr(self, "console_window") and self.console_window is not None:
+            self.console_window.append_log(level, message)
+
+        # 2. Automation Tab: receives only app activities and workflow events
+        if hasattr(self, "automation_tab") and self.automation_tab is not None:
+            if self._is_automation_activity(level, message):
+                self.automation_tab.log_console.append(level, message)
+
+    def _is_automation_activity(self, level: str, message: str) -> bool:
+        if not message:
+            return False
+        lvl = (level or "").upper()
+        if lvl == "DEBUG":
+            return False
+
+        msg = message.strip()
+        if not msg:
+            return False
+
+        # Filter out traceback blocks
+        if "Traceback (most recent call last):" in msg:
+            self._in_traceback = True
+            return False
+
+        if getattr(self, "_in_traceback", False):
+            # Check if this line ends the traceback (standard exception lines)
+            if any(
+                msg.startswith(prefix)
+                for prefix in (
+                    "Error:", "Exception:", "NameError", "TypeError", "ValueError",
+                    "AttributeError", "KeyError", "IndexError", "ImportError",
+                    "ModuleNotFoundError", "RuntimeError", "ZeroDivisionError",
+                    "SyntaxError", "OSError", "FileNotFoundError"
+                )
+            ):
+                self._in_traceback = False
+            return False
+
+        # Filter out isolated traceback lines or pointer marks
+        if msg.startswith('File "') and ", line " in msg:
+            return False
+        if 'File "' in msg and ", line " in msg and ("in " in msg or "<module>" in msg or "<lambda>" in msg):
+            return False
+        if "^" * 3 in msg or "~" * 3 in msg:
+            return False
+
+        # Filter out raw built-in exception lines
+        for exc_prefix in (
+            "NameError:", "TypeError:", "ValueError:", "AttributeError:", "KeyError:",
+            "IndexError:", "ImportError:", "ModuleNotFoundError:", "RuntimeError:",
+            "ZeroDivisionError:", "SyntaxError:", "OSError:", "FileNotFoundError:"
+        ):
+            if msg.startswith(exc_prefix):
+                return False
+
+        # Filter out noisy internal library stdout/stderr streams
+        lower = msg.lower()
+        if "[piper]" in lower or "initialized piper" in lower:
+            return False
+        if "starting new https connection" in lower or "resetting dropped connection" in lower:
+            return False
+        if "insecurerequestwarning" in lower:
+            return False
+        if "sanitized piper model config" in lower:
+            return False
+        if lower.startswith("http/1.") or lower.startswith("get /") or lower.startswith("post /"):
+            return False
+        if "onnxruntime" in lower:
+            return False
+
+        return True
 
     def _toggle_console_window(self) -> None:
         if self.console_window.isVisible():
