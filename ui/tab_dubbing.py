@@ -445,6 +445,9 @@ class DubbingTab(QWidget):
 
     def sync_languages(self, profiles: Optional[List[Any]] = None) -> None:
         """Rebuild language rows based on source language ('vi') + languages added in Script tab."""
+        if hasattr(self, "tts_page") and self.tts_page is not None:
+            self.tts_page.sync_languages(profiles)
+
         if profiles is None:
             try:
                 profiles = load_profiles()

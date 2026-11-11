@@ -28,7 +28,8 @@ from PySide6.QtWidgets import (
 )
 
 from core.edge_tts_engine import EdgeTTSEngine
-from core.languages import language_choices, normalize_language
+from core.languages import language_name, normalize_language, normalize_language_code
+from core.language_profiles import load_profiles
 from core.piper_tts_engine import (
     ALL_EDGE_VOICES,
     PiperTTSEngine,
@@ -198,9 +199,7 @@ class TTSConfigTab(QWidget):
         self.lang_label = QLabel("Ngôn ngữ")
         self.lang_label.setStyleSheet("font-weight: 500;")
         self.language_combo = QComboBox()
-        self.language_combo.addItem("Tất cả ngôn ngữ", "")
-        for code, label in language_choices():
-            self.language_combo.addItem(f"{label} ({code})", code)
+        self.sync_languages()
         self.language_combo.currentIndexChanged.connect(self._refresh_voice_list)
         lang_h.addWidget(self.lang_label)
         lang_h.addWidget(self.language_combo, 1)
@@ -369,6 +368,59 @@ class TTSConfigTab(QWidget):
         holder.setLayout(layout)
         return holder
 
+    def sync_languages(
+        self,
+        profiles: Optional[List[Any]] = None,
+        extra_codes: Optional[Iterable[str]] = None,
+    ) -> None:
+        """Update language combo options based on entered languages (Language Profiles)."""
+        current_data = self.language_combo.currentData() if hasattr(self, "language_combo") else ""
+        if profiles is None:
+            try:
+                profiles = load_profiles()
+            except Exception:
+                profiles = []
+
+        items: List[Tuple[str, str]] = [("", "Tất cả ngôn ngữ"), ("vi", "Tiếng Việt (vi)")]
+        seen = {"", "vi"}
+        if profiles:
+            for prof in profiles:
+                code = normalize_language_code(getattr(prof, "language", "") or "", "")
+                if not code or code in seen:
+                    continue
+                seen.add(code)
+                custom = getattr(prof, "name", "") or language_name(code)
+                label = f"{custom} ({code})" if code not in custom else custom
+                items.append((code, label))
+
+        if extra_codes:
+            for raw_c in extra_codes:
+                code = normalize_language_code(str(raw_c or ""), "")
+                if not code or code in seen:
+                    continue
+                seen.add(code)
+                label = f"{language_name(code)} ({code})"
+                items.append((code, label))
+
+        if current_data and current_data not in seen:
+            seen.add(current_data)
+            items.append((current_data, f"{language_name(current_data)} ({current_data})"))
+
+        self.language_combo.blockSignals(True)
+        self.language_combo.clear()
+        for code, label in items:
+            self.language_combo.addItem(label, code)
+
+        if current_data is not None:
+            idx = self.language_combo.findData(current_data)
+            if idx >= 0:
+                self.language_combo.setCurrentIndex(idx)
+            else:
+                self.language_combo.setCurrentIndex(0)
+        else:
+            self.language_combo.setCurrentIndex(0)
+        self.language_combo.blockSignals(False)
+
     # ── settings ─────────────────────────────────────────────────────────────
     def load_from(self, settings: Dict[str, Any]) -> None:
         self._settings = settings
@@ -384,7 +436,26 @@ class TTSConfigTab(QWidget):
         self.provider_combo.blockSignals(False)
         self._set_combo(self.engine_combo, tts.get("engine", "turbo"))
         self._set_combo(self.backend_combo, tts.get("backend", "auto"))
+
         lang = str(tts.get("language") or "").strip()
+        script_langs = (settings.get("script") or {}).get("languages")
+        auto_langs = (settings.get("automation") or {}).get("target_languages")
+        extra: List[str] = []
+        if lang:
+            extra.append(lang)
+        if isinstance(auto_langs, list):
+            extra.extend([str(x) for x in auto_langs if x])
+        if isinstance(script_langs, list):
+            for item in script_langs:
+                if isinstance(item, str) and item:
+                    extra.append(item)
+                elif isinstance(item, dict) and "language" in item:
+                    extra.append(item["language"])
+        if extra:
+            self.sync_languages(extra_codes=extra)
+        else:
+            self.sync_languages()
+
         self._set_combo(self.language_combo, lang)
         self.speed_spin.setValue(float(tts.get("speed", 1.0) or 1.0))
         self.gap_sentence_spin.setValue(float(tts.get("gap_sentence", 0.3) or 0.0))

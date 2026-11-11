@@ -180,6 +180,27 @@ def test_tts_config_tab_clean_names_and_layout(qapp):
     assert not tts_tab.lang_container.isHidden()
     assert tts_tab.gender_combo.isHidden()
     assert tts_tab.gender_label.text() == "Ngôn ngữ"
+
+    # Test language combo is populated strictly from entered profiles (not 10 hardcoded world languages)
+    from core.language_profiles import LanguageProfile
+    tts_tab.sync_languages([
+        LanguageProfile("ja", "prompt ja", name="Tiếng Nhật"),
+        LanguageProfile("zh", "prompt zh", name="Tiếng Trung"),
+    ])
+    combo_codes = [tts_tab.language_combo.itemData(i) for i in range(tts_tab.language_combo.count())]
+    assert combo_codes == ["", "vi", "ja", "zh"]
+    assert "ko" not in combo_codes
+    assert "fr" not in combo_codes
+    assert "es" not in combo_codes
+    assert "th" not in combo_codes
+    assert "hi" not in combo_codes
+
+    # Dynamic removal when syncing with fewer profiles
+    tts_tab.sync_languages([LanguageProfile("ja", "prompt ja", name="Tiếng Nhật")])
+    combo_codes2 = [tts_tab.language_combo.itemData(i) for i in range(tts_tab.language_combo.count())]
+    assert combo_codes2 == ["", "vi", "ja"]
+    assert "zh" not in combo_codes2
+
     tts_tab.close()
 
 

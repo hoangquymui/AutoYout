@@ -357,6 +357,7 @@ def test_video_tab_run_button_starts_video_pipeline(window, monkeypatch) -> None
 def test_tts_default_language_roundtrip(window) -> None:
     tab = window.tts_tab
     page = tab.tts_page
+    page.sync_languages(extra_codes=["ja"])
     page.language_combo.setCurrentIndex(page.language_combo.findData("ja"))
     tab.apply_to(window.settings)
     assert window.settings["tts"]["language"] == "ja"
