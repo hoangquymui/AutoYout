@@ -11,8 +11,6 @@ loaded directly (no network needed once the weights are present).
 """
 from __future__ import annotations
 
-import importlib.util
-import json
 import os
 import re
 import subprocess
@@ -23,7 +21,7 @@ import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 

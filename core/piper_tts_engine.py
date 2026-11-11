@@ -462,7 +462,7 @@ class PiperTTSEngine:
         installed: List[Tuple[str, str]] = []
         seen: set[str] = set()
         for onnx in self.root.rglob("*.onnx"):
-            if not onnx.is_file():
+            if not onnx.is_file() or onnx.stat().st_size == 0:
                 continue
             stem = onnx.stem
             if stem in seen:
@@ -543,11 +543,19 @@ class PiperTTSEngine:
                 "Vui lòng vào Cài đặt → API → Giọng đọc để tải PiperTTS."
             )
         model_path = self.find_model(chosen_voice, code)
-        if model_path is None:
+        if model_path is None or model_path.stat().st_size == 0:
             raise TTSError(
                 f"Chưa tải model giọng đọc PiperTTS '{chosen_voice}' cho ngôn ngữ '{language_name(code)} ({code})'. "
                 "Vui lòng vào Cài đặt → API → Giọng đọc để tải model."
             )
+        json_cand = model_path.with_name(f"{model_path.name}.json")
+        if not json_cand.is_file():
+            json_cand2 = model_path.with_suffix(".json")
+            if not json_cand2.is_file():
+                raise TTSError(
+                    f"Thiếu file cấu hình '{json_cand.name}' của model PiperTTS '{model_path.stem}'. "
+                    "Vui lòng vào Cài đặt → API → Giọng đọc để tải lại model."
+                )
 
         chunks = [
             c.text for c in chunk_text(clean_text, min_chars=250, max_chars=900) if c.text.strip()
@@ -563,7 +571,7 @@ class PiperTTSEngine:
         eff_speed = float(speed or self.default_speed or 1.0)
         length_scale = round(1.0 / max(0.25, min(4.0, eff_speed)), 3)
 
-        target = Path(out_path)
+        target = Path(out_path).resolve()
         target.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix="ay_piper_", dir=str(target.parent)))
 
@@ -885,7 +893,7 @@ class F5TTSEngine:
         if message_cb:
             message_cb(f"F5-TTS ({device.upper()} · {chosen_model}): 1 đoạn, giọng {speaker_name}")
 
-        target = Path(out_path)
+        target = Path(out_path).resolve()
         target.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix="ay_f5tts_", dir=str(target.parent)))
         try:
@@ -910,6 +918,10 @@ class F5TTSEngine:
 
             env = os.environ.copy()
             env["PYTHONWARNINGS"] = "ignore"
+            env["PYTHONIOENCODING"] = "utf-8"
+            env["PYTHONUTF8"] = "1"
+            env["WANDB_MODE"] = "disabled"
+            env["WANDB_SILENT"] = "true"
 
             proc = subprocess.run(
                 cmd,
@@ -1166,7 +1178,7 @@ class XTTSEngine:
         else:
             eff_lang = "en"
 
-        target = Path(out_path)
+        target = Path(out_path).resolve()
         target.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix="ay_xtts_", dir=str(target.parent)))
         try:
@@ -1184,6 +1196,10 @@ class XTTSEngine:
 
             env = os.environ.copy()
             env["PYTHONWARNINGS"] = "ignore"
+            env["PYTHONIOENCODING"] = "utf-8"
+            env["PYTHONUTF8"] = "1"
+            env["WANDB_MODE"] = "disabled"
+            env["WANDB_SILENT"] = "true"
 
             proc = subprocess.run(
                 cmd,

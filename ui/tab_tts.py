@@ -32,7 +32,6 @@ from core.languages import language_choices, normalize_language
 from core.piper_tts_engine import (
     ALL_EDGE_VOICES,
     F5TTSEngine,
-    H2M_DEFAULT_VOICES,
     PiperTTSEngine,
     XTTSEngine,
     detect_gpu_status,
@@ -41,7 +40,7 @@ from core.settings import ROOT, default_h2mtts_path, normalize_h2mtts_path
 from core.tts_engine import SynthesisCancelled, TTSEngine
 from ui.components.audio_player import AudioPreview
 from ui.components.icons import set_icon
-from ui.components.page import PageHeader, icon_button, paint_status, wrap_scroll
+from ui.components.page import PageHeader, paint_status, wrap_scroll
 from utils.logger import get_logger
 
 logger = get_logger("ui.tts")
