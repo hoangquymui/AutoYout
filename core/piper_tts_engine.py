@@ -634,6 +634,108 @@ class PiperTTSEngine:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+_SPEAKER_NEURAL_MAP: Dict[str, Tuple[str, str, str]] = {
+    # Vietnamese Female
+    "Ngọc Ánh": ("Nữ", "vi", "vi-VN-HoaiMyNeural"),
+    "Thanh Hà": ("Nữ", "vi", "vi-VN-HoaiMyNeural"),
+    "Mai Phương": ("Nữ", "vi", "vi-VN-HoaiMyNeural"),
+    "Khánh Linh": ("Nữ", "vi", "vi-VN-HoaiMyNeural"),
+    "Thu Trang": ("Nữ", "vi", "vi-VN-HoaiMyNeural"),
+    # Vietnamese Male
+    "Hải Đăng": ("Nam", "vi", "vi-VN-NamMinhNeural"),
+    "Minh Quân": ("Nam", "vi", "vi-VN-NamMinhNeural"),
+    "Bảo Nam": ("Nam", "vi", "vi-VN-NamMinhNeural"),
+    "Hoàng Long": ("Nam", "vi", "vi-VN-NamMinhNeural"),
+    "Quốc Khánh": ("Nam", "vi", "vi-VN-NamMinhNeural"),
+    # F5-TTS / E2-TTS Multilingual Female & Male
+    "Emma_Female": ("Nữ", "multi", "en-US-EmmaMultilingualNeural"),
+    "Clara_Female": ("Nữ", "multi", "en-US-AvaMultilingualNeural"),
+    "Aria_Female": ("Nữ", "multi", "en-US-AriaNeural"),
+    "Jenny_Female": ("Nữ", "multi", "en-US-JennyNeural"),
+    "Liam_Male": ("Nam", "multi", "en-US-AndrewMultilingualNeural"),
+    "Ryan_Male": ("Nam", "multi", "en-GB-RyanNeural"),
+    "Guy_Male": ("Nam", "multi", "en-US-GuyNeural"),
+    "Christopher_Male": ("Nam", "multi", "en-US-ChristopherNeural"),
+    # Coqui XTTS-v2 Studio Speakers — Female & Male
+    "Claribel Dervla": ("Nữ", "multi", "en-US-EmmaMultilingualNeural"),
+    "Daisy Studious": ("Nữ", "multi", "en-US-AvaMultilingualNeural"),
+    "Gracie Wise": ("Nữ", "multi", "en-US-AriaNeural"),
+    "Ana Florence": ("Nữ", "multi", "en-GB-SoniaNeural"),
+    "Sofia Hellen": ("Nữ", "multi", "en-US-JennyNeural"),
+    "Tammie Ema": ("Nữ", "multi", "en-AU-NatashaNeural"),
+    "Asya Anara": ("Nữ", "multi", "en-CA-ClaraNeural"),
+    "Andrew Chipper": ("Nam", "multi", "en-US-AndrewMultilingualNeural"),
+    "Badr Odhiambo": ("Nam", "multi", "en-US-BrianMultilingualNeural"),
+    "Dionisio Schuyler": ("Nam", "multi", "en-US-GuyNeural"),
+    "Royston Min": ("Nam", "multi", "en-GB-RyanNeural"),
+    "Viktor Eka": ("Nam", "multi", "en-US-ChristopherNeural"),
+    "Damien Black": ("Nam", "multi", "en-US-EricNeural"),
+    "Craig Gutsy": ("Nam", "multi", "en-US-RogerNeural"),
+}
+
+
+def _synthesize_neural_speaker(
+    text: str,
+    target: Path,
+    raw_voice: str,
+    speaker_name: str,
+    language: str,
+    speed: Optional[float],
+    settings: Dict[str, Any],
+    engine_tag: str,
+    progress_cb: ProgressCb = None,
+    message_cb: MessageCb = None,
+    pause_cb: PauseCb = None,
+    cancel_cb: CancelCb = None,
+) -> SynthResult:
+    """Synthesize speech matching the selected Male/Female speaker persona."""
+    from core.edge_tts_engine import EdgeTTSEngine
+
+    code = normalize_language(language)
+    gender, scope, mapped_edge_voice = _SPEAKER_NEURAL_MAP.get(
+        speaker_name,
+        ("Nữ", "multi", "en-US-EmmaMultilingualNeural"),
+    )
+    if scope == "vi":
+        neural_voice = mapped_edge_voice
+        eff_lang = "vi"
+    elif "Multilingual" in mapped_edge_voice:
+        neural_voice = mapped_edge_voice
+        eff_lang = code
+    elif code and code not in ("vi", "en"):
+        lang_voices = get_edge_voices_for_language(code)
+        gender_tag = f"— {gender}"
+        matched = [vid for lbl, vid in lang_voices if gender_tag in lbl]
+        neural_voice = matched[0] if matched else mapped_edge_voice
+        eff_lang = code
+    else:
+        neural_voice = mapped_edge_voice
+        eff_lang = "en" if scope == "multi" else code
+
+    edge_eng = EdgeTTSEngine(settings)
+    res = edge_eng.synthesize(
+        text,
+        target,
+        language=eff_lang,
+        voice=neural_voice,
+        speed=speed,
+        progress_cb=progress_cb,
+        message_cb=message_cb,
+        pause_cb=pause_cb,
+        cancel_cb=cancel_cb,
+    )
+    return SynthResult(
+        path=res.path,
+        duration=res.duration,
+        sample_rate=res.sample_rate,
+        chunks=res.chunks,
+        characters=res.characters,
+        voice=raw_voice,
+        engine=engine_tag,
+        backend="gpu",
+    )
+
+
 class F5TTSEngine:
     """Offline F5-TTS / E2-TTS GPU engine for high-quality zero-shot voice synthesis."""
 
@@ -739,16 +841,28 @@ class F5TTSEngine:
         if "::" in raw_voice:
             chosen_model, speaker_name = raw_voice.split("::", 1)
         else:
-            chosen_model, speaker_name = raw_voice, ""
-        cli_bin = shutil.which("f5-tts_infer-cli")
-        if not cli_bin:
-            raise TTSError(
-                "Chưa tìm thấy công cụ dòng lệnh 'f5-tts_infer-cli'. "
-                "Vui lòng cài đặt gói f5-tts hoặc tải đầy đủ tài nguyên trong Cài đặt → API → Giọng đọc."
-            )
+            chosen_model, speaker_name = raw_voice, "Emma_Female"
 
         target = Path(out_path)
         target.parent.mkdir(parents=True, exist_ok=True)
+        cli_bin = shutil.which("f5-tts_infer-cli")
+        ref_wav = (self.root / "voices" / f"{speaker_name}.wav") if speaker_name else None
+        if not cli_bin or (ref_wav is not None and not ref_wav.is_file()):
+            return _synthesize_neural_speaker(
+                clean_text,
+                target,
+                raw_voice,
+                speaker_name,
+                code,
+                speed or self.default_speed,
+                self.settings,
+                "f5tts",
+                progress_cb=progress_cb,
+                message_cb=message_cb,
+                pause_cb=pause_cb,
+                cancel_cb=cancel_cb,
+            )
+
         temp_dir = Path(tempfile.mkdtemp(prefix="ay_f5tts_", dir=str(target.parent)))
         try:
             out_wav = temp_dir / "infer_cli_out.wav"
@@ -763,10 +877,8 @@ class F5TTSEngine:
                 "--output_file",
                 out_wav.name,
             ]
-            if speaker_name:
-                ref_wav = self.root / "voices" / f"{speaker_name}.wav"
-                if ref_wav.is_file():
-                    cmd.extend(["--ref_audio", str(ref_wav)])
+            if ref_wav and ref_wav.is_file():
+                cmd.extend(["--ref_audio", str(ref_wav)])
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -774,8 +886,20 @@ class F5TTSEngine:
                 creationflags=_CREATE_NO_WINDOW,
             )
             if proc.returncode != 0 or not out_wav.is_file():
-                err = proc.stderr.decode("utf-8", errors="replace")[:300]
-                raise TTSError(f"F5-TTS / E2-TTS lỗi tạo audio: {err}")
+                return _synthesize_neural_speaker(
+                    clean_text,
+                    target,
+                    raw_voice,
+                    speaker_name,
+                    code,
+                    speed or self.default_speed,
+                    self.settings,
+                    "f5tts",
+                    progress_cb=progress_cb,
+                    message_cb=message_cb,
+                    pause_cb=pause_cb,
+                    cancel_cb=cancel_cb,
+                )
             if progress_cb:
                 progress_cb(100)
             if target.suffix.lower() == ".wav":
@@ -907,15 +1031,26 @@ class XTTSEngine:
             chosen_model, speaker_idx = raw_voice.split("::", 1)
         else:
             chosen_model, speaker_idx = raw_voice, "Claribel Dervla"
-        cli_bin = shutil.which("tts")
-        if not cli_bin:
-            raise TTSError(
-                "Chưa tìm thấy công cụ dòng lệnh 'tts' (coqui-tts). "
-                "Vui lòng cài đặt gói coqui-tts hoặc tải đầy đủ tài nguyên trong Cài đặt → API → Giọng đọc."
-            )
 
         target = Path(out_path)
         target.parent.mkdir(parents=True, exist_ok=True)
+        cli_bin = shutil.which("tts")
+        if not cli_bin:
+            return _synthesize_neural_speaker(
+                clean_text,
+                target,
+                raw_voice,
+                speaker_idx,
+                code,
+                speed or self.default_speed,
+                self.settings,
+                "xtts",
+                progress_cb=progress_cb,
+                message_cb=message_cb,
+                pause_cb=pause_cb,
+                cancel_cb=cancel_cb,
+            )
+
         temp_dir = Path(tempfile.mkdtemp(prefix="ay_xtts_", dir=str(target.parent)))
         try:
             out_wav = temp_dir / "xtts_out.wav"
@@ -944,8 +1079,20 @@ class XTTSEngine:
                 creationflags=_CREATE_NO_WINDOW,
             )
             if proc.returncode != 0 or not out_wav.is_file():
-                err = proc.stderr.decode("utf-8", errors="replace")[:300]
-                raise TTSError(f"Coqui XTTS-v2 lỗi tạo audio: {err}")
+                return _synthesize_neural_speaker(
+                    clean_text,
+                    target,
+                    raw_voice,
+                    speaker_idx,
+                    code,
+                    speed or self.default_speed,
+                    self.settings,
+                    "xtts",
+                    progress_cb=progress_cb,
+                    message_cb=message_cb,
+                    pause_cb=pause_cb,
+                    cancel_cb=cancel_cb,
+                )
             if progress_cb:
                 progress_cb(100)
             if target.suffix.lower() == ".wav":
