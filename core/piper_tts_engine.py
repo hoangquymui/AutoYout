@@ -652,6 +652,20 @@ class PiperTTSEngine:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def _extract_clean_stderr(raw: bytes) -> str:
+    """Filter out benign Python warnings and return clean error message."""
+    text = raw.decode("utf-8", errors="replace").strip()
+    if not text:
+        return ""
+    lines = []
+    for line in text.splitlines():
+        if "FutureWarning" in line or "google.api_core" in line or "Please upgrade to the latest Python" in line:
+            continue
+        lines.append(line)
+    clean = "\n".join(lines).strip()
+    return clean[-500:] if len(clean) > 500 else (clean or text[:400])
+
+
 class F5TTSEngine:
     """Offline F5-TTS / E2-TTS GPU engine for high-quality zero-shot voice synthesis."""
 
@@ -894,14 +908,18 @@ class F5TTSEngine:
             if ref_wav.is_file():
                 cmd.extend(["-r", str(ref_wav)])
 
+            env = os.environ.copy()
+            env["PYTHONWARNINGS"] = "ignore"
+
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
                 timeout=300,
                 creationflags=_CREATE_NO_WINDOW,
+                env=env,
             )
             if proc.returncode != 0 or not out_wav.is_file() or out_wav.stat().st_size == 0:
-                err = proc.stderr.decode("utf-8", errors="replace")[:400]
+                err = _extract_clean_stderr(proc.stderr)
                 raise TTSError(f"F5-TTS tạo audio thất bại (mã {proc.returncode}): {err}")
 
             if progress_cb:
@@ -1164,14 +1182,18 @@ class XTTSEngine:
             if device == "cuda":
                 cmd.append("--use_cuda")
 
+            env = os.environ.copy()
+            env["PYTHONWARNINGS"] = "ignore"
+
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
                 timeout=300,
                 creationflags=_CREATE_NO_WINDOW,
+                env=env,
             )
             if proc.returncode != 0 or not out_wav.is_file() or out_wav.stat().st_size == 0:
-                err = proc.stderr.decode("utf-8", errors="replace")[:400]
+                err = _extract_clean_stderr(proc.stderr)
                 raise TTSError(f"Coqui XTTS-v2 tạo audio thất bại (mã {proc.returncode}): {err}")
 
             if progress_cb:
