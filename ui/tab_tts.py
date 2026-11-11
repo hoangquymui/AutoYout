@@ -62,6 +62,7 @@ class _PreviewWorker(QThread):
         provider: str = "h2mtts",
         voice: str = "",
         parent=None,
+        **kwargs,
     ) -> None:
         super().__init__(parent)
         self._settings = settings
@@ -171,10 +172,6 @@ class TTSConfigTab(QWidget):
         self.engine_combo = QComboBox(self)
         self.engine_combo.addItem("v3 Turbo — chất lượng cao (48 kHz)", "turbo")
         self.engine_combo.setVisible(False)
-        self.language_combo = QComboBox(self)
-        for code, label in language_choices():
-            self.language_combo.addItem(label, code)
-        self.language_combo.setVisible(False)
         self.edge_hint = QLabel("", self)
         self.edge_hint.setVisible(False)
 
@@ -186,30 +183,61 @@ class TTSConfigTab(QWidget):
         model_form.setVerticalSpacing(8)
 
         self.provider_combo = QComboBox()
-        self.provider_combo.addItem("H2MTTS (v3 Turbo — Giọng Việt Offline)", "h2mtts")
-        self.provider_combo.addItem("EdgeTTS (Đa ngôn ngữ — Miễn phí)", "edge")
-        self.provider_combo.addItem("PiperTTS (Đa ngôn ngữ — Siêu nhẹ Offline)", "piper")
-        self.provider_combo.addItem("F5-TTS / E2-TTS (GPU — Zero-Shot Voice Cloning)", "f5tts")
-        self.provider_combo.addItem("Coqui XTTS-v2 (GPU — Đa ngôn ngữ & Clone giọng)", "xtts")
+        self.provider_combo.addItem("H2MTTS", "h2mtts")
+        self.provider_combo.addItem("EdgeTTS", "edge")
+        self.provider_combo.addItem("PiperTTS", "piper")
+        self.provider_combo.addItem("F5-TTS / E2-TTS", "f5tts")
+        self.provider_combo.addItem("Coqui XTTS-v2", "xtts")
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         model_form.addRow("Model", self.provider_combo)
 
-        self.region_combo = QComboBox()
-        self.region_combo.addItem("Tất cả vùng miền", "")
-        self.region_combo.addItem("Miền Bắc", "Bắc")
-        self.region_combo.addItem("Miền Trung", "Trung")
-        self.region_combo.addItem("Miền Nam", "Nam")
-        self.region_combo.currentIndexChanged.connect(self._refresh_voice_list)
-        self.region_label = QLabel("Vùng miền")
-        model_form.addRow(self.region_label, self.region_combo)
+        # Row 2: Giới tính (bên trái), Ngôn ngữ / Vùng miền (bên phải)
+        filter_row = QHBoxLayout()
+        filter_row.setContentsMargins(0, 0, 0, 0)
+        filter_row.setSpacing(10)
 
         self.gender_combo = QComboBox()
         self.gender_combo.addItem("Tất cả giới tính (Nam & Nữ)", "")
         self.gender_combo.addItem("Giọng Nữ (Female)", "Nữ")
         self.gender_combo.addItem("Giọng Nam (Male)", "Nam")
         self.gender_combo.currentIndexChanged.connect(self._refresh_voice_list)
+        filter_row.addWidget(self.gender_combo, 1)
+
+        # Container bên phải: Ngôn ngữ (cho Edge, Piper, F5, XTTS)
+        self.lang_container = QWidget()
+        lang_h = QHBoxLayout(self.lang_container)
+        lang_h.setContentsMargins(0, 0, 0, 0)
+        lang_h.setSpacing(6)
+        self.lang_label = QLabel("Ngôn ngữ")
+        self.lang_label.setStyleSheet("font-weight: 500;")
+        self.language_combo = QComboBox()
+        self.language_combo.addItem("Tất cả ngôn ngữ", "")
+        for code, label in language_choices():
+            self.language_combo.addItem(f"{label} ({code})", code)
+        self.language_combo.currentIndexChanged.connect(self._refresh_voice_list)
+        lang_h.addWidget(self.lang_label)
+        lang_h.addWidget(self.language_combo, 1)
+        filter_row.addWidget(self.lang_container, 1)
+
+        # Container bên phải: Vùng miền (cho H2MTTS)
+        self.region_container = QWidget()
+        region_h = QHBoxLayout(self.region_container)
+        region_h.setContentsMargins(0, 0, 0, 0)
+        region_h.setSpacing(6)
+        self.region_label = QLabel("Vùng miền")
+        self.region_label.setStyleSheet("font-weight: 500;")
+        self.region_combo = QComboBox()
+        self.region_combo.addItem("Tất cả vùng miền", "")
+        self.region_combo.addItem("Miền Bắc", "Bắc")
+        self.region_combo.addItem("Miền Trung", "Trung")
+        self.region_combo.addItem("Miền Nam", "Nam")
+        self.region_combo.currentIndexChanged.connect(self._refresh_voice_list)
+        region_h.addWidget(self.region_label)
+        region_h.addWidget(self.region_combo, 1)
+        filter_row.addWidget(self.region_container, 1)
+
         self.gender_label = QLabel("Giới tính")
-        model_form.addRow(self.gender_label, self.gender_combo)
+        model_form.addRow(self.gender_label, self._wrap(filter_row))
 
         voice_row = QHBoxLayout()
         voice_row.setSpacing(6)
@@ -333,6 +361,7 @@ class TTSConfigTab(QWidget):
 
         self.engine_combo.currentIndexChanged.connect(self._on_engine_changed)
         self.refresh_gpu_state()
+        self._refresh_voice_list()
 
     def refresh_gpu_state(self) -> None:
         """Enable F5-TTS / E2-TTS and Coqui XTTS-v2 in provider_combo if GPU is present; dim/disable if no GPU."""
@@ -341,13 +370,13 @@ class TTSConfigTab(QWidget):
         gpu_items = [
             (
                 "f5tts",
-                "F5-TTS / E2-TTS (GPU — Zero-Shot Voice Cloning)",
-                "F5-TTS / E2-TTS (Yêu cầu GPU — Đã làm mờ)",
+                "F5-TTS / E2-TTS",
+                "F5-TTS / E2-TTS (Cần GPU)",
             ),
             (
                 "xtts",
-                "Coqui XTTS-v2 (GPU — Đa ngôn ngữ & Clone giọng)",
-                "Coqui XTTS-v2 (Yêu cầu GPU — Đã làm mờ)",
+                "Coqui XTTS-v2",
+                "Coqui XTTS-v2 (Cần GPU)",
             ),
         ]
         for key, text_gpu, text_nogpu in gpu_items:
@@ -394,8 +423,8 @@ class TTSConfigTab(QWidget):
         self.provider_combo.blockSignals(False)
         self._set_combo(self.engine_combo, tts.get("engine", "turbo"))
         self._set_combo(self.backend_combo, tts.get("backend", "auto"))
-        self._set_combo(self.language_combo,
-                        normalize_language(tts.get("language", "vi")))
+        lang = str(tts.get("language") or "").strip()
+        self._set_combo(self.language_combo, lang)
         self.speed_spin.setValue(float(tts.get("speed", 1.0) or 1.0))
         self.gap_sentence_spin.setValue(float(tts.get("gap_sentence", 0.3) or 0.0))
         self.gap_paragraph_spin.setValue(float(tts.get("gap_paragraph", 0.8) or 0.0))
@@ -470,12 +499,17 @@ class TTSConfigTab(QWidget):
         self.refresh_gpu_state()
         provider = str(self.provider_combo.currentData() or "h2mtts")
         is_h2m = provider == "h2mtts"
-        self.region_label.setVisible(is_h2m)
+        self.region_container.setVisible(is_h2m)
         self.region_combo.setVisible(is_h2m)
+        self.region_label.setVisible(is_h2m)
+        self.lang_container.setVisible(not is_h2m)
+        self.language_combo.setVisible(not is_h2m)
+        self.lang_label.setVisible(not is_h2m)
         has_gender = provider in ("h2mtts", "edge", "f5tts", "xtts")
-        self.gender_label.setVisible(has_gender)
         self.gender_combo.setVisible(has_gender)
+        self.gender_label.setVisible(True)
         gender_filter = str(self.gender_combo.currentData() or "").strip()
+        lang_filter = str(self.language_combo.currentData() or "").strip().lower()
 
         current = self.voice_combo.currentData()
         self.voice_combo.blockSignals(True)
@@ -487,15 +521,19 @@ class TTSConfigTab(QWidget):
                     continue
                 if gender_filter == "Nam" and "— Nam" not in label:
                     continue
+                if lang_filter:
+                    v_code = vid.split("-")[0].lower() if "-" in vid else ""
+                    if v_code != lang_filter:
+                        continue
                 self.voice_combo.addItem(label, vid)
             self.model_status.setText(
-                f"Đã nạp {self.voice_combo.count()} giọng EdgeTTS đa ngôn ngữ (Nam & Nữ)."
+                f"Đã nạp {self.voice_combo.count()} giọng EdgeTTS (Nam & Nữ)."
             )
             paint_status(self.model_status, "success")
             self.model_status.setToolTip("EdgeTTS trực tuyến miễn phí (không cần cài model)")
         elif provider == "piper":
             p_eng = PiperTTSEngine(self._settings)
-            installed = p_eng.installed_voices()
+            installed = p_eng.installed_voices(language=lang_filter)
             if installed:
                 for label, model_id in installed:
                     self.voice_combo.addItem(label, model_id)
@@ -514,7 +552,7 @@ class TTSConfigTab(QWidget):
         elif provider == "f5tts":
             has_gpu, gpu_desc = detect_gpu_status()
             f5_eng = F5TTSEngine(self._settings)
-            installed = f5_eng.installed_voices(gender=gender_filter)
+            installed = f5_eng.installed_voices(language=lang_filter, gender=gender_filter)
             if not has_gpu:
                 self.voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Không phát hiện GPU)", "")
                 self.model_status.setText(f"F5-TTS / E2-TTS yêu cầu GPU: {gpu_desc}")
@@ -537,7 +575,7 @@ class TTSConfigTab(QWidget):
         elif provider == "xtts":
             has_gpu, gpu_desc = detect_gpu_status()
             xtts_eng = XTTSEngine(self._settings)
-            installed = xtts_eng.installed_voices(gender=gender_filter)
+            installed = xtts_eng.installed_voices(language=lang_filter, gender=gender_filter)
             if not has_gpu:
                 self.voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Không phát hiện GPU)", "")
                 self.model_status.setText(f"Coqui XTTS-v2 yêu cầu GPU: {gpu_desc}")

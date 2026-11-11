@@ -265,6 +265,86 @@ F5_VOICES_CATALOG: List[Tuple[str, str, str, str]] = [
     ("Christopher — Nam · Documentary (E2-TTS Đa ngôn ngữ)", "E2TTS_Base::Christopher_Male", "Nam", "multi"),
 ]
 
+# Mẫu câu & cấu hình tham chiếu mặc định cho F5-TTS / E2-TTS voice cloning
+F5_REF_SAMPLES: Dict[str, Dict[str, str]] = {
+    # Nữ — Tiếng Anh / Đa ngôn ngữ
+    "Emma_Female": {
+        "text": "Some call me nature, others call me mother nature.",
+        "edge_voice": "en-US-EmmaMultilingualNeural",
+    },
+    "Clara_Female": {
+        "text": "Hello there, welcome to our presentation on science and nature.",
+        "edge_voice": "en-US-AnaNeural",
+    },
+    "Aria_Female": {
+        "text": "When you look up at the night sky, billions of stars shine brightly.",
+        "edge_voice": "en-US-AriaNeural",
+    },
+    "Jenny_Female": {
+        "text": "Once upon a time in a small quiet village, something wonderful happened.",
+        "edge_voice": "en-US-JennyNeural",
+    },
+    # Nam — Tiếng Anh / Đa ngôn ngữ
+    "Liam_Male": {
+        "text": "The early morning mist was beginning to lift, revealing the towering peaks.",
+        "edge_voice": "en-CA-LiamNeural",
+    },
+    "Ryan_Male": {
+        "text": "This is the morning news report bringing you updates from around the world.",
+        "edge_voice": "en-GB-RyanNeural",
+    },
+    "Guy_Male": {
+        "text": "Technology is constantly moving forward and changing how we live our lives.",
+        "edge_voice": "en-US-GuyNeural",
+    },
+    "Christopher_Male": {
+        "text": "Deep beneath the ocean surface lies a mysterious world waiting to be explored.",
+        "edge_voice": "en-US-ChristopherNeural",
+    },
+    # Nữ — Tiếng Việt
+    "Ngọc Ánh": {
+        "text": "Xin chào quý vị, đây là bản tin tổng hợp các sự kiện công nghệ và đời sống trong ngày.",
+        "edge_voice": "vi-VN-HoaiMyNeural",
+    },
+    "Thanh Hà": {
+        "text": "Hôm nay chúng ta cùng lắng nghe những câu chuyện ý nghĩa và bài học sâu sắc về cuộc sống.",
+        "edge_voice": "vi-VN-HoaiMyNeural",
+    },
+    "Mai Phương": {
+        "text": "Chào mừng bạn đến với kênh khám phá kiến thức khoa học và những điều kỳ thú quanh ta.",
+        "edge_voice": "vi-VN-HoaiMyNeural",
+    },
+    "Khánh Linh": {
+        "text": "Một ngày mới đã bắt đầu, hãy cùng bắt tay vào công việc với thật nhiều niềm vui và hứng khởi.",
+        "edge_voice": "vi-VN-HoaiMyNeural",
+    },
+    "Thu Trang": {
+        "text": "Mỗi khoảnh khắc trôi qua đều là cơ hội tuyệt vời để chúng ta học hỏi và trưởng thành hơn.",
+        "edge_voice": "vi-VN-HoaiMyNeural",
+    },
+    # Nam — Tiếng Việt
+    "Hải Đăng": {
+        "text": "Kính chào quý vị và các bạn, chúc một ngày làm việc tràn đầy năng lượng và may mắn.",
+        "edge_voice": "vi-VN-NamMinhNeural",
+    },
+    "Minh Quân": {
+        "text": "Trong chương trình tài liệu hôm nay, chúng tôi sẽ đưa quý khán giả đến với những vùng đất mới lạ.",
+        "edge_voice": "vi-VN-NamMinhNeural",
+    },
+    "Bảo Nam": {
+        "text": "Xin chào tất cả các bạn đã quay trở lại với chuỗi video hướng dẫn tự động hóa hiện đại.",
+        "edge_voice": "vi-VN-NamMinhNeural",
+    },
+    "Hoàng Long": {
+        "text": "Hành trình khám phá tri thức và công nghệ luôn mở ra những chân trời vô tận cho cuộc sống.",
+        "edge_voice": "vi-VN-NamMinhNeural",
+    },
+    "Quốc Khánh": {
+        "text": "Xin chào các bạn.",
+        "edge_voice": "vi-VN-NamMinhNeural",
+    },
+}
+
 XTTS_MODELS_CATALOG: List[Tuple[str, str]] = [
     ("Coqui XTTS-v2 Multilingual (17+ ngôn ngữ · Zero-Shot)", "XTTS_v2"),
     ("viXTTS – Coqui XTTS-v2 Tiếng Việt (Zero-Shot)", "viXTTS"),
@@ -827,6 +907,37 @@ class F5TTSEngine:
             )
         return True, f"F5-TTS / E2-TTS đã sẵn sàng ({gpu_desc})."
 
+    def ensure_voice_sample(self, speaker_name: str) -> None:
+        """Tự động chuẩn bị file mẫu giọng tham chiếu (.wav 24kHz mono và .txt) cho speaker_name."""
+        voices_dir = self.root / "voices"
+        voices_dir.mkdir(parents=True, exist_ok=True)
+        wav_file = voices_dir / f"{speaker_name}.wav"
+        txt_file = voices_dir / f"{speaker_name}.txt"
+        if wav_file.is_file() and wav_file.stat().st_size > 1000:
+            return
+        sample_info = F5_REF_SAMPLES.get(speaker_name)
+        if not sample_info:
+            return
+        sample_text = sample_info.get("text", "")
+        edge_v = sample_info.get("edge_voice", "en-US-EmmaMultilingualNeural")
+        txt_file.write_text(sample_text, encoding="utf-8")
+        tmp_mp3 = voices_dir / f"{speaker_name}.tmp.mp3"
+        try:
+            cmd_edge = ["edge-tts", "--voice", edge_v, "--text", sample_text, "--write-media", str(tmp_mp3)]
+            subprocess.run(cmd_edge, capture_output=True, timeout=30, creationflags=_CREATE_NO_WINDOW)
+            if tmp_mp3.is_file() and tmp_mp3.stat().st_size > 0:
+                subprocess.run(
+                    [self.ffmpeg, "-y", "-i", str(tmp_mp3), "-ar", "24000", "-ac", "1", str(wav_file)],
+                    capture_output=True,
+                    timeout=30,
+                    creationflags=_CREATE_NO_WINDOW,
+                )
+        except Exception as exc:
+            logger.warning("Không thể tự sinh voice sample cho F5-TTS (%s): %s", speaker_name, exc)
+        finally:
+            if tmp_mp3.exists():
+                tmp_mp3.unlink()
+
     def synthesize(
         self,
         text: str,
@@ -912,9 +1023,24 @@ class F5TTSEngine:
             if eff_speed != 1.0:
                 cmd.extend(["--speed", str(round(eff_speed, 2))])
 
-            ref_wav = self.root / "voices" / f"{speaker_name}.wav"
+            voices_dir = self.root / "voices"
+            ref_wav = voices_dir / f"{speaker_name}.wav"
+            ref_txt = voices_dir / f"{speaker_name}.txt"
+            if not ref_wav.is_file():
+                self.ensure_voice_sample(speaker_name)
+
             if ref_wav.is_file():
                 cmd.extend(["-r", str(ref_wav)])
+                ref_text = ""
+                if ref_txt.is_file():
+                    try:
+                        ref_text = ref_txt.read_text(encoding="utf-8").strip()
+                    except Exception:
+                        ref_text = ""
+                if not ref_text and speaker_name in F5_REF_SAMPLES:
+                    ref_text = F5_REF_SAMPLES[speaker_name]["text"]
+                if ref_text:
+                    cmd.extend(["-s", ref_text])
 
             env = os.environ.copy()
             env["PYTHONWARNINGS"] = "ignore"

@@ -738,24 +738,16 @@ class AutomationTab(QWidget):
                 profiles = load_profiles()
             except Exception:
                 profiles = []
-        items: List[tuple[str, str]] = [
-            ("vi", "Tiếng Việt (vi)"),
-            ("en", "Tiếng Anh (en)"),
-            ("ja", "Tiếng Nhật (ja)"),
-            ("zh", "Tiếng Trung (zh)"),
-        ]
-        seen = {"vi", "en", "ja", "zh"}
+        items: List[tuple[str, str]] = [("vi", "Tiếng Việt (vi)")]
+        seen = {"vi"}
         if profiles:
             for prof in profiles:
                 code = normalize_language_code(getattr(prof, "language", "") or "", "")
-                if not code:
-                    continue
-                custom = getattr(prof, "name", "") or language_name(code)
-                label = f"{custom} ({code})" if code not in custom else custom
-                if code in seen:
-                    items = [(c, label if c == code and getattr(prof, "name", "") else lbl) for c, lbl in items]
+                if not code or code in seen:
                     continue
                 seen.add(code)
+                custom = getattr(prof, "name", "") or language_name(code)
+                label = f"{custom} ({code})" if code not in custom else custom
                 items.append((code, label))
 
         while self.lang_checkboxes_layout.count():
@@ -894,11 +886,6 @@ class AutomationTab(QWidget):
                     codes_from_script.append(item)
                 elif isinstance(item, dict) and "language" in item:
                     codes_from_script.append(item["language"])
-
-        # Dynamically add checkboxes for any additional languages
-        for code in (target_langs or []) + codes_from_script:
-            if code and code not in self._lang_checkboxes:
-                self._add_language_checkbox(code, checked=False)
 
         if target_langs is not None and isinstance(target_langs, list):
             self.set_target_languages(target_langs)

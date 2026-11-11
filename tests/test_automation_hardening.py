@@ -125,3 +125,70 @@ def test_pipeline_worker_stage_plan_permutations(tmp_path: Path):
     worker4 = PipelineWorker(settings, manager, mode="all")
     with pytest.raises(PipelineError, match="Tất cả các bước tự động hóa đều bị tắt"):
         worker4._stage_plan()
+
+
+def test_automation_tab_sync_languages_dynamic(qapp):
+    """Test that Automation tab adds and removes language checkboxes dynamically based on profiles."""
+    from core.language_profiles import LanguageProfile
+
+    tab = AutomationTab()
+    # Initial sync with custom list: [vi (default), en, zh]
+    prof_en = LanguageProfile("en", "prompt en", name="Tiếng Anh")
+    prof_zh = LanguageProfile("zh", "prompt zh", name="Tiếng Trung")
+    tab.sync_languages([prof_en, prof_zh])
+
+    assert set(tab._lang_checkboxes.keys()) == {"vi", "en", "zh"}
+
+    # User adds French (fr)
+    prof_fr = LanguageProfile("fr", "prompt fr", name="Tiếng Pháp")
+    tab.sync_languages([prof_en, prof_zh, prof_fr])
+    assert set(tab._lang_checkboxes.keys()) == {"vi", "en", "zh", "fr"}
+
+    # User deletes Chinese (zh)
+    tab.sync_languages([prof_en, prof_fr])
+    assert set(tab._lang_checkboxes.keys()) == {"vi", "en", "fr"}
+    assert "zh" not in tab._lang_checkboxes
+
+
+def test_tts_config_tab_clean_names_and_layout(qapp):
+    """Test TTSConfigTab has pure model names without parentheses and layout with Gender on left, Language on right."""
+    from ui.tab_tts import TTSConfigTab
+
+    tts_tab = TTSConfigTab()
+    tts_tab.show()
+
+    # Clean model names: no '(' in items
+    for i in range(tts_tab.provider_combo.count()):
+        text = tts_tab.provider_combo.itemText(i)
+        assert "(" not in text, f"Model dropdown text should not contain parentheses: {text}"
+
+    # Default is H2MTTS: region visible, language hidden
+    tts_tab.provider_combo.setCurrentIndex(tts_tab.provider_combo.findData("h2mtts"))
+    assert not tts_tab.region_container.isHidden()
+    assert tts_tab.lang_container.isHidden()
+
+    # Switch to EdgeTTS / F5-TTS: language visible, region hidden
+    tts_tab.provider_combo.setCurrentIndex(tts_tab.provider_combo.findData("f5tts"))
+    assert tts_tab.region_container.isHidden()
+    assert not tts_tab.lang_container.isHidden()
+    assert tts_tab.language_combo.count() > 1
+    assert not tts_tab.gender_combo.isHidden()
+    tts_tab.close()
+
+
+def test_f5tts_ref_audio_and_samples_integration(tmp_path: Path):
+    """Verify F5-TTS reference voices and transcripts are correctly loaded."""
+    from core.piper_tts_engine import F5TTSEngine, F5_REF_SAMPLES
+
+    mock_dir = tmp_path / "f5_test"
+    mock_dir.mkdir(parents=True, exist_ok=True)
+    eng = F5TTSEngine({"paths": {"f5tts": str(mock_dir)}})
+    assert len(F5_REF_SAMPLES) >= 18
+
+    # Verify voice sample generation method creates wav and txt
+    eng.ensure_voice_sample("Christopher_Male")
+    v_dir = mock_dir / "voices"
+    assert (v_dir / "Christopher_Male.txt").is_file()
+    txt = (v_dir / "Christopher_Male.txt").read_text(encoding="utf-8")
+    assert "ocean" in txt
+
