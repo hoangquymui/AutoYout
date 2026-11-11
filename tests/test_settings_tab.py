@@ -534,12 +534,17 @@ def test_full_edge_piper_catalog_search_and_tts_config_tab(app, tmp_path: Path) 
     assert "Chưa cài đặt" in tts_tab.voice_combo.currentText()
 
 
-def test_h2mtts_piper_trash_and_clean_buttons(app, tmp_path: Path) -> None:
+def test_h2mtts_piper_trash_and_clean_buttons(app, tmp_path: Path, monkeypatch) -> None:
     """Verify that H2MTTSCard and PiperTTSCard have trash buttons to delete models and clean temp files."""
+    from PySide6.QtWidgets import QMessageBox
     from ui.tab_settings import H2MTTSCard, PiperTTSCard, PIPER_PACKAGES, H2M_PACKAGES
     from ui.tab_tts import TTSConfigTab, _PreviewWorker
 
-    # 1. Test PiperTTS trash button and file deletion
+    # Mock QMessageBox to auto-confirm Yes
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: None)
+
+    # 1. Test PiperTTS trash button and file deletion via UI button click
     mock_piper = tmp_path / "mock_piper"
     mock_piper.mkdir(parents=True, exist_ok=True)
     models_dir = mock_piper / "models"
@@ -568,22 +573,19 @@ def test_h2mtts_piper_trash_and_clean_buttons(app, tmp_path: Path) -> None:
     assert "Đã có" in alan_widget["status_badge"].text()
     assert not alan_widget["btn_trash"].isHidden()
 
-    # Call _delete_pkg_files directly
-    pkg_def = next(p for p in PIPER_PACKAGES if p["id"] == alan_pkg_id)
-    piper_card._delete_pkg_files(mock_piper, pkg_def)
+    # Click trash button directly in UI -> confirms with QMessageBox.question and deletes files
+    alan_widget["btn_trash"].click()
     assert not alan_onnx.exists()
     assert not alan_json.exists()
-
-    # After deletion and check_packages_status -> status is "Chưa tải", trash button hidden
-    piper_card.check_packages_status()
     assert "Chưa tải" in alan_widget["status_badge"].text()
     assert alan_widget["btn_trash"].isHidden()
 
-    # Test clean engine button exists
+    # Test clean engine button exists and works without error
     assert hasattr(piper_card, "btn_clean_engine")
     assert "Dọn dẹp" in piper_card.btn_clean_engine.text()
+    piper_card.btn_clean_engine.click()
 
-    # 2. Test H2MTTS trash button and clean button
+    # 2. Test H2MTTS trash button and clean button via UI button click
     mock_h2m = tmp_path / "mock_h2m"
     mock_h2m.mkdir(parents=True, exist_ok=True)
     turbo_dir = mock_h2m / "models" / "H2M-TTS-v3-Turbo"
@@ -603,13 +605,14 @@ def test_h2mtts_piper_trash_and_clean_buttons(app, tmp_path: Path) -> None:
     assert "Đã có" in h2m_widget["status_badge"].text()
     assert not h2m_widget["btn_trash"].isHidden()
 
-    # Delete H2M package files
-    h2m_pkg_def = next(p for p in H2M_PACKAGES if p["id"] == h2m_pkg_id)
-    h2m_card._delete_pkg_files(mock_h2m, h2m_pkg_def)
+    # Click trash button on H2MTTS row directly in UI
+    h2m_widget["btn_trash"].click()
     assert not (turbo_dir / "vieneu-v3-turbo-q8_0.gguf").exists()
-    h2m_card.check_packages_status()
     assert "Chưa tải" in h2m_widget["status_badge"].text()
     assert h2m_widget["btn_trash"].isHidden()
+
+    # Click clean button on H2MTTS card
+    h2m_card.btn_clean_engine.click()
 
     # 3. Verify _PreviewWorker can be constructed via keyword arguments without TypeError
     tts_tab = TTSConfigTab()
