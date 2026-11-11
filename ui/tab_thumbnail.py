@@ -35,6 +35,7 @@ from core.ai_client import DEFAULT_MODEL
 from core.language_profiles import LanguageProfile, load_profiles
 from core.languages import language_name, normalize_language, normalize_language_code
 from core.thumbnail import (
+    DEFAULT_TITLE_PROMPT_TEMPLATE,
     TEMPLATES,
     attach_thumbnail,
     build_image_prompt,
@@ -65,18 +66,21 @@ class TitleWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, transcript: str, api_key: str, model: str,
-                 language: str, parent=None) -> None:
+                 language: str, custom_prompt: str = "", parent=None) -> None:
         super().__init__(parent)
         self._transcript = transcript
         self._api_key = api_key
         self._model = model
         self._language = language
+        self._custom_prompt = custom_prompt
 
     def run(self) -> None:
         try:
             titles = suggest_titles(
                 self._transcript, self._api_key, model=self._model,
-                language=self._language)
+                language=self._language,
+                custom_prompt=self._custom_prompt or None,
+            )
             self.done.emit(list(titles))
         except Exception as exc:
             logger.error("Gợi ý tiêu đề lỗi: %s", exc)
@@ -169,46 +173,48 @@ class ImageWorker(QThread):
         self.done.emit(str(path))
 
 
-class PromptEditDialog(QDialog):
-    """Dialog chỉnh sửa prompt tạo ảnh thumbnail, cho phép giữ nguyên hoặc tái tạo."""
+class TitlePromptEditDialog(QDialog):
+    """Dialog chỉnh sửa prompt gợi ý tiêu đề YouTube (AI)."""
 
-    def __init__(self, current_prompt: str, on_generate_ai=None, parent=None):
+    def __init__(self, current_prompt: str = "", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Sửa Prompt tạo ảnh")
-        self.setMinimumSize(560, 320)
-        self.resize(620, 360)
-        self._on_generate_ai = on_generate_ai
+        self.setWindowTitle("Sửa Prompt Gợi ý tiêu đề")
+        self.setMinimumSize(580, 360)
+        self.resize(640, 400)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
-        header_lbl = QLabel("Prompt tạo ảnh nền (AI):")
+        header_lbl = QLabel("Prompt gợi ý tiêu đề (AI):")
         header_lbl.setStyleSheet("font-weight: 600; font-size: 13px;")
         layout.addWidget(header_lbl)
 
         desc_lbl = QLabel(
-            "Bạn có thể tùy chỉnh hoặc bổ sung mô tả cảnh cho ảnh nền thumbnail. "
-            "Prompt hiện tại được giữ nguyên."
+            "Tuỳ chỉnh câu lệnh để AI gợi ý các tiêu đề YouTube hay và giật tít hơn.\n"
+            "Các biến hỗ trợ thay thế:\n"
+            " • {transcript} — Toàn bộ hoặc trích đoạn kịch bản\n"
+            " • {language} — Ngôn ngữ mục tiêu (Tiếng Việt, English, 日本語...)\n"
+            " • {limit} — Số lượng tiêu đề cần tạo"
         )
         desc_lbl.setObjectName("MutedLabel")
         desc_lbl.setWordWrap(True)
         layout.addWidget(desc_lbl)
 
         self.edit = QPlainTextEdit(self)
-        self.edit.setPlainText(current_prompt)
-        self.edit.setPlaceholderText("Nhập prompt mô tả cảnh ảnh nền...")
+        prompt_val = current_prompt.strip() if current_prompt.strip() else DEFAULT_TITLE_PROMPT_TEMPLATE
+        self.edit.setPlainText(prompt_val)
+        self.edit.setPlaceholderText("Nhập prompt tuỳ chỉnh cho AI gợi ý tiêu đề...")
         layout.addWidget(self.edit, 1)
 
         bottom = QHBoxLayout()
         bottom.setSpacing(8)
 
-        if on_generate_ai is not None:
-            self.gen_btn = QPushButton("⚡ Tạo lại prompt từ tiêu đề")
-            set_icon(self.gen_btn, "zap", "accent", 13)
-            self.gen_btn.setToolTip("Dùng AI tự động tạo lại prompt dựa trên tiêu đề và kịch bản hiện tại.")
-            self.gen_btn.clicked.connect(self._do_generate)
-            bottom.addWidget(self.gen_btn)
+        self.reset_btn = QPushButton("Khôi phục mặc định")
+        set_icon(self.reset_btn, "refresh", "muted", 13)
+        self.reset_btn.setToolTip("Khôi phục về prompt gợi ý tiêu đề mặc định của hệ thống.")
+        self.reset_btn.clicked.connect(self._reset_to_default)
+        bottom.addWidget(self.reset_btn)
 
         bottom.addStretch(1)
 
@@ -224,14 +230,15 @@ class PromptEditDialog(QDialog):
 
         layout.addLayout(bottom)
 
-    def _do_generate(self) -> None:
-        if self._on_generate_ai:
-            new_prompt = self._on_generate_ai()
-            if new_prompt:
-                self.edit.setPlainText(new_prompt)
+    def _reset_to_default(self) -> None:
+        self.edit.setPlainText(DEFAULT_TITLE_PROMPT_TEMPLATE)
 
     def get_prompt(self) -> str:
         return self.edit.toPlainText().strip()
+
+
+# Backward compatibility alias
+PromptEditDialog = TitlePromptEditDialog
 
 
 class ThumbnailPanel(QWidget):
@@ -240,6 +247,7 @@ class ThumbnailPanel(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._settings: Dict[str, Any] = {}
+        self._custom_title_prompt: str = ""
         self._manager = None
         self._base = ""
         self._transcript = ""
@@ -527,8 +535,8 @@ class ThumbnailPanel(QWidget):
         self.edit_prompt_btn.setObjectName("iconButton")
         self.edit_prompt_btn.setFixedSize(30, 30)
         set_icon(self.edit_prompt_btn, "edit", "accent", 15)
-        self.edit_prompt_btn.setToolTip("Sửa prompt tạo ảnh (vẫn giữ im prompt hiện tại)")
-        self.edit_prompt_btn.clicked.connect(self._open_edit_prompt_dialog)
+        self.edit_prompt_btn.setToolTip("Sửa prompt gợi ý tiêu đề (AI)")
+        self.edit_prompt_btn.clicked.connect(self._open_edit_title_prompt_dialog)
 
         self.translate_btn = QPushButton("Dịch sang các thứ tiếng")
         set_icon(self.translate_btn, "globe", "accent", 13)
@@ -785,6 +793,7 @@ class ThumbnailPanel(QWidget):
         if isinstance(saved_langs, list) and saved_langs:
             for code, cb in self.lang_checks.items():
                 cb.setChecked(code in saved_langs)
+        self._custom_title_prompt = str(thumb.get("title_prompt") or "").strip()
         self._on_provider_changed()
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
@@ -803,6 +812,8 @@ class ThumbnailPanel(QWidget):
         thumb["font_size"] = int(self.font_spin.value())
         thumb["frame_seconds"] = round(float(self.frame_spin.value()), 2)
         thumb["languages"] = self.get_selected_languages()
+        if getattr(self, "_custom_title_prompt", ""):
+            thumb["title_prompt"] = self._custom_title_prompt
         thumb.setdefault("title_max_chars", 60)
         thumb.setdefault("color_primary", "#3BFF35")
         thumb.setdefault("color_secondary", "#FF3B30")
@@ -1008,9 +1019,12 @@ class ThumbnailPanel(QWidget):
                 "Chưa có API key Gemini hoặc cấu hình Cloudflare Worker AI — vui lòng cấu hình trong tab Cài đặt.",
                 "warning")
             return
+        custom_prompt = getattr(self, "_custom_title_prompt", "") or str(
+            (self._settings.get("thumbnail") or {}).get("title_prompt") or ""
+        ).strip()
         self._title_worker = TitleWorker(
             self._transcript, key, str(script.get("model") or DEFAULT_MODEL),
-            language, self)
+            language, custom_prompt=custom_prompt, parent=self)
         self._title_worker.done.connect(self._on_titles)
         self._title_worker.failed.connect(self._on_titles_failed)
         self._title_worker.finished.connect(self._on_title_worker_finished)
@@ -1044,25 +1058,27 @@ class ThumbnailPanel(QWidget):
             worker.deleteLater()
         self.suggest_btn.setEnabled(True)
 
-    def _open_edit_prompt_dialog(self) -> None:
-        if not self._base:
-            self._set_status("Hãy chọn file trước.", "warning")
-            return
-        current_prompt = self.prompt_edit.toPlainText().strip()
-
-        def _generate_from_title() -> str:
-            title = self.title_edit.toPlainText().strip()
-            excerpt = self._transcript[:600]
-            return build_image_prompt(
-                title, excerpt, self.style_edit.text().strip(), self._current_template_id()
-            )
-
-        dlg = PromptEditDialog(current_prompt, on_generate_ai=_generate_from_title, parent=self)
+    def _open_edit_title_prompt_dialog(self) -> None:
+        current_prompt = getattr(self, "_custom_title_prompt", "") or str(
+            (self._settings.get("thumbnail") or {}).get("title_prompt") or ""
+        ).strip()
+        dlg = TitlePromptEditDialog(current_prompt, parent=self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             new_prompt = dlg.get_prompt()
-            self.prompt_edit.setPlainText(new_prompt)
-            self._auto_prompt = new_prompt
-            self._set_status("Đã cập nhật prompt tạo ảnh.", "success")
+            self._custom_title_prompt = new_prompt
+            if not isinstance(self._settings.get("thumbnail"), dict):
+                self._settings["thumbnail"] = {}
+            self._settings["thumbnail"]["title_prompt"] = new_prompt
+            try:
+                from core.settings import save_settings
+                save_settings(self._settings)
+            except Exception as exc:
+                logger.warning("Không thể lưu title_prompt vào settings: %s", exc)
+            self._set_status("Đã cập nhật prompt gợi ý tiêu đề.", "success")
+
+    def _open_edit_prompt_dialog(self) -> None:
+        """Alias for backward compatibility."""
+        self._open_edit_title_prompt_dialog()
 
     def _apply_suggestion(self, item: QListWidgetItem) -> None:
         chosen_title = item.text().strip()
@@ -1569,7 +1585,7 @@ class ThumbnailPanel(QWidget):
             self.pick_image_btn.setEnabled(not busy and has_item)
         self.suggest_btn.setEnabled(not busy and has_item)
         if hasattr(self, "edit_prompt_btn"):
-            self.edit_prompt_btn.setEnabled(has_item)
+            self.edit_prompt_btn.setEnabled(not busy)
         if hasattr(self, "translate_btn"):
             self.translate_btn.setEnabled(not busy and has_item)
         self.save_btn.setEnabled(has_item)

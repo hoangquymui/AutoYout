@@ -103,14 +103,38 @@ def _extract_json_array(text: str) -> Optional[list]:
     return None
 
 
-def build_title_prompt(transcript: str, language: str = "vi", limit: int = 5) -> str:
+DEFAULT_TITLE_PROMPT_TEMPLATE = (
+    "Dựa trên nội dung sau, viết {limit} tiêu đề YouTube dạng hook tò mò cho kênh kể chuyện.\n"
+    "Mỗi tiêu đề tối đa 60 ký tự, viết HOA các từ khoá mạnh, không bịa sự kiện không có trong nội dung, không emoji.\n"
+    "Viết bằng {language}.\n"
+    "Chỉ trả về JSON array chuỗi (ví dụ: [\"TIÊU ĐỀ 1\", \"TIÊU ĐỀ 2\"]).\n\n"
+    "---\n"
+    "{transcript}"
+)
+
+
+def build_title_prompt(
+    transcript: str,
+    language: str = "vi",
+    limit: int = 5,
+    template: Optional[str] = None,
+) -> str:
     excerpt = " ".join(str(transcript or "").split())[:6000]
+    lang_name = language_name(language)
+    tmpl = str(template or "").strip()
+    if tmpl:
+        if "{transcript}" in tmpl:
+            res = tmpl.replace("{transcript}", excerpt)
+            res = res.replace("{language}", lang_name)
+            res = res.replace("{limit}", str(int(limit)))
+            return res
+        return f"{tmpl}\n\nViết bằng {lang_name}.\nChỉ trả về JSON array chuỗi.\n---\n{excerpt}"
     lines = [
         f"Dựa trên nội dung sau, viết {int(limit)} tiêu đề YouTube dạng hook tò mò "
         "cho kênh kể chuyện.",
         "Mỗi tiêu đề tối đa 60 ký tự, viết HOA các từ khoá mạnh, không bịa sự kiện "
         "không có trong nội dung, không emoji.",
-        f"Viết bằng {language_name(language)}.",
+        f"Viết bằng {lang_name}.",
         "Chỉ trả về JSON array chuỗi.",
         "",
         "---",
@@ -126,6 +150,7 @@ def suggest_titles(
     language: str = "vi",
     generate_fn: Optional[Callable[[str, str, str], str]] = None,
     limit: int = 5,
+    custom_prompt: Optional[str] = None,
 ) -> List[str]:
     """Ask Gemini for short hooks; ``generate_fn`` is injected in tests."""
     if not str(transcript or "").strip():
@@ -137,7 +162,7 @@ def suggest_titles(
         cf_acc, cf_tok, _ = get_cloudflare_text_config()
         if not (cf_acc and cf_tok):
             raise AIError("Thiếu API key Gemini hoặc Cloudflare Worker AI — vui lòng cấu hình trong Cài đặt.")
-    raw = generator(build_title_prompt(transcript, language, limit), api_key, model)
+    raw = generator(build_title_prompt(transcript, language, limit, template=custom_prompt), api_key, model)
     titles = parse_title_suggestions(raw, limit=limit)
     if not titles:
         raise AIError("AI không trả về tiêu đề hợp lệ.")

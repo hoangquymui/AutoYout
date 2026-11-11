@@ -118,3 +118,28 @@ def test_translate_thumbnail_titles_markdown_block() -> None:
     )
     assert res == {"en": "Translated Title"}
 
+
+def test_build_title_prompt_with_custom_template() -> None:
+    from core.thumbnail import build_title_prompt, DEFAULT_TITLE_PROMPT_TEMPLATE
+    tmpl = "Hãy viết {limit} tiêu đề bằng {language} cho nội dung:\n{transcript}"
+    res = build_title_prompt("Đoạn văn mẫu", language="en", limit=3, template=tmpl)
+    assert "Hãy viết 3 tiêu đề bằng English" in res
+    assert "Đoạn văn mẫu" in res
+
+
+def test_suggest_titles_uses_custom_prompt() -> None:
+    captured: dict[str, str] = {}
+
+    def fake(prompt: str, key: str, model: str) -> str:
+        captured["prompt"] = prompt
+        return '["CUSTOM TITLE 1", "CUSTOM TITLE 2"]'
+
+    custom = "Tạo {limit} tiêu đề kịch tính cho: {transcript}"
+    titles = suggest_titles(
+        "Nội dung bí ẩn", "key-1",
+        generate_fn=fake, custom_prompt=custom, limit=2)
+
+    assert titles == ["CUSTOM TITLE 1", "CUSTOM TITLE 2"]
+    assert "Tạo 2 tiêu đề kịch tính cho: Nội dung bí ẩn" in captured["prompt"]
+
+
