@@ -2845,20 +2845,6 @@
       "json_rel": "en/en_US/sam/medium/en_US-sam-medium.onnx.json"
     },
     {
-      "key": "zh_CN-chaowen-medium",
-      "name": "chaowen",
-      "lang": "zh",
-      "locale": "zh_CN",
-      "name_native": "简体中文",
-      "name_english": "Chinese",
-      "country": "China",
-      "quality": "medium",
-      "num_speakers": 1,
-      "size_mb": 60,
-      "onnx_rel": "zh/zh_CN/chaowen/medium/zh_CN-chaowen-medium.onnx",
-      "json_rel": "zh/zh_CN/chaowen/medium/zh_CN-chaowen-medium.onnx.json"
-    },
-    {
       "key": "zh_CN-huayan-medium",
       "name": "huayan",
       "lang": "zh",
@@ -2871,6 +2857,20 @@
       "size_mb": 60,
       "onnx_rel": "zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx",
       "json_rel": "zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx.json"
+    },
+    {
+      "key": "zh_CN-chaowen-medium",
+      "name": "chaowen",
+      "lang": "zh",
+      "locale": "zh_CN",
+      "name_native": "简体中文",
+      "name_english": "Chinese",
+      "country": "China",
+      "quality": "medium",
+      "num_speakers": 1,
+      "size_mb": 60,
+      "onnx_rel": "zh/zh_CN/chaowen/medium/zh_CN-chaowen-medium.onnx",
+      "json_rel": "zh/zh_CN/chaowen/medium/zh_CN-chaowen-medium.onnx.json"
     },
     {
       "key": "zh_CN-huayan-x_low",

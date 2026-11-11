@@ -18,8 +18,9 @@ safetensors>=0.4
 torch>=2.2
 torchaudio>=2.2
 
-# Multi-language narration (vi stays on H2MTTS, everything else uses edge-tts)
+# Multi-language narration (vi stays on H2MTTS, PiperTTS offline / edge-tts)
 edge-tts>=6.1
+pykakasi>=2.3.0
 
 # Kịch bản: lấy transcript YouTube từ phụ đề có sẵn (youtube-transcript-api)
 youtube-transcript-api>=0.6.3

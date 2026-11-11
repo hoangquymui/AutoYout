@@ -72,6 +72,36 @@ LANGUAGES: Dict[str, Dict[str, str]] = {
         "youtube": "hi",
         "font": "Nirmala UI",
     },
+    "pl": {
+        "name": "Polski (Polish)",
+        "edge_voice": "pl-PL-MarekNeural",
+        "youtube": "pl",
+        "font": "Arial",
+    },
+    "pt": {
+        "name": "Português (Portuguese)",
+        "edge_voice": "pt-BR-AntonioNeural",
+        "youtube": "pt",
+        "font": "Arial",
+    },
+    "de": {
+        "name": "Deutsch (German)",
+        "edge_voice": "de-DE-ConradNeural",
+        "youtube": "de",
+        "font": "Arial",
+    },
+    "ru": {
+        "name": "Русский (Russian)",
+        "edge_voice": "ru-RU-DmitryNeural",
+        "youtube": "ru",
+        "font": "Arial",
+    },
+    "it": {
+        "name": "Italiano (Italian)",
+        "edge_voice": "it-IT-DiegoNeural",
+        "youtube": "it",
+        "font": "Arial",
+    },
 }
 
 # Subtitle font files to try copying into the render temp dir (libass needs
@@ -98,6 +128,8 @@ def normalize_language(value: object, fallback: str = DEFAULT_LANGUAGE) -> str:
     for code, info in LANGUAGES.items():
         if raw == info["name"].casefold():
             return code
+    if len(primary) in (2, 3) and primary.isalpha():
+        return primary
     return fallback
 
 

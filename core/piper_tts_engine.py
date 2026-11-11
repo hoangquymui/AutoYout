@@ -45,12 +45,14 @@ PIPER_DEFAULT_VOICES: Dict[str, str] = {
     "vi": "vi_VN-vais1000-medium",
     "en": "en_US-lessac-medium",
     "zh": "zh_CN-huayan-medium",
+    "ja": "ja_JP-hi_fi_captain-medium",
+    "ko": "ko_KR-kss-medium",
+    "pt": "pt_BR-edresson-low",
+    "pl": "pl_PL-bass-high",
     "fr": "fr_FR-upmc-medium",
     "es": "es_ES-davefx-medium",
     "de": "de_DE-thorsten-medium",
     "ru": "ru_RU-irina-medium",
-    "ja": "en_US-lessac-medium",
-    "ko": "en_US-lessac-medium",
     "th": "en_US-lessac-medium",
     "id": "en_US-lessac-medium",
     "hi": "hi_IN-rohan-medium",
@@ -58,11 +60,12 @@ PIPER_DEFAULT_VOICES: Dict[str, str] = {
 
 
 def sanitize_piper_config(json_path: Path | str) -> bool:
-    """Ensure all keys in phoneme_id_map and phoneme_map in a Piper ONNX model JSON config are single codepoints.
+    """Ensure all keys in phoneme_id_map and phoneme_map in a Piper ONNX model JSON config are single codepoints,
+    and espeak voice is valid (e.g. 'cmn' for Mandarin instead of 'zh' which crashes espeak-ng).
 
     Piper 1.2.0 C++ binary crashes with error:
         "..." is not a single codepoint (ids=...,)
-    if any key in phoneme_id_map has len > 1 (e.g. diphthongs in Japanese or digraphs in Chinese).
+    if any key in phoneme_id_map has len > 1 (e.g. diphthongs in Japanese, Korean, or digraphs in Chinese).
     This function removes invalid multi-character keys from the JSON config in place.
     """
     p = Path(json_path)
@@ -85,9 +88,15 @@ def sanitize_piper_config(json_path: Path | str) -> bool:
                 for k in bad_keys2:
                     del pmap[k]
                 changed = True
+        espeak_cfg = data.get("espeak")
+        if isinstance(espeak_cfg, dict):
+            v = str(espeak_cfg.get("voice") or "").strip().lower()
+            if v in ("zh", "zh-cmn"):
+                espeak_cfg["voice"] = "cmn"
+                changed = True
         if changed:
             p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-            logger.info("Sanitized Piper model config '%s' (purged multi-codepoint keys)", p.name)
+            logger.info("Sanitized Piper model config '%s' (purged multi-codepoint keys / fixed espeak voice)", p.name)
         return changed
     except Exception as exc:
         logger.warning("Không thể sanitize Piper config %s: %s", p, exc)
@@ -499,6 +508,19 @@ class PiperTTSEngine:
 
         code = normalize_language(language)
         chosen_voice = (voice or self.voice_for(code)).strip()
+
+        # Tiền xử lý tiếng Nhật: Chuyển đổi Hán tự (Kanji) sang Hiragana bằng pykakasi.
+        # Piper C++ binary không nhúng OpenJTalk/MeCab nên espeak-ng sẽ đánh vần chữ Hán
+        # thành "Chinese letter" thay vì phát âm tiếng Nhật chuẩn xác.
+        if (code == "ja" or chosen_voice.startswith(("ja_", "ja-"))) and clean_text:
+            try:
+                import pykakasi
+                kks = pykakasi.kakasi()
+                conv = kks.convert(clean_text)
+                clean_text = "".join(item["hira"] for item in conv)
+            except Exception as exc:
+                logger.warning("Không thể chuyển đổi Kanji sang Hiragana: %s", exc)
+
         binary = self.find_binary()
         if binary is None:
             raise TTSError(
