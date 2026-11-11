@@ -147,8 +147,8 @@ class TTSConfigTab(QWidget):
         root.setSpacing(10)
         root.addWidget(
             PageHeader(
-                "Engine && giọng mặc định",
-                "Chọn model, giọng đọc, thiết bị xử lý (CPU / GPU / Tự động), nhịp nghỉ và nghe thử.",
+                "Engine & giọng mặc định",
+                "Chọn model, giọng đọc (Nam / Nữ), thiết bị xử lý (CPU / GPU / Tự động), nhịp nghỉ và nghe thử.",
             )
         )
 
@@ -198,6 +198,14 @@ class TTSConfigTab(QWidget):
         self.region_combo.currentIndexChanged.connect(self._refresh_voice_list)
         self.region_label = QLabel("Vùng miền")
         model_form.addRow(self.region_label, self.region_combo)
+
+        self.gender_combo = QComboBox()
+        self.gender_combo.addItem("Tất cả giới tính (Nam & Nữ)", "")
+        self.gender_combo.addItem("Giọng Nữ (Female)", "Nữ")
+        self.gender_combo.addItem("Giọng Nam (Male)", "Nam")
+        self.gender_combo.currentIndexChanged.connect(self._refresh_voice_list)
+        self.gender_label = QLabel("Giới tính")
+        model_form.addRow(self.gender_label, self.gender_combo)
 
         voice_row = QHBoxLayout()
         voice_row.setSpacing(6)
@@ -460,6 +468,10 @@ class TTSConfigTab(QWidget):
         is_h2m = provider == "h2mtts"
         self.region_label.setVisible(is_h2m)
         self.region_combo.setVisible(is_h2m)
+        has_gender = provider in ("h2mtts", "edge", "f5tts", "xtts")
+        self.gender_label.setVisible(has_gender)
+        self.gender_combo.setVisible(has_gender)
+        gender_filter = str(self.gender_combo.currentData() or "").strip()
 
         current = self.voice_combo.currentData()
         self.voice_combo.blockSignals(True)
@@ -467,9 +479,13 @@ class TTSConfigTab(QWidget):
 
         if provider == "edge":
             for label, vid in ALL_EDGE_VOICES:
+                if gender_filter == "Nữ" and "— Nữ" not in label:
+                    continue
+                if gender_filter == "Nam" and "— Nam" not in label:
+                    continue
                 self.voice_combo.addItem(label, vid)
             self.model_status.setText(
-                f"Đã nạp {len(ALL_EDGE_VOICES)} giọng EdgeTTS đa ngôn ngữ."
+                f"Đã nạp {self.voice_combo.count()} giọng EdgeTTS đa ngôn ngữ (Nam & Nữ)."
             )
             paint_status(self.model_status, "success")
             self.model_status.setToolTip("EdgeTTS trực tuyến miễn phí (không cần cài model)")
@@ -494,43 +510,41 @@ class TTSConfigTab(QWidget):
         elif provider == "f5tts":
             has_gpu, gpu_desc = detect_gpu_status()
             f5_eng = F5TTSEngine(self._settings)
+            voices = f5_eng.available_voices(gender=gender_filter)
             installed = f5_eng.installed_voices()
+            for label, model_id in voices:
+                self.voice_combo.addItem(label, model_id)
             if not has_gpu:
-                self.voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Máy hiện tại không có GPU)", "")
                 self.model_status.setText(f"F5-TTS / E2-TTS yêu cầu GPU: {gpu_desc}")
                 paint_status(self.model_status, "warning")
             elif installed:
-                for label, model_id in installed:
-                    self.voice_combo.addItem(label, model_id)
                 self.model_status.setText(
-                    f"Đã nạp {len(installed)} model F5-TTS / E2-TTS ({gpu_desc})."
+                    f"Đã nạp {len(voices)} giọng đọc Nam & Nữ F5-TTS / E2-TTS ({gpu_desc})."
                 )
                 paint_status(self.model_status, "success")
             else:
-                self.voice_combo.addItem("⚠ Chưa cài đặt model F5-TTS / E2-TTS", "")
                 self.model_status.setText(
-                    "Chưa tải model F5-TTS / E2-TTS (Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS)."
+                    f"Danh sách {len(voices)} giọng Nam & Nữ F5-TTS / E2-TTS — Chưa tải model gốc (Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS)."
                 )
                 paint_status(self.model_status, "warning")
         elif provider == "xtts":
             has_gpu, gpu_desc = detect_gpu_status()
             xtts_eng = XTTSEngine(self._settings)
+            voices = xtts_eng.available_voices(gender=gender_filter)
             installed = xtts_eng.installed_voices()
+            for label, model_id in voices:
+                self.voice_combo.addItem(label, model_id)
             if not has_gpu:
-                self.voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Máy hiện tại không có GPU)", "")
                 self.model_status.setText(f"Coqui XTTS-v2 yêu cầu GPU: {gpu_desc}")
                 paint_status(self.model_status, "warning")
             elif installed:
-                for label, model_id in installed:
-                    self.voice_combo.addItem(label, model_id)
                 self.model_status.setText(
-                    f"Đã nạp {len(installed)} model Coqui XTTS-v2 ({gpu_desc})."
+                    f"Đã nạp {len(voices)} giọng đọc Nam & Nữ Coqui XTTS-v2 ({gpu_desc})."
                 )
                 paint_status(self.model_status, "success")
             else:
-                self.voice_combo.addItem("⚠ Chưa cài đặt model Coqui XTTS-v2", "")
                 self.model_status.setText(
-                    "Chưa tải model Coqui XTTS-v2 (Cài đặt → API → Giọng đọc → Coqui XTTS-v2)."
+                    f"Danh sách {len(voices)} giọng Nam & Nữ Coqui XTTS-v2 — Chưa tải model gốc (Cài đặt → API → Giọng đọc → Coqui XTTS-v2)."
                 )
                 paint_status(self.model_status, "warning")
         else:
@@ -548,10 +562,23 @@ class TTSConfigTab(QWidget):
                 except Exception as exc:
                     logger.error("Không đọc được voice-packs: %s", exc)
                     voices = []
-                filtered = [voice for voice in voices if not region or voice.region == region]
+                filtered = []
+                for voice in voices:
+                    if region and voice.region != region:
+                        continue
+                    v_gen = str(getattr(voice, "gender", "") or "").lower()
+                    if gender_filter == "Nữ" and v_gen not in ("nữ", "nu", "female", "f"):
+                        continue
+                    if gender_filter == "Nam" and v_gen not in ("nam", "male", "m"):
+                        continue
+                    filtered.append(voice)
                 for voice in filtered:
-                    suffix = f" · {voice.region}" if voice.region else ""
-                    self.voice_combo.addItem(f"{voice.name}{suffix}", voice.name)
+                    parts = [voice.name]
+                    if getattr(voice, "gender", ""):
+                        parts.append(voice.gender)
+                    if voice.region:
+                        parts.append(voice.region)
+                    self.voice_combo.addItem(" · ".join(parts), voice.name)
                 if not layout.valid:
                     self.model_status.setText(f"Không thấy thư mục H2MTTS: {layout.root}")
                     paint_status(self.model_status, "error")
@@ -659,9 +686,9 @@ class TTSConfigTab(QWidget):
         self._worker = _PreviewWorker(
             snapshot,
             text,
-            self,
             provider=provider,
             voice=voice_data,
+            parent=self,
         )
         self._worker.progress.connect(self._on_preview_progress)
         self._worker.message.connect(self._on_preview_message)

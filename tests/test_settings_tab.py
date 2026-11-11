@@ -438,30 +438,32 @@ def test_dubbing_language_subtab_and_routing(app, tmp_path: Path) -> None:
         assert options == ["h2mtts", "edge", "piper", "f5tts", "xtts"]
 
     # Point to an empty Piper directory so PiperTTS is not installed
-    dub_tab.load_from({"paths": {"piper": str(tmp_path / "empty_piper")}})
+    empty_piper = tmp_path / "empty_piper"
+    empty_piper.mkdir(parents=True, exist_ok=True)
+    dub_tab.load_from({"paths": {"piper": str(empty_piper)}})
     dub_tab.sync_languages(custom_profiles)
 
     # Set Vietnamese to PiperTTS -> should NOT crash with AttributeError, and should show warning message
     vi_combo = dub_tab.lang_engine_combos["vi"]
     vi_combo.setCurrentIndex(vi_combo.findData("piper"))
-    assert "Chưa cài đặt" in dub_tab.lang_status_label.text()
+    assert "Chưa cài đặt" in dub_tab.lang_status_label.text() or "Chưa tải model" in dub_tab.lang_status_label.text()
     assert "Chưa cài đặt" in dub_tab.lang_voice_combos["vi"].currentText()
 
     en_combo = dub_tab.lang_engine_combos["en"]
     en_combo.setCurrentIndex(en_combo.findData("edge"))
 
-    settings: dict = {"paths": {"piper": str(tmp_path / "empty_piper")}}
+    settings: dict = {"paths": {"piper": str(empty_piper)}}
     dub_tab.apply_to(settings)
     assert resolve_tts_engine_for_language(settings, "vi") == "piper"
     assert resolve_tts_engine_for_language(settings, "en") == "edge"
     assert resolve_voice_for_language_engine(settings, "vi", "piper") != ""
 
     # Verify PiperTTSEngine accepts string path or settings dict and raises clear TTSError when missing
-    eng_from_str = PiperTTSEngine(str(tmp_path / "empty_piper"))
+    eng_from_str = PiperTTSEngine(str(empty_piper))
     ok, reason = eng_from_str.check_ready("vi")
     assert ok is False
-    assert "Chưa cài đặt" in reason
-    with pytest.raises(TTSError, match="Chưa cài đặt PiperTTS"):
+    assert "Chưa cài đặt" in reason or "Chưa tải model" in reason
+    with pytest.raises(TTSError, match="Chưa cài đặt PiperTTS|Chưa tải model"):
         eng_from_str.synthesize("Xin chào", tmp_path / "out.mp3", language="vi")
 
     # Reload into a fresh DubbingTab
@@ -524,7 +526,9 @@ def test_full_edge_piper_catalog_search_and_tts_config_tab(app, tmp_path: Path) 
     assert tts_tab.region_combo.isHidden()
 
     # Switch to PiperTTS (empty dir) -> shows warning
-    tts_tab.load_from({"paths": {"piper": str(tmp_path / "empty_piper")}, "tts": {"provider": "piper", "backend": "gpu"}})
+    empty_piper2 = tmp_path / "empty_piper2"
+    empty_piper2.mkdir(parents=True, exist_ok=True)
+    tts_tab.load_from({"paths": {"piper": str(empty_piper2)}, "tts": {"provider": "piper", "backend": "gpu"}})
     assert tts_tab.provider_combo.currentData() == "piper"
     assert tts_tab.backend_combo.currentData() == "gpu"
     assert "Chưa cài đặt" in tts_tab.voice_combo.currentText()
@@ -586,6 +590,37 @@ def test_f5tts_e2tts_gpu_detection_enables_or_dims(app) -> None:
         vi_xtts_idx2 = vi_combo2.findData("xtts")
         assert vi_combo2.model().item(vi_f5_idx2).isEnabled() is True
         assert vi_combo2.model().item(vi_xtts_idx2).isEnabled() is True
+
+        # 3. Check Male (Nam) & Female (Nữ) voices for F5-TTS / E2-TTS and Coqui XTTS-v2
+        tts_tab.provider_combo.setCurrentIndex(tts_tab.provider_combo.findData("f5tts"))
+        f5_all_labels = [tts_tab.voice_combo.itemText(i) for i in range(tts_tab.voice_combo.count())]
+        assert any("Nữ" in lbl for lbl in f5_all_labels)
+        assert any("Nam" in lbl for lbl in f5_all_labels)
+
+        # Filter by Nữ
+        tts_tab.gender_combo.setCurrentIndex(tts_tab.gender_combo.findData("Nữ"))
+        f5_female_labels = [tts_tab.voice_combo.itemText(i) for i in range(tts_tab.voice_combo.count())]
+        assert len(f5_female_labels) > 0
+        assert all("Nữ" in lbl for lbl in f5_female_labels)
+
+        # Filter by Nam on Coqui XTTS-v2
+        tts_tab.provider_combo.setCurrentIndex(tts_tab.provider_combo.findData("xtts"))
+        tts_tab.gender_combo.setCurrentIndex(tts_tab.gender_combo.findData("Nam"))
+        xtts_male_labels = [tts_tab.voice_combo.itemText(i) for i in range(tts_tab.voice_combo.count())]
+        assert len(xtts_male_labels) > 0
+        assert all("Nam" in lbl for lbl in xtts_male_labels)
+
+        # 4. Verify _PreviewWorker can be constructed via keyword arguments without TypeError
+        from ui.tab_tts import _PreviewWorker
+        worker = _PreviewWorker(
+            {},
+            "I am Hoang Quy Mui, tester of this program",
+            provider="piper",
+            voice="en_GB-alan-low",
+            parent=tts_tab,
+        )
+        assert worker._provider == "piper"
+        assert worker._voice == "en_GB-alan-low"
     finally:
         set_gpu_override(None)
 

@@ -63,7 +63,16 @@ tmp/
 bin/
 H2MTTS/
 PiperTTS/
+F5TTS/
+XTTS/
+XTTSv2/
 tts/
+*.safetensors
+*.pth
+*.onnx
+*.pt
+*.ckpt
+*.gguf
 
 # ── AI Agents / Assistant scratch directories ──────────────────────
 .agents/

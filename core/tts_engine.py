@@ -101,12 +101,12 @@ class VoiceInfo:
 class SynthResult:
     path: Path
     duration: float
-    sample_rate: int
-    engine: str
-    backend: str
-    voice: str
-    chunks: int
-    characters: int
+    sample_rate: int = 24000
+    engine: str = "tts"
+    backend: str = "cpu"
+    voice: str = ""
+    chunks: int = 1
+    characters: int = 0
     cues: Optional[List[Tuple[float, float, str]]] = None
 
     def public(self) -> Dict[str, Any]:

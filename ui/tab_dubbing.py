@@ -601,31 +601,21 @@ class DubbingTab(QWidget):
         elif engine_id == "f5tts":
             has_gpu, _ = detect_gpu_status()
             f5_engine = F5TTSEngine(self._settings)
-            installed = f5_engine.installed_voices(lang_code)
+            voices = f5_engine.available_voices(lang_code)
             if not has_gpu:
                 voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Không phát hiện GPU)", "")
-            elif installed:
-                for label, val in installed:
-                    voice_combo.addItem(label, val)
             else:
-                voice_combo.addItem(
-                    "⚠ Chưa cài đặt model F5-TTS / E2-TTS (Vào Cài đặt → Giọng đọc để tải)",
-                    "",
-                )
+                for label, val in voices:
+                    voice_combo.addItem(label, val)
         elif engine_id == "xtts":
             has_gpu, _ = detect_gpu_status()
             xtts_engine = XTTSEngine(self._settings)
-            installed = xtts_engine.installed_voices(lang_code)
+            voices = xtts_engine.available_voices(lang_code)
             if not has_gpu:
                 voice_combo.addItem("⚠ Yêu cầu GPU NVIDIA (Không phát hiện GPU)", "")
-            elif installed:
-                for label, val in installed:
-                    voice_combo.addItem(label, val)
             else:
-                voice_combo.addItem(
-                    "⚠ Chưa cài đặt model Coqui XTTS-v2 (Vào Cài đặt → Giọng đọc để tải)",
-                    "",
-                )
+                for label, val in voices:
+                    voice_combo.addItem(label, val)
         else:
             voices = get_edge_voices_for_language(lang_code)
             for label, val in voices:

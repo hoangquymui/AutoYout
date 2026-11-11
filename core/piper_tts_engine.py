@@ -221,9 +221,67 @@ F5_MODELS_CATALOG: List[Tuple[str, str]] = [
     ("F5-TTS Base (24kHz · Zero-Shot)", "F5TTS_Base"),
 ]
 
+# Danh sách giọng đọc Nam / Nữ cho F5-TTS & E2-TTS: (label, voice_id, gender, lang_scope)
+F5_VOICES_CATALOG: List[Tuple[str, str, str, str]] = [
+    # Tiếng Việt — Nữ
+    ("Ngọc Ánh — Nữ · Miền Bắc (F5-TTS Tiếng Việt)", "F5TTS_Vietnamese::Ngọc Ánh", "Nữ", "vi"),
+    ("Thanh Hà — Nữ · Truyền cảm (F5-TTS Tiếng Việt)", "F5TTS_Vietnamese::Thanh Hà", "Nữ", "vi"),
+    ("Mai Phương — Nữ · Miền Nam (F5-TTS Tiếng Việt)", "F5TTS_Vietnamese::Mai Phương", "Nữ", "vi"),
+    ("Khánh Linh — Nữ · Trẻ trung (F5-TTS Tiếng Việt)", "F5TTS_Vietnamese::Khánh Linh", "Nữ", "vi"),
+    ("Thu Trang — Nữ · Miền Trung (F5-TTS Tiếng Việt)", "F5TTS_Vietnamese::Thu Trang", "Nữ", "vi"),
+    # Tiếng Việt — Nam
+    ("Hải Đăng — Nam · Miền Bắc (F5-TTS Tiếng Việt)", "F5TTS_Vietnamese::Hải Đăng", "Nam", "vi"),
+    ("Minh Quân — Nam · Thuyết minh (F5-TTS Tiếng Việt)", "F5TTS_Vietnamese::Minh Quân", "Nam", "vi"),
+    ("Bảo Nam — Nam · Miền Nam (F5-TTS Tiếng Việt)", "F5TTS_Vietnamese::Bảo Nam", "Nam", "vi"),
+    ("Hoàng Long — Nam · Trầm ấm (F5-TTS Tiếng Việt)", "F5TTS_Vietnamese::Hoàng Long", "Nam", "vi"),
+    ("Quốc Khánh — Nam · Miền Trung (F5-TTS Tiếng Việt)", "F5TTS_Vietnamese::Quốc Khánh", "Nam", "vi"),
+    # Đa ngôn ngữ F5-TTS — Nữ & Nam
+    ("Emma — Nữ · Tự nhiên (F5-TTS v1 Đa ngôn ngữ)", "F5TTS_v1_Base::Emma_Female", "Nữ", "multi"),
+    ("Clara — Nữ · Thuyết minh (F5-TTS v1 Đa ngôn ngữ)", "F5TTS_v1_Base::Clara_Female", "Nữ", "multi"),
+    ("Liam — Nam · Trầm ấm (F5-TTS v1 Đa ngôn ngữ)", "F5TTS_v1_Base::Liam_Male", "Nam", "multi"),
+    ("Ryan — Nam · Tin tức (F5-TTS v1 Đa ngôn ngữ)", "F5TTS_v1_Base::Ryan_Male", "Nam", "multi"),
+    # Đa ngôn ngữ E2-TTS — Nữ & Nam
+    ("Aria — Nữ · Trong trẻo (E2-TTS Đa ngôn ngữ)", "E2TTS_Base::Aria_Female", "Nữ", "multi"),
+    ("Jenny — Nữ · Kể chuyện (E2-TTS Đa ngôn ngữ)", "E2TTS_Base::Jenny_Female", "Nữ", "multi"),
+    ("Guy — Nam · Chững chạc (E2-TTS Đa ngôn ngữ)", "E2TTS_Base::Guy_Male", "Nam", "multi"),
+    ("Christopher — Nam · Documentary (E2-TTS Đa ngôn ngữ)", "E2TTS_Base::Christopher_Male", "Nam", "multi"),
+]
+
 XTTS_MODELS_CATALOG: List[Tuple[str, str]] = [
     ("Coqui XTTS-v2 Multilingual (17+ ngôn ngữ · Zero-Shot)", "XTTS_v2_Base"),
     ("viXTTS – Coqui XTTS-v2 Tiếng Việt (Zero-Shot)", "viXTTS"),
+]
+
+# Danh sách giọng đọc Nam / Nữ cho Coqui XTTS-v2 (Studio Speakers & viXTTS): (label, voice_id, gender, lang_scope)
+XTTS_VOICES_CATALOG: List[Tuple[str, str, str, str]] = [
+    # Tiếng Việt (viXTTS) — Nữ
+    ("Ngọc Ánh — Nữ · Miền Bắc (viXTTS Tiếng Việt)", "viXTTS::Ngọc Ánh", "Nữ", "vi"),
+    ("Thanh Hà — Nữ · Truyền cảm (viXTTS Tiếng Việt)", "viXTTS::Thanh Hà", "Nữ", "vi"),
+    ("Mai Phương — Nữ · Miền Nam (viXTTS Tiếng Việt)", "viXTTS::Mai Phương", "Nữ", "vi"),
+    ("Khánh Linh — Nữ · Trẻ trung (viXTTS Tiếng Việt)", "viXTTS::Khánh Linh", "Nữ", "vi"),
+    ("Thu Trang — Nữ · Miền Trung (viXTTS Tiếng Việt)", "viXTTS::Thu Trang", "Nữ", "vi"),
+    # Tiếng Việt (viXTTS) — Nam
+    ("Hải Đăng — Nam · Miền Bắc (viXTTS Tiếng Việt)", "viXTTS::Hải Đăng", "Nam", "vi"),
+    ("Minh Quân — Nam · Thuyết minh (viXTTS Tiếng Việt)", "viXTTS::Minh Quân", "Nam", "vi"),
+    ("Bảo Nam — Nam · Miền Nam (viXTTS Tiếng Việt)", "viXTTS::Bảo Nam", "Nam", "vi"),
+    ("Hoàng Long — Nam · Trầm ấm (viXTTS Tiếng Việt)", "viXTTS::Hoàng Long", "Nam", "vi"),
+    ("Quốc Khánh — Nam · Miền Trung (viXTTS Tiếng Việt)", "viXTTS::Quốc Khánh", "Nam", "vi"),
+    # Coqui XTTS-v2 Studio Speakers — Nữ (Đa ngôn ngữ)
+    ("Claribel Dervla — Nữ · Trầm ấm (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Claribel Dervla", "Nữ", "multi"),
+    ("Daisy Studious — Nữ · Thuyết minh (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Daisy Studious", "Nữ", "multi"),
+    ("Gracie Wise — Nữ · Kể chuyện (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Gracie Wise", "Nữ", "multi"),
+    ("Ana Florence — Nữ · Tin tức (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Ana Florence", "Nữ", "multi"),
+    ("Sofia Hellen — Nữ · Tự nhiên (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Sofia Hellen", "Nữ", "multi"),
+    ("Tammie Ema — Nữ · Trẻ trung (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Tammie Ema", "Nữ", "multi"),
+    ("Asya Anara — Nữ · Podcast (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Asya Anara", "Nữ", "multi"),
+    # Coqui XTTS-v2 Studio Speakers — Nam (Đa ngôn ngữ)
+    ("Andrew Chipper — Nam · Trẻ trung (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Andrew Chipper", "Nam", "multi"),
+    ("Badr Odhiambo — Nam · Trầm ấm (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Badr Odhiambo", "Nam", "multi"),
+    ("Dionisio Schuyler — Nam · Kể chuyện (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Dionisio Schuyler", "Nam", "multi"),
+    ("Royston Min — Nam · Tin tức (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Royston Min", "Nam", "multi"),
+    ("Viktor Eka — Nam · Documentary (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Viktor Eka", "Nam", "multi"),
+    ("Damien Black — Nam · Điện ảnh (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Damien Black", "Nam", "multi"),
+    ("Craig Gutsy — Nam · Mạnh mẽ (XTTS-v2 Đa ngôn ngữ)", "XTTS_v2_Base::Craig Gutsy", "Nam", "multi"),
 ]
 
 
@@ -511,9 +569,13 @@ class PiperTTSEngine:
                     "--length_scale",
                     str(length_scale),
                 ]
+                espeak_dir = binary.parent / "espeak-ng-data"
+                if espeak_dir.is_dir():
+                    cmd.extend(["--espeak_data", str(espeak_dir)])
                 proc = subprocess.run(
                     cmd,
                     input=chunk.encode("utf-8"),
+                    cwd=str(binary.parent),
                     capture_output=True,
                     timeout=120,
                     creationflags=_CREATE_NO_WINDOW,
@@ -561,7 +623,9 @@ class PiperTTSEngine:
             return SynthResult(
                 path=target,
                 duration=dur,
+                sample_rate=22050,
                 chunks=len(chunks),
+                characters=len(clean_text),
                 voice=model_path.stem,
                 engine="piper",
                 backend="onnx",
@@ -598,23 +662,41 @@ class F5TTSEngine:
     def close(self) -> None:
         pass
 
+    def available_voices(self, language: str = "", gender: str = "") -> List[Tuple[str, str]]:
+        """Return Male (Nam) and Female (Nữ) voices for F5-TTS / E2-TTS filtered by language & gender."""
+        code = normalize_language(language) if language else ""
+        g_filter = str(gender or "").strip().lower()
+        results: List[Tuple[str, str]] = []
+        for label, vid, v_gender, lang_scope in F5_VOICES_CATALOG:
+            if g_filter and v_gender.lower() != g_filter:
+                continue
+            if code and code != "vi" and lang_scope == "vi":
+                continue
+            results.append((label, vid))
+        return results
+
     def installed_voices(self, language: str = "") -> List[Tuple[str, str]]:
         """Return list of (label, model_id) actually installed inside F5TTS directory."""
         if not self.root.is_dir():
             return []
         known = {mid: label for label, mid in F5_MODELS_CATALOG}
-        found_list: List[Tuple[str, str]] = []
-        seen: set[str] = set()
+        found_models: set[str] = set()
         for ext in ("*.safetensors", "*.pt", "*.ckpt"):
             for f in self.root.rglob(ext):
                 if not f.is_file():
                     continue
                 parent_name = f.parent.name
                 mid = parent_name if parent_name in known else f.stem
-                if mid not in seen:
-                    seen.add(mid)
-                    found_list.append((known.get(mid, f"{mid} (Đã tải)"), mid))
-        return found_list
+                found_models.add(mid)
+        if not found_models:
+            return []
+        voices = self.available_voices(language)
+        matched = [
+            (label, vid)
+            for label, vid in voices
+            if vid.split("::")[0] in found_models
+        ]
+        return matched or voices
 
     def check_ready(self, language: str = "") -> Tuple[bool, str]:
         has_gpu, gpu_desc = detect_gpu_status()
@@ -653,7 +735,11 @@ class F5TTSEngine:
             raise TTSError("Văn bản rỗng, không có gì để đọc.")
 
         code = normalize_language(language)
-        chosen_model = (voice or ("F5TTS_Vietnamese" if code == "vi" else "F5TTS_v1_Base")).strip()
+        raw_voice = (voice or ("F5TTS_Vietnamese::Ngọc Ánh" if code == "vi" else "F5TTS_v1_Base::Emma_Female")).strip()
+        if "::" in raw_voice:
+            chosen_model, speaker_name = raw_voice.split("::", 1)
+        else:
+            chosen_model, speaker_name = raw_voice, ""
         cli_bin = shutil.which("f5-tts_infer-cli")
         if not cli_bin:
             raise TTSError(
@@ -677,6 +763,10 @@ class F5TTSEngine:
                 "--output_file",
                 out_wav.name,
             ]
+            if speaker_name:
+                ref_wav = self.root / "voices" / f"{speaker_name}.wav"
+                if ref_wav.is_file():
+                    cmd.extend(["--ref_audio", str(ref_wav)])
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -707,8 +797,10 @@ class F5TTSEngine:
             return SynthResult(
                 path=target,
                 duration=dur,
+                sample_rate=24000,
                 chunks=1,
-                voice=chosen_model,
+                characters=len(clean_text),
+                voice=raw_voice,
                 engine="f5tts",
                 backend="gpu",
             )
@@ -744,22 +836,34 @@ class XTTSEngine:
     def close(self) -> None:
         pass
 
+    def available_voices(self, language: str = "", gender: str = "") -> List[Tuple[str, str]]:
+        """Return Male (Nam) and Female (Nữ) voices for Coqui XTTS-v2 filtered by language & gender."""
+        code = normalize_language(language) if language else ""
+        g_filter = str(gender or "").strip().lower()
+        results: List[Tuple[str, str]] = []
+        for label, vid, v_gender, lang_scope in XTTS_VOICES_CATALOG:
+            if g_filter and v_gender.lower() != g_filter:
+                continue
+            if code and code != "vi" and lang_scope == "vi":
+                continue
+            results.append((label, vid))
+        return results
+
     def installed_voices(self, language: str = "") -> List[Tuple[str, str]]:
         """Return list of (label, model_id) actually installed inside XTTSv2 directory."""
         if not self.root.is_dir():
             return []
         known = {mid: label for label, mid in XTTS_MODELS_CATALOG}
-        found_list: List[Tuple[str, str]] = []
-        seen: set[str] = set()
+        found_models: set[str] = set()
         for f in self.root.rglob("*.pth"):
             if not f.is_file() or f.name == "speakers_xtts.pth":
                 continue
             parent_name = f.parent.name
             mid = parent_name if parent_name in known else f.stem
-            if mid not in seen:
-                seen.add(mid)
-                found_list.append((known.get(mid, f"{mid} (Đã tải)"), mid))
-        return found_list
+            found_models.add(mid)
+        if not found_models:
+            return []
+        return self.available_voices(language)
 
     def check_ready(self, language: str = "") -> Tuple[bool, str]:
         has_gpu, gpu_desc = detect_gpu_status()
@@ -798,7 +902,11 @@ class XTTSEngine:
             raise TTSError("Văn bản rỗng, không có gì để đọc.")
 
         code = normalize_language(language)
-        chosen_model = (voice or ("viXTTS" if code == "vi" else "XTTS_v2_Base")).strip()
+        raw_voice = (voice or ("viXTTS::Ngọc Ánh" if code == "vi" else "XTTS_v2_Base::Claribel Dervla")).strip()
+        if "::" in raw_voice:
+            chosen_model, speaker_idx = raw_voice.split("::", 1)
+        else:
+            chosen_model, speaker_idx = raw_voice, "Claribel Dervla"
         cli_bin = shutil.which("tts")
         if not cli_bin:
             raise TTSError(
@@ -818,6 +926,8 @@ class XTTSEngine:
                 clean_text,
                 "--language_idx",
                 code,
+                "--speaker_idx",
+                speaker_idx,
                 "--out_path",
                 str(out_wav),
                 "--use_cuda",
@@ -857,8 +967,10 @@ class XTTSEngine:
             return SynthResult(
                 path=target,
                 duration=dur,
+                sample_rate=24000,
                 chunks=1,
-                voice=chosen_model,
+                characters=len(clean_text),
+                voice=raw_voice,
                 engine="xtts",
                 backend="gpu",
             )
