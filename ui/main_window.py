@@ -621,9 +621,31 @@ class MainWindow(QMainWindow):
                     "Thiếu:\n" + "\n".join(missing) + f"\n\n{engine.layout.root}"
                 )
             else:
-                self.badge_tts.set_state("ok", f"{turbo} giọng")
+                tts_cfg = self.settings.get("tts") if isinstance(self.settings.get("tts"), dict) else {}
+                model_type = str(tts_cfg.get("engine") or "turbo").strip().lower()
+                backend_pref = str(tts_cfg.get("backend") or "auto").strip().lower()
+
+                if getattr(engine, "_loaded_key", None):
+                    _, used_backend = engine._loaded_key
+                    device_str = "GPU" if used_backend == "gpu" else "CPU"
+                else:
+                    candidates = engine._resolve_backend(model_type, backend_pref)
+                    device_str = "GPU" if "gpu" in candidates else "CPU"
+
+                gpu_name = ""
+                if device_str == "GPU":
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            gpu_name = f" ({torch.cuda.get_device_name(0)})"
+                    except Exception:
+                        pass
+
+                self.badge_tts.set_state("ok", device_str)
                 self.badge_tts.setToolTip(
-                    f"{turbo} giọng Turbo\n{engine.layout.root}"
+                    f"Thiết bị: {device_str}{gpu_name}\n"
+                    f"Model: {model_type.upper()} ({turbo} giọng Turbo)\n"
+                    f"Thư mục: {engine.layout.root}"
                 )
         except Exception as exc:
             logger.error("Kiểm tra H2MTTS lỗi: %s", exc)

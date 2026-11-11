@@ -346,8 +346,13 @@ class TTSConfigTab(QWidget):
         right.addStretch(1)
 
         self.engine_combo.currentIndexChanged.connect(self._on_engine_changed)
+        self.backend_combo.currentIndexChanged.connect(self._on_backend_changed)
         self.refresh_gpu_state()
         self._refresh_voice_list()
+
+    def _on_backend_changed(self) -> None:
+        self.changed.emit()
+        self.engine_reload_requested.emit()
 
     def refresh_gpu_state(self) -> None:
         """GPU status check for TTS engines (kept for compatibility)."""

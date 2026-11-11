@@ -96,3 +96,18 @@ def test_main_window_dock_and_shortcuts(qapp):
     assert window.btn_console.accessibleName() != ""
     assert window.btn_settings.accessibleName() != ""
     assert window.btn_theme.accessibleName() != ""
+
+
+def test_main_window_tts_badge_device(qapp):
+    settings = {
+        "app": {"theme": "dark"},
+        "tts": {"backend": "onnx", "engine": "turbo"},
+        "paths": {"h2mtts": "H2MTTS"},
+    }
+    window = MainWindow(settings)
+    assert hasattr(window, "badge_tts")
+    window._refresh_tts_badge()
+    # When backend is set to onnx, it should be CPU
+    if window.badge_tts._state == "ok":
+        assert window.badge_tts.value_label.text() == "CPU"
+
