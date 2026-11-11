@@ -5,10 +5,16 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+try:
+    import torch
+except Exception:
+    torch = None  # type: ignore
 
 from core.languages import DEFAULT_LANGUAGE, language_name, normalize_language
 from core.settings import (
@@ -152,6 +158,16 @@ _GPU_OVERRIDE: Optional[Tuple[bool, str]] = None
 _GPU_CACHE: Optional[Tuple[bool, str]] = None
 
 
+def is_cuda_available() -> bool:
+    """Return True if torch and CUDA GPU are usable."""
+    if torch is None:
+        return False
+    try:
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
 def set_gpu_override(has_gpu: Optional[bool], info: str = "") -> None:
     """Override GPU detection result (useful for testing or manual simulation)."""
     global _GPU_OVERRIDE
@@ -192,15 +208,14 @@ def detect_gpu_status(force_refresh: bool = False) -> Tuple[bool, str]:
             gpu_vram = round(float(parts[1]) / 1024, 1)
             driver = parts[2]
     except Exception:
-        try:
-            import torch
-            if torch.cuda.is_available():
+        if is_cuda_available():
+            try:
                 gpu_name = torch.cuda.get_device_name(0)
                 gpu_vram = round(
                     torch.cuda.get_device_properties(0).total_memory / (1024**3), 1
                 )
-        except Exception:
-            pass
+            except Exception:
+                pass
 
     if gpu_name:
         desc = (
@@ -663,7 +678,7 @@ class F5TTSEngine:
         pass
 
     def installed_models(self) -> set[str]:
-        """Return set of model IDs that are physically downloaded on disk."""
+        """Return set of model IDs that are physically downloaded on disk with valid weights."""
         if not self.root.is_dir():
             return set()
         installed: set[str] = set()
@@ -671,25 +686,31 @@ class F5TTSEngine:
         if not models_dir.is_dir():
             return installed
 
-        # F5TTS_v1_Base: model_1250000.safetensors or any .safetensors
-        m_v1 = models_dir / "F5TTS_v1_Base"
-        if m_v1.is_dir() and any(m_v1.glob("*.safetensors")):
+        def _has_weights(p: Path, exts: Tuple[str, ...]) -> bool:
+            if not p.is_dir():
+                return False
+            for ext in exts:
+                for f in p.glob(ext):
+                    if f.is_file() and f.stat().st_size > 0:
+                        return True
+            return False
+
+        # F5TTS_v1_Base: model_1250000.safetensors or any .safetensors > 1KB
+        if _has_weights(models_dir / "F5TTS_v1_Base", ("*.safetensors", "*.pt")):
             installed.add("F5TTS_v1_Base")
 
-        # E2TTS_Base: model_1200000.safetensors or any .safetensors
-        m_e2 = models_dir / "E2TTS_Base"
-        if m_e2.is_dir() and any(m_e2.glob("*.safetensors")):
+        # E2TTS_Base: model_1200000.safetensors or any .safetensors > 1KB
+        if _has_weights(models_dir / "E2TTS_Base", ("*.safetensors", "*.pt")):
             installed.add("E2TTS_Base")
 
-        # F5TTS_Vietnamese: model_last.pt or any .pt/.safetensors
-        m_vi = models_dir / "F5TTS_Vietnamese"
-        if m_vi.is_dir() and (any(m_vi.glob("*.pt")) or any(m_vi.glob("*.safetensors"))):
+        # F5TTS_Vietnamese: model_last.pt or any .pt/.safetensors > 1KB
+        if _has_weights(models_dir / "F5TTS_Vietnamese", ("*.pt", "*.safetensors")):
             installed.add("F5TTS_Vietnamese")
 
-        # Generic fallback for any other subfolder containing weights
+        # Generic fallback for any other subfolder containing weights > 1KB
         for d in models_dir.iterdir():
             if d.is_dir() and d.name not in ("vocos-mel-24khz",):
-                if any(d.glob("*.safetensors")) or any(d.glob("*.pt")) or any(d.glob("*.ckpt")):
+                if _has_weights(d, ("*.safetensors", "*.pt", "*.ckpt")):
                     installed.add(d.name)
         return installed
 
@@ -752,7 +773,7 @@ class F5TTSEngine:
             vocab_file = fallback_vocab if fallback_vocab.is_file() else None
         return ckpt_file, vocab_file
 
-    def check_ready(self, language: str = "") -> Tuple[bool, str]:
+    def check_ready(self, language: str = "", model_key: str = "") -> Tuple[bool, str]:
         has_gpu, gpu_desc = detect_gpu_status()
         if not has_gpu:
             return (
@@ -766,8 +787,14 @@ class F5TTSEngine:
                 f"Chưa cài đặt model F5-TTS / E2-TTS nào trong thư mục '{self.root}'. "
                 "Vui lòng vào Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS để tải model.",
             )
+        if model_key and model_key not in installed_mdls:
+            return (
+                False,
+                f"Chưa tải model F5-TTS / E2-TTS '{model_key}' trong thư mục '{self.root}'. "
+                "Vui lòng vào Cài đặt → API → Giọng đọc → F5-TTS / E2-TTS để tải model.",
+            )
         code = normalize_language(language) if language else ""
-        if code == "vi" and "F5TTS_Vietnamese" not in installed_mdls:
+        if code == "vi" and not model_key and "F5TTS_Vietnamese" not in installed_mdls:
             return (
                 False,
                 f"Chưa tải model F5-TTS Tiếng Việt (ViVoice Fine-tuned) trong thư mục '{self.root}'. "
@@ -787,24 +814,27 @@ class F5TTSEngine:
         pause_cb: PauseCb = None,
         cancel_cb: CancelCb = None,
     ) -> SynthResult:
-        ok, reason = self.check_ready(language)
-        if not ok:
-            raise TTSError(reason)
-
         clean_text = " ".join(str(text or "").split())
         if not clean_text:
             raise TTSError("Văn bản rỗng, không có gì để đọc.")
 
         code = normalize_language(language)
-        raw_voice = (
-            voice
-            or ("F5TTS_Vietnamese::Ngọc Ánh" if code == "vi" else "F5TTS_v1_Base::Emma_Female")
-        ).strip()
+        installed_mdls = self.installed_models()
+        default_voice = (
+            "F5TTS_Vietnamese::Ngọc Ánh"
+            if (code == "vi" and "F5TTS_Vietnamese" in installed_mdls)
+            else "F5TTS_v1_Base::Emma_Female"
+        )
+        raw_voice = str(voice or default_voice).strip()
         if "::" in raw_voice:
             chosen_model, speaker_name = raw_voice.split("::", 1)
         else:
-            chosen_model = raw_voice or ("F5TTS_Vietnamese" if code == "vi" else "F5TTS_v1_Base")
+            chosen_model = raw_voice or "F5TTS_v1_Base"
             speaker_name = "Emma_Female"
+
+        ok, reason = self.check_ready(language=code if not chosen_model else "", model_key=chosen_model)
+        if not ok:
+            raise TTSError(reason)
 
         ckpt_info = self.find_checkpoint(chosen_model)
         if ckpt_info is None:
@@ -814,18 +844,27 @@ class F5TTSEngine:
             )
         ckpt_path, vocab_path = ckpt_info
 
+        cli_cmd: List[str]
         cli_bin = shutil.which("f5-tts_infer-cli")
-        if not cli_bin:
-            scripts_cand = Path(sys.prefix) / "Scripts" / "f5-tts_infer-cli.exe"
-            if scripts_cand.is_file():
-                cli_bin = str(scripts_cand)
-            else:
-                raise TTSError(
-                    "Chưa tìm thấy công cụ dòng lệnh 'f5-tts_infer-cli'. "
-                    "Vui lòng chạy lệnh: pip install f5-tts"
-                )
+        if cli_bin:
+            cli_cmd = [cli_bin]
+        elif (Path(sys.prefix) / "Scripts" / "f5-tts_infer-cli.exe").is_file():
+            cli_cmd = [str(Path(sys.prefix) / "Scripts" / "f5-tts_infer-cli.exe")]
+        elif (Path(sys.executable).parent / "Scripts" / "f5-tts_infer-cli.exe").is_file():
+            cli_cmd = [str(Path(sys.executable).parent / "Scripts" / "f5-tts_infer-cli.exe")]
+        else:
+            cli_cmd = [sys.executable, "-m", "f5_tts.infer.infer_cli"]
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        backend_pref = ""
+        if isinstance(self.settings.get("tts"), dict):
+            backend_pref = str(self.settings["tts"].get("backend", "auto")).lower()
+        if backend_pref in ("cpu", "onnx"):
+            device = "cpu"
+        elif backend_pref == "gpu":
+            device = "cuda" if is_cuda_available() else "cpu"
+        else:
+            device = "cuda" if is_cuda_available() else "cpu"
+
         if message_cb:
             message_cb(f"F5-TTS ({device.upper()} · {chosen_model}): 1 đoạn, giọng {speaker_name}")
 
@@ -834,8 +873,7 @@ class F5TTSEngine:
         temp_dir = Path(tempfile.mkdtemp(prefix="ay_f5tts_", dir=str(target.parent)))
         try:
             out_wav = temp_dir / "f5_out.wav"
-            cmd = [
-                str(cli_bin),
+            cmd = list(cli_cmd) + [
                 "-m", chosen_model,
                 "-p", str(ckpt_path),
                 "-t", clean_text,
@@ -939,13 +977,15 @@ class XTTSEngine:
         # XTTS_v2 / XTTS_v2_Base
         for cand in ("XTTS_v2", "XTTS_v2_Base"):
             m_v2 = models_dir / cand
-            if m_v2.is_dir() and (m_v2 / "model.pth").is_file():
+            f_v2 = m_v2 / "model.pth"
+            if m_v2.is_dir() and f_v2.is_file() and f_v2.stat().st_size > 0:
                 installed.add("XTTS_v2")
                 installed.add("XTTS_v2_Base")
 
         # viXTTS
         m_vi = models_dir / "viXTTS"
-        if m_vi.is_dir() and (m_vi / "model.pth").is_file():
+        f_vi = m_vi / "model.pth"
+        if m_vi.is_dir() and f_vi.is_file() and f_vi.stat().st_size > 0:
             installed.add("viXTTS")
         return installed
 
@@ -999,7 +1039,7 @@ class XTTSEngine:
                 return cand
         return None
 
-    def check_ready(self, language: str = "") -> Tuple[bool, str]:
+    def check_ready(self, language: str = "", model_key: str = "") -> Tuple[bool, str]:
         has_gpu, gpu_desc = detect_gpu_status()
         if not has_gpu:
             return (
@@ -1013,8 +1053,16 @@ class XTTSEngine:
                 f"Chưa cài đặt model Coqui XTTS-v2 nào trong thư mục '{self.root}'. "
                 "Vui lòng vào Cài đặt → API → Giọng đọc → Coqui XTTS-v2 để tải model.",
             )
+        if model_key:
+            norm_key = "XTTS_v2" if model_key in ("XTTS_v2", "XTTS_v2_Base") else model_key
+            if norm_key not in installed_mdls:
+                return (
+                    False,
+                    f"Chưa tải model Coqui XTTS-v2 '{model_key}' trong thư mục '{self.root}'. "
+                    "Vui lòng vào Cài đặt → API → Giọng đọc → Coqui XTTS-v2 để tải model.",
+                )
         code = normalize_language(language) if language else ""
-        if code == "vi" and "viXTTS" not in installed_mdls:
+        if code == "vi" and not model_key and "viXTTS" not in installed_mdls:
             return (
                 False,
                 f"Chưa tải model Coqui XTTS-v2 Tiếng Việt (viXTTS) trong thư mục '{self.root}'. "
@@ -1034,23 +1082,27 @@ class XTTSEngine:
         pause_cb: PauseCb = None,
         cancel_cb: CancelCb = None,
     ) -> SynthResult:
-        ok, reason = self.check_ready(language)
-        if not ok:
-            raise TTSError(reason)
-
         clean_text = " ".join(str(text or "").split())
         if not clean_text:
             raise TTSError("Văn bản rỗng, không có gì để đọc.")
 
         code = normalize_language(language)
-        raw_voice = (
-            voice or ("viXTTS::Ngọc Ánh" if code == "vi" else "XTTS_v2::Claribel Dervla")
-        ).strip()
+        installed_mdls = self.installed_models()
+        default_voice = (
+            "viXTTS::Ngọc Ánh"
+            if (code == "vi" and "viXTTS" in installed_mdls)
+            else "XTTS_v2::Claribel Dervla"
+        )
+        raw_voice = str(voice or default_voice).strip()
         if "::" in raw_voice:
             chosen_model, speaker_idx = raw_voice.split("::", 1)
         else:
-            chosen_model = raw_voice or ("viXTTS" if code == "vi" else "XTTS_v2")
+            chosen_model = raw_voice or "XTTS_v2"
             speaker_idx = "Claribel Dervla"
+
+        ok, reason = self.check_ready(language=code if not chosen_model else "", model_key=chosen_model)
+        if not ok:
+            raise TTSError(reason)
 
         model_dir = self.find_model_dir(chosen_model)
         if model_dir is None:
@@ -1059,33 +1111,51 @@ class XTTSEngine:
                 "Vui lòng vào Cài đặt → API → Giọng đọc → Coqui XTTS-v2 để tải model."
             )
 
+        cli_cmd: List[str]
         cli_bin = shutil.which("tts")
-        if not cli_bin:
-            scripts_cand = Path(sys.prefix) / "Scripts" / "tts.exe"
-            if scripts_cand.is_file():
-                cli_bin = str(scripts_cand)
-            else:
-                raise TTSError(
-                    "Chưa tìm thấy công cụ dòng lệnh 'tts'. "
-                    "Vui lòng chạy lệnh: pip install coqui-tts"
-                )
+        if cli_bin:
+            cli_cmd = [cli_bin]
+        elif (Path(sys.prefix) / "Scripts" / "tts.exe").is_file():
+            cli_cmd = [str(Path(sys.prefix) / "Scripts" / "tts.exe")]
+        elif (Path(sys.executable).parent / "Scripts" / "tts.exe").is_file():
+            cli_cmd = [str(Path(sys.executable).parent / "Scripts" / "tts.exe")]
+        else:
+            cli_cmd = [sys.executable, "-m", "TTS.bin.synthesize"]
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        backend_pref = ""
+        if isinstance(self.settings.get("tts"), dict):
+            backend_pref = str(self.settings["tts"].get("backend", "auto")).lower()
+        if backend_pref in ("cpu", "onnx"):
+            device = "cpu"
+        elif backend_pref == "gpu":
+            device = "cuda" if is_cuda_available() else "cpu"
+        else:
+            device = "cuda" if is_cuda_available() else "cpu"
+
         if message_cb:
             message_cb(f"Coqui XTTS-v2 ({device.upper()} · {chosen_model}): 1 đoạn, giọng {speaker_idx}")
+
+        xtts_langs = ("en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh-cn", "hu", "ko", "ja", "hi")
+        if chosen_model == "viXTTS":
+            eff_lang = "vi"
+        elif code in xtts_langs:
+            eff_lang = code
+        elif code == "zh":
+            eff_lang = "zh-cn"
+        else:
+            eff_lang = "en"
 
         target = Path(out_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix="ay_xtts_", dir=str(target.parent)))
         try:
             out_wav = temp_dir / "xtts_out.wav"
-            cmd = [
-                str(cli_bin),
+            cmd = list(cli_cmd) + [
                 "--text", clean_text,
                 "--model_path", str(model_dir),
                 "--config_path", str(model_dir / "config.json"),
                 "--speaker_idx", speaker_idx,
-                "--language_idx", code if code in ("vi", "en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh", "hu", "ko", "ja", "hi") else "en",
+                "--language_idx", eff_lang,
                 "--out_path", str(out_wav),
             ]
             if device == "cuda":

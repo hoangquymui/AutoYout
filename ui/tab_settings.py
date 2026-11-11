@@ -2238,7 +2238,9 @@ class PiperTTSCard(QFrame):
         if not target.exists():
             return False
         for f in pkg.get("check_files", []):
-            if (target / f).exists() or (root / f).exists():
+            c1 = target / f
+            c2 = root / f
+            if (c1.is_file() and c1.stat().st_size > 0) or (c2.is_file() and c2.stat().st_size > 0):
                 return True
         return False
 
@@ -2776,7 +2778,9 @@ class F5TTSCard(QFrame):
         if not target.exists():
             return False
         for f in pkg.get("check_files", []):
-            if (target / f).exists() or (root / f).exists():
+            c1 = target / f
+            c2 = root / f
+            if (c1.is_file() and c1.stat().st_size > 0) or (c2.is_file() and c2.stat().st_size > 0):
                 return True
         return False
 
@@ -3294,7 +3298,9 @@ class XTTSCard(QFrame):
         if not target.exists():
             return False
         for f in pkg.get("check_files", []):
-            if (target / f).exists() or (root / f).exists():
+            c1 = target / f
+            c2 = root / f
+            if (c1.is_file() and c1.stat().st_size > 0) or (c2.is_file() and c2.stat().st_size > 0):
                 return True
         return False
 
