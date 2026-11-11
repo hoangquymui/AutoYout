@@ -676,7 +676,7 @@ def test_automation_quick_input_and_settings_roundtrip(window) -> None:
     settings["automation"]["target_languages"] = ["ja", "zh"]
     tab.load_from(settings)
     assert tab.get_youtube_url() == "https://www.youtube.com/watch?v=test1234"
-    assert tab.get_target_languages() == ["ja", "zh"]
+    assert set(tab.get_target_languages()) == {"ja", "zh"}
 
     # Test clear
     tab.btn_clear.click()

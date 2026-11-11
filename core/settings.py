@@ -98,55 +98,6 @@ def normalize_piper_path(value: str | os.PathLike | None) -> str:
     return str(p.resolve().as_posix())
 
 
-def default_f5tts_path() -> str:
-    """Return default F5-TTS / E2-TTS directory path inside this project."""
-    if (ROOT / "tts" / "F5TTS").is_dir():
-        return str((ROOT / "tts" / "F5TTS").as_posix())
-    return str((ROOT / "F5TTS").as_posix())
-
-
-def normalize_f5tts_path(value: str | os.PathLike | None) -> str:
-    """Normalize F5-TTS / E2-TTS path to a valid path on the current machine."""
-    raw = str(value or "").strip()
-    if not raw:
-        return default_f5tts_path()
-    p = Path(raw)
-    if not p.is_absolute():
-        resolved = (ROOT / p).resolve()
-        return str(resolved.as_posix())
-    norm_lower = raw.replace("\\", "/").lower()
-    root_norm = str(ROOT).replace("\\", "/").lower()
-    if "mui/f375" in norm_lower and "mui/f375" not in root_norm:
-        return default_f5tts_path()
-    if not p.exists():
-        return default_f5tts_path()
-    return str(p.resolve().as_posix())
-
-
-def default_xtts_path() -> str:
-    """Return default Coqui XTTS-v2 directory path inside this project."""
-    if (ROOT / "tts" / "XTTSv2").is_dir():
-        return str((ROOT / "tts" / "XTTSv2").as_posix())
-    return str((ROOT / "XTTSv2").as_posix())
-
-
-def normalize_xtts_path(value: str | os.PathLike | None) -> str:
-    """Normalize Coqui XTTS-v2 path to a valid path on the current machine."""
-    raw = str(value or "").strip()
-    if not raw:
-        return default_xtts_path()
-    p = Path(raw)
-    if not p.is_absolute():
-        resolved = (ROOT / p).resolve()
-        return str(resolved.as_posix())
-    norm_lower = raw.replace("\\", "/").lower()
-    root_norm = str(ROOT).replace("\\", "/").lower()
-    if "mui/f375" in norm_lower and "mui/f375" not in root_norm:
-        return default_xtts_path()
-    if not p.exists():
-        return default_xtts_path()
-    return str(p.resolve().as_posix())
-
 
 def load_settings() -> Dict[str, Any]:
     defaults = load_json(DEFAULT_SETTINGS_PATH, {}) or {}
@@ -159,15 +110,13 @@ def load_settings() -> Dict[str, Any]:
     merged.setdefault("youtube", {})
     merged.setdefault("app", {})
 
-    # Normalize h2mtts, piper, f5tts, and xtts paths so they always work on the current machine
+    # Normalize h2mtts and piper paths so they always work on the current machine
     h2 = str(merged["paths"].get("h2mtts") or "").strip()
     merged["paths"]["h2mtts"] = normalize_h2mtts_path(h2)
     piper_raw = str(merged["paths"].get("piper") or "").strip()
     merged["paths"]["piper"] = normalize_piper_path(piper_raw)
-    f5_raw = str(merged["paths"].get("f5tts") or "").strip()
-    merged["paths"]["f5tts"] = normalize_f5tts_path(f5_raw)
-    xtts_raw = str(merged["paths"].get("xtts") or "").strip()
-    merged["paths"]["xtts"] = normalize_xtts_path(xtts_raw)
+    merged["paths"].pop("f5tts", None)
+    merged["paths"].pop("xtts", None)
 
     # Normalize ffmpeg / ffprobe if they point to an invalid absolute path
     for tool_key, default_tool in [("ffmpeg", "ffmpeg"), ("ffprobe", "ffprobe")]:

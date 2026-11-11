@@ -42,15 +42,12 @@ from PySide6.QtWidgets import (
 
 from core.settings import (
     ROOT,
-    default_f5tts_path,
     default_h2mtts_path,
     default_piper_path,
-    default_xtts_path,
-    normalize_f5tts_path,
     normalize_h2mtts_path,
     normalize_piper_path,
-    normalize_xtts_path,
 )
+from core.piper_tts_engine import sanitize_piper_config
 from ui import theme
 from ui.components.icons import icon, set_icon
 from ui.components.page import PageHeader, icon_button, paint_status, wrap_scroll
@@ -1451,6 +1448,12 @@ class H2MTTSCard(QFrame):
         self.btn_check_engine.clicked.connect(self.check_packages_status)
         btn_bar.addWidget(self.btn_check_engine)
 
+        self.btn_clean_engine = QPushButton("Dọn dẹp")
+        self.btn_clean_engine.setToolTip("Dọn dẹp file tạm (.part, .tmp) hoặc gỡ bỏ model để giải phóng dung lượng")
+        set_icon(self.btn_clean_engine, "trash", "danger", 12)
+        self.btn_clean_engine.clicked.connect(self._clean_models_clicked)
+        btn_bar.addWidget(self.btn_clean_engine)
+
         btn_bar.addStretch(1)
         dl_layout.addLayout(btn_bar)
 
@@ -1528,10 +1531,17 @@ class H2MTTSCard(QFrame):
             btn_dl.clicked.connect(lambda _, p=pkg: self._download_single_clicked(p))
             row_layout.addWidget(btn_dl)
 
+            btn_trash = icon_button("trash", f"Xoá {pkg['name']} khỏi máy", role="danger", size=13, side=28)
+            btn_trash.setToolTip(f"Xoá gói '{pkg['name']}' khỏi máy để giải phóng dung lượng")
+            btn_trash.clicked.connect(lambda _, p=pkg: self._delete_single_clicked(p))
+            btn_trash.setVisible(False)
+            row_layout.addWidget(btn_trash)
+
             self.pkg_widgets[pkg["id"]] = {
                 "frame": row_frame,
                 "status_badge": status_badge,
                 "btn_dl": btn_dl,
+                "btn_trash": btn_trash,
                 "pkg": pkg,
             }
             dl_layout.addWidget(row_frame)
@@ -1612,6 +1622,8 @@ class H2MTTSCard(QFrame):
                     "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
                 )
                 w["btn_dl"].setText("Tải lại")
+                w["btn_trash"].setVisible(True)
+                w["btn_trash"].setEnabled(True)
             elif pkg_id in errors:
                 if pkg.get("core"):
                     all_core_ok = False
@@ -1622,6 +1634,7 @@ class H2MTTSCard(QFrame):
                     "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
                 )
                 w["btn_dl"].setText("Thử lại")
+                w["btn_trash"].setVisible(False)
             else:
                 if pkg.get("core"):
                     all_core_ok = False
@@ -1632,6 +1645,7 @@ class H2MTTSCard(QFrame):
                     "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
                 )
                 w["btn_dl"].setText("Tải về")
+                w["btn_trash"].setVisible(False)
 
         if path.exists() and all_core_ok:
             self.status_badge.setText("Đã cài đủ")
@@ -1669,6 +1683,85 @@ class H2MTTSCard(QFrame):
 
     def _download_single_clicked(self, pkg: Dict[str, Any]) -> None:
         self._start_download([pkg])
+
+    def _delete_single_clicked(self, pkg: Dict[str, Any]) -> None:
+        raw = self.path_edit.text().strip()
+        path = Path(raw) if raw else Path(default_h2mtts_path())
+        reply = QMessageBox.question(
+            self,
+            "Xác nhận xoá model H2MTTS",
+            f"Bạn có chắc muốn xoá gói '{pkg['name']}' khỏi máy tính?\nThao tác này sẽ giải phóng dung lượng trên ổ đĩa.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._delete_pkg_files(path, pkg)
+        self.check_packages_status()
+        self.detect_specs()
+        self.changed.emit()
+
+    def _delete_pkg_files(self, root: Path, pkg: Dict[str, Any]) -> None:
+        if not root.exists():
+            return
+        target = root / pkg.get("target_subpath", "")
+        deleted = False
+        for f in pkg.get("check_files", []):
+            fp = target / f
+            if fp.is_file():
+                try:
+                    fp.unlink()
+                    deleted = True
+                except Exception as exc:
+                    logger.warning("Không thể xoá file %s: %s", fp, exc)
+            elif fp.is_dir():
+                try:
+                    shutil.rmtree(fp, ignore_errors=True)
+                    deleted = True
+                except Exception as exc:
+                    logger.warning("Không thể xoá thư mục %s: %s", fp, exc)
+        if deleted:
+            paint_status(self.engine_status, "success")
+            self.engine_status.setText(f"Đã xoá gói '{pkg['name']}' khỏi máy.")
+
+    def _clean_models_clicked(self) -> None:
+        raw = self.path_edit.text().strip()
+        path = Path(raw) if raw else Path(default_h2mtts_path())
+        if not path.exists():
+            QMessageBox.information(self, "Dọn dẹp", "Thư mục H2MTTS chưa tồn tại trên máy.")
+            return
+        cleaned_files = 0
+        cleaned_bytes = 0
+        for pattern in ("*.part", "*.tmp"):
+            for f in path.rglob(pattern):
+                if f.is_file():
+                    try:
+                        sz = f.stat().st_size
+                        f.unlink()
+                        cleaned_files += 1
+                        cleaned_bytes += sz
+                    except Exception:
+                        pass
+        mb = round(cleaned_bytes / (1024 * 1024), 2)
+        msg = f"Đã dọn dẹp {cleaned_files} file tạm ({mb} MB)." if cleaned_files > 0 else "Không có file tạm nào cần dọn."
+        reply = QMessageBox.question(
+            self,
+            "Dọn dẹp H2MTTS",
+            f"{msg}\n\nBạn có muốn xoá TOÀN BỘ model H2MTTS đã tải để giải phóng dung lượng hoàn toàn không?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            for pkg in H2M_PACKAGES:
+                self._delete_pkg_files(path, pkg)
+            self.check_packages_status()
+            self.detect_specs()
+            self.changed.emit()
+            QMessageBox.information(self, "Hoàn tất", "Đã dọn dẹp sạch toàn bộ model H2MTTS.")
+        elif cleaned_files > 0:
+            self.check_packages_status()
+            self.changed.emit()
+            QMessageBox.information(self, "Hoàn tất", f"Đã xoá {cleaned_files} file tạm.")
 
     def _download_required_clicked(self) -> None:
         required = [p for p in H2M_PACKAGES if p.get("core")]
@@ -1955,6 +2048,8 @@ class PiperDownloadWorker(QThread):
                         except Exception:
                             mirror_url = f"https://hf-mirror.com/{repo}/resolve/main/{remote_rel}"
                             self._download_url_to_file(mirror_url, dest_file, progress_prefix=prefix)
+                        if dest_file.name.endswith(".onnx.json") or dest_file.suffix == ".json":
+                            sanitize_piper_config(dest_file)
 
                 success_count += 1
                 self.pkg_status_changed.emit(pkg_id, "installed", "✓ Đã có")
@@ -2091,6 +2186,12 @@ class PiperTTSCard(QFrame):
         self.btn_check_engine.clicked.connect(self.check_packages_status)
         btn_bar.addWidget(self.btn_check_engine)
 
+        self.btn_clean_engine = QPushButton("Dọn dẹp")
+        self.btn_clean_engine.setToolTip("Dọn dẹp file tạm (.part, .tmp) hoặc gỡ bỏ model để giải phóng dung lượng")
+        set_icon(self.btn_clean_engine, "trash", "danger", 12)
+        self.btn_clean_engine.clicked.connect(self._clean_models_clicked)
+        btn_bar.addWidget(self.btn_clean_engine)
+
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("🔍 Tìm model / ngôn ngữ Piper (vd: vi, en, lessac, vais1000, zh, fr, de)...")
         self.search_edit.setClearButtonEnabled(True)
@@ -2180,12 +2281,19 @@ class PiperTTSCard(QFrame):
             btn_dl.clicked.connect(lambda _, p=pkg: self._download_single_clicked(p))
             row_layout.addWidget(btn_dl)
 
+            btn_trash = icon_button("trash", f"Xoá {pkg['name']} khỏi máy", role="danger", size=13, side=28)
+            btn_trash.setToolTip(f"Xoá gói '{pkg['name']}' khỏi máy để giải phóng dung lượng")
+            btn_trash.clicked.connect(lambda _, p=pkg: self._delete_single_clicked(p))
+            btn_trash.setVisible(False)
+            row_layout.addWidget(btn_trash)
+
             search_blob = f"{pkg['id']} {pkg['name']} {pkg['tag']} {pkg['desc']}".lower()
             self.pkg_widgets[pkg["id"]] = {
                 "frame": row_frame,
                 "row": row_frame,
                 "status_badge": status_badge,
                 "btn_dl": btn_dl,
+                "btn_trash": btn_trash,
                 "pkg": pkg,
                 "search_blob": search_blob,
                 "state": None,
@@ -2286,6 +2394,8 @@ class PiperTTSCard(QFrame):
                         "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
                     )
                     w["btn_dl"].setText("Tải lại")
+                w["btn_trash"].setVisible(True)
+                w["btn_trash"].setEnabled(True)
             elif pkg_id in errors:
                 if pkg.get("core"):
                     all_core_ok = False
@@ -2298,6 +2408,7 @@ class PiperTTSCard(QFrame):
                         "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
                     )
                     w["btn_dl"].setText("Thử lại")
+                w["btn_trash"].setVisible(False)
             else:
                 if pkg.get("core"):
                     all_core_ok = False
@@ -2309,6 +2420,7 @@ class PiperTTSCard(QFrame):
                         "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
                     )
                     w["btn_dl"].setText("Tải về")
+                w["btn_trash"].setVisible(False)
 
         if path.exists() and all_core_ok:
             self.status_badge.setText("Đã cài đủ")
@@ -2334,6 +2446,103 @@ class PiperTTSCard(QFrame):
 
     def _download_single_clicked(self, pkg: Dict[str, Any]) -> None:
         self._start_download([pkg])
+
+    def _delete_single_clicked(self, pkg: Dict[str, Any]) -> None:
+        raw = self.path_edit.text().strip()
+        path = Path(raw) if raw else Path(default_piper_path())
+        reply = QMessageBox.question(
+            self,
+            "Xác nhận xoá model PiperTTS",
+            f"Bạn có chắc muốn xoá gói '{pkg['name']}' khỏi máy tính?\nThao tác này sẽ giải phóng dung lượng trên ổ đĩa.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._delete_pkg_files(path, pkg)
+        self.check_packages_status()
+        self.changed.emit()
+
+    def _delete_pkg_files(self, root: Path, pkg: Dict[str, Any]) -> None:
+        if not root.exists():
+            return
+        if pkg["id"] == "piper_runtime":
+            for folder_name in ("piper", "runtime"):
+                runtime_dir = root / folder_name
+                if runtime_dir.is_dir():
+                    try:
+                        shutil.rmtree(runtime_dir, ignore_errors=True)
+                    except Exception as exc:
+                        logger.warning("Không thể xoá thư mục %s: %s", runtime_dir, exc)
+            for f in ("piper.exe", "piper"):
+                p_f = root / f
+                if p_f.is_file():
+                    try:
+                        p_f.unlink()
+                    except Exception:
+                        pass
+        else:
+            target = root / pkg.get("target_subpath", "")
+            for f in pkg.get("check_files", []):
+                for base_dir in (target, root):
+                    fp = base_dir / f
+                    if fp.is_file():
+                        try:
+                            fp.unlink()
+                        except Exception as exc:
+                            logger.warning("Không thể xoá file %s: %s", fp, exc)
+                    json_fp = fp.with_name(f"{fp.name}.json")
+                    if json_fp.is_file():
+                        try:
+                            json_fp.unlink()
+                        except Exception:
+                            pass
+                    json_fp2 = fp.with_suffix(".json")
+                    if json_fp2.is_file():
+                        try:
+                            json_fp2.unlink()
+                        except Exception:
+                            pass
+        paint_status(self.engine_status, "success")
+        self.engine_status.setText(f"Đã xoá gói '{pkg['name']}' khỏi máy.")
+
+    def _clean_models_clicked(self) -> None:
+        raw = self.path_edit.text().strip()
+        path = Path(raw) if raw else Path(default_piper_path())
+        if not path.exists():
+            QMessageBox.information(self, "Dọn dẹp", "Thư mục PiperTTS chưa tồn tại trên máy.")
+            return
+        cleaned_files = 0
+        cleaned_bytes = 0
+        for pattern in ("*.part", "*.tmp", "*.zip"):
+            for f in path.rglob(pattern):
+                if f.is_file():
+                    try:
+                        sz = f.stat().st_size
+                        f.unlink()
+                        cleaned_files += 1
+                        cleaned_bytes += sz
+                    except Exception:
+                        pass
+        mb = round(cleaned_bytes / (1024 * 1024), 2)
+        msg = f"Đã dọn dẹp {cleaned_files} file tạm ({mb} MB)." if cleaned_files > 0 else "Không có file tạm nào cần dọn."
+        reply = QMessageBox.question(
+            self,
+            "Dọn dẹp PiperTTS",
+            f"{msg}\n\nBạn có muốn xoá TOÀN BỘ model PiperTTS đã tải để giải phóng dung lượng hoàn toàn không?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            for pkg in PIPER_PACKAGES:
+                self._delete_pkg_files(path, pkg)
+            self.check_packages_status()
+            self.changed.emit()
+            QMessageBox.information(self, "Hoàn tất", "Đã dọn dẹp sạch toàn bộ model PiperTTS.")
+        elif cleaned_files > 0:
+            self.check_packages_status()
+            self.changed.emit()
+            QMessageBox.information(self, "Hoàn tất", f"Đã xoá {cleaned_files} file tạm.")
 
     def _download_required_clicked(self) -> None:
         required = [p for p in PIPER_PACKAGES if p.get("core")]
@@ -2423,1078 +2632,6 @@ class PiperTTSCard(QFrame):
                 )
 
 
-# ── F5-TTS / E2-TTS Model Packages (GPU Required) ────────────────────────────
-F5_PACKAGES: List[Dict[str, Any]] = [
-    {
-        "id": "f5_v1_base",
-        "name": "F5-TTS v1 Base (Đa ngôn ngữ · Zero-Shot)",
-        "tag": "Bắt buộc · F5-TTS",
-        "tag_color": theme.ACCENT,
-        "tag_bg": theme.SURFACE_RAISED,
-        "repo": "SWivid/F5-TTS",
-        "files": [
-            ("F5TTS_v1_Base/model_1250000.safetensors", "models/F5TTS_v1_Base/model_1250000.safetensors"),
-            ("F5TTS_v1_Base/vocab.txt", "models/F5TTS_v1_Base/vocab.txt"),
-        ],
-        "size": "~1.3 GB",
-        "desc": "Model F5-TTS v1 Base thế hệ mới: tổng hợp và clone giọng nói chất lượng cao bằng GPU.",
-        "target_subpath": "models/F5TTS_v1_Base",
-        "check_files": ["model_1250000.safetensors"],
-        "core": True,
-        "required": True,
-    },
-    {
-        "id": "e2_base",
-        "name": "E2-TTS Base (Đa ngôn ngữ · Zero-Shot)",
-        "tag": "Bắt buộc · E2-TTS",
-        "tag_color": theme.ACCENT,
-        "tag_bg": theme.SURFACE_RAISED,
-        "repo": "SWivid/E2-TTS",
-        "files": [
-            ("E2TTS_Base/model_1200000.safetensors", "models/E2TTS_Base/model_1200000.safetensors"),
-        ],
-        "size": "~1.3 GB",
-        "desc": "Model E2-TTS (Embarrassingly Easy Fully Non-Autoregressive Zero-Shot TTS) chạy trên GPU.",
-        "target_subpath": "models/E2TTS_Base",
-        "check_files": ["model_1200000.safetensors"],
-        "core": True,
-        "required": True,
-    },
-    {
-        "id": "vocos_vocoder",
-        "name": "Vocos Mel-24kHz Vocoder",
-        "tag": "Bắt buộc · Vocoder",
-        "tag_color": theme.WARNING,
-        "tag_bg": theme.SURFACE_RAISED,
-        "repo": "charactr/vocos-mel-24khz",
-        "files": [
-            ("config.yaml", "models/vocos-mel-24khz/config.yaml"),
-            ("pytorch_model.bin", "models/vocos-mel-24khz/pytorch_model.bin"),
-        ],
-        "size": "~54 MB",
-        "desc": "Bộ giải mã âm thanh Vocos 24kHz bắt buộc cho cả F5-TTS và E2-TTS.",
-        "target_subpath": "models/vocos-mel-24khz",
-        "check_files": ["pytorch_model.bin", "config.yaml"],
-        "core": True,
-        "required": True,
-    },
-    {
-        "id": "f5_vietnamese",
-        "name": "F5-TTS Tiếng Việt (ViVoice Fine-tuned)",
-        "tag": "Tiếng Việt (vi_VN)",
-        "tag_color": theme.SUCCESS,
-        "tag_bg": theme.SURFACE_RAISED,
-        "repo": "hynt/F5-TTS-Vietnamese-ViVoice",
-        "files": [
-            ("model_last.pt", "models/F5TTS_Vietnamese/model_last.pt"),
-            ("config.json", "models/F5TTS_Vietnamese/config.json"),
-        ],
-        "size": "~1.2 GB",
-        "desc": "Model F5-TTS huấn luyện chuyên sâu trên tập dữ liệu tiếng Việt.",
-        "target_subpath": "models/F5TTS_Vietnamese",
-        "check_files": ["model_last.pt"],
-        "core": False,
-        "required": False,
-    },
-]
-
-
-class F5TTSCard(QFrame):
-    """Local F5-TTS / E2-TTS card. Enabled when GPU is detected; dimmed/disabled when no GPU."""
-
-    changed = Signal()
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setObjectName("F5TTSCard")
-        self._downloader: Optional[PiperDownloadWorker] = None
-        self.pkg_widgets: Dict[str, Dict[str, Any]] = {}
-        self._has_gpu: bool = False
-        self._gpu_info: str = ""
-
-        self._opacity_effect = QGraphicsOpacityEffect(self)
-        self._opacity_effect.setOpacity(1.0)
-        self.setGraphicsEffect(self._opacity_effect)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(12)
-
-        # ── 1. Header ────────────────────────────────────────────────────────
-        top_row = QHBoxLayout()
-        top_row.setSpacing(8)
-
-        title_lbl = QLabel("Giọng đọc local – F5-TTS / E2-TTS")
-        title_font = QFont()
-        title_font.setBold(True)
-        title_font.setPointSize(10)
-        title_lbl.setFont(title_font)
-        top_row.addWidget(title_lbl)
-
-        self.gpu_tag_lbl = QLabel("Yêu cầu GPU · Zero-Shot")
-        self.gpu_tag_lbl.setStyleSheet(
-            f"background: {theme.SURFACE_RAISED}; color: {theme.ACCENT}; "
-            "border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: bold;"
-        )
-        top_row.addWidget(self.gpu_tag_lbl)
-        top_row.addStretch(1)
-
-        self.status_badge = QLabel("Chưa cài")
-        top_row.addWidget(self.status_badge)
-
-        self._expanded = True
-        self.btn_collapse = icon_button(
-            "chevron-up", "Thu gọn / Mở rộng", role="muted", size=14, side=26
-        )
-        self.btn_collapse.clicked.connect(self.toggle_expanded)
-        top_row.addWidget(self.btn_collapse)
-        layout.addLayout(top_row)
-
-        self.desc_lbl = QLabel(
-            "Bộ đôi mô hình Flow-Matching F5-TTS & E2-TTS tổng hợp giọng đọc và clone giọng zero-shot chất lượng cao. "
-            "Yêu cầu máy có card đồ họa rời (GPU NVIDIA CUDA) — nếu không có GPU phần này sẽ được làm mờ."
-        )
-        self.desc_lbl.setWordWrap(True)
-        self.desc_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
-        layout.addWidget(self.desc_lbl)
-
-        self.body_widget = QWidget(self)
-        body_layout = QVBoxLayout(self.body_widget)
-        body_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.setSpacing(12)
-        layout.addWidget(self.body_widget)
-
-        # ── 2. Path row ──────────────────────────────────────────────────────
-        path_row = QHBoxLayout()
-        path_row.setSpacing(6)
-        path_lbl = QLabel("Thư mục F5-TTS / E2-TTS:")
-        path_lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
-        self.path_edit = QLineEdit(default_f5tts_path())
-        self.path_edit.textChanged.connect(self._on_path_changed)
-        btn_browse = icon_button(
-            "folder-open", "Chọn thư mục F5-TTS / E2-TTS…", role="muted", size=14, side=30
-        )
-        btn_browse.clicked.connect(self._browse_dir)
-
-        path_row.addWidget(path_lbl)
-        path_row.addWidget(self.path_edit, 1)
-        path_row.addWidget(btn_browse)
-        body_layout.addLayout(path_row)
-
-        # ── 3. Download Manager Box ──────────────────────────────────────────
-        self.downloads_box = QFrame()
-        self.downloads_box.setObjectName("DownloadsBox")
-        dl_layout = QVBoxLayout(self.downloads_box)
-        dl_layout.setContentsMargins(12, 12, 12, 12)
-        dl_layout.setSpacing(10)
-
-        dl_header = QHBoxLayout()
-        dl_title = QLabel("📦 Tải tài nguyên mô hình F5-TTS & E2-TTS")
-        dl_title_font = QFont()
-        dl_title_font.setBold(True)
-        dl_title_font.setPointSize(10)
-        dl_title.setFont(dl_title_font)
-        dl_header.addWidget(dl_title)
-        dl_header.addStretch(1)
-        dl_layout.addLayout(dl_header)
-
-        btn_bar = QHBoxLayout()
-        btn_bar.setSpacing(8)
-
-        self.btn_install = QPushButton("🚀 Tải các phần bắt buộc (~2.65 GB)")
-        self.btn_install.setObjectName("primaryButton")
-        set_icon(self.btn_install, "download", "white", 13)
-        self.btn_install.clicked.connect(self._download_required_clicked)
-        btn_bar.addWidget(self.btn_install)
-
-        self.btn_check_engine = QPushButton("🔄 Quét lại")
-        set_icon(self.btn_check_engine, "check-circle", "muted", 12)
-        self.btn_check_engine.clicked.connect(self.check_packages_status)
-        btn_bar.addWidget(self.btn_check_engine)
-
-        self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("🔍 Tìm model F5-TTS / E2-TTS...")
-        self.search_edit.setClearButtonEnabled(True)
-        self.search_edit.setMinimumWidth(220)
-        self.search_edit.textChanged.connect(self._filter_packages)
-        btn_bar.addWidget(self.search_edit, 1)
-
-        dl_layout.addLayout(btn_bar)
-
-        self.progress_container = QWidget()
-        prog_layout = QVBoxLayout(self.progress_container)
-        prog_layout.setContentsMargins(0, 4, 0, 4)
-        prog_layout.setSpacing(4)
-
-        prog_top = QHBoxLayout()
-        self.lbl_progress = QLabel("Đang chuẩn bị tải…")
-        self.lbl_progress.setStyleSheet(f"font-size: 11px; color: {theme.ACCENT}; font-weight: bold;")
-        prog_top.addWidget(self.lbl_progress, 1)
-
-        self.btn_cancel_dl = QPushButton("Hủy")
-        self.btn_cancel_dl.setFixedWidth(50)
-        self.btn_cancel_dl.clicked.connect(self._cancel_download_clicked)
-        prog_top.addWidget(self.btn_cancel_dl)
-        prog_layout.addLayout(prog_top)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFixedHeight(8)
-        self.progress_bar.setTextVisible(False)
-        prog_layout.addWidget(self.progress_bar)
-
-        self.progress_container.setVisible(False)
-        dl_layout.addWidget(self.progress_container)
-
-        for pkg in F5_PACKAGES:
-            row_frame = QFrame()
-            row_frame.setObjectName("PkgRow")
-            row_layout = QHBoxLayout(row_frame)
-            row_layout.setContentsMargins(10, 8, 10, 8)
-            row_layout.setSpacing(10)
-
-            info_col = QVBoxLayout()
-            info_col.setSpacing(2)
-
-            title_row = QHBoxLayout()
-            title_row.setSpacing(8)
-            name_lbl = QLabel(pkg["name"])
-            name_font = QFont()
-            name_font.setBold(True)
-            name_font.setPointSize(9)
-            name_lbl.setFont(name_font)
-            title_row.addWidget(name_lbl)
-
-            tag_lbl = QLabel(pkg["tag"])
-            tag_lbl.setStyleSheet(
-                f"background: {pkg['tag_bg']}; color: {pkg['tag_color']}; "
-                f"border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600;"
-            )
-            title_row.addWidget(tag_lbl)
-            title_row.addStretch(1)
-            info_col.addLayout(title_row)
-
-            sub_lbl = QLabel(f"{pkg['size']} — {pkg['desc']}")
-            sub_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 10.5px;")
-            sub_lbl.setWordWrap(True)
-            info_col.addWidget(sub_lbl)
-            row_layout.addLayout(info_col, 1)
-
-            status_badge = QLabel("Chưa kiểm tra")
-            status_badge.setFixedWidth(80)
-            status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            row_layout.addWidget(status_badge)
-
-            btn_dl = QPushButton("Tải về")
-            btn_dl.setFixedWidth(70)
-            btn_dl.clicked.connect(lambda _, p=pkg: self._download_single_clicked(p))
-            row_layout.addWidget(btn_dl)
-
-            search_blob = f"{pkg['id']} {pkg['name']} {pkg['tag']} {pkg['desc']}".lower()
-            self.pkg_widgets[pkg["id"]] = {
-                "frame": row_frame,
-                "row": row_frame,
-                "status_badge": status_badge,
-                "btn_dl": btn_dl,
-                "pkg": pkg,
-                "search_blob": search_blob,
-                "state": None,
-            }
-            dl_layout.addWidget(row_frame)
-
-        body_layout.addWidget(self.downloads_box)
-
-        self.engine_status = QLabel("")
-        body_layout.addWidget(self.engine_status)
-
-        self.apply_theme()
-        self.refresh_gpu_status()
-
-    def is_gpu_enabled(self) -> bool:
-        return self._has_gpu
-
-    def refresh_gpu_status(self, force_refresh: bool = False) -> None:
-        has_gpu, gpu_desc = detect_gpu_status(force_refresh=force_refresh)
-        self.set_gpu_available(has_gpu, gpu_desc)
-
-    def set_gpu_available(self, has_gpu: bool, gpu_info: str = "") -> None:
-        """Enable the card when GPU is available; dim and disable it when no GPU is detected."""
-        self._has_gpu = bool(has_gpu)
-        self._gpu_info = str(gpu_info or "")
-        if self._has_gpu:
-            self._opacity_effect.setOpacity(1.0)
-            self.body_widget.setEnabled(True)
-            self.gpu_tag_lbl.setText(f"GPU Sẵn sàng · {self._gpu_info}" if self._gpu_info else "GPU Sẵn sàng · Zero-Shot")
-            self.gpu_tag_lbl.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
-                "border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: bold;"
-            )
-            self.check_packages_status()
-        else:
-            self._opacity_effect.setOpacity(0.45)
-            self.body_widget.setEnabled(False)
-            self.gpu_tag_lbl.setText("⚠ Không có GPU (Đã làm mờ)")
-            self.gpu_tag_lbl.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
-                "border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: bold;"
-            )
-            self.status_badge.setText("Yêu cầu GPU")
-            self.status_badge.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.TEXT_MUTED}; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-
-    def is_expanded(self) -> bool:
-        return self._expanded
-
-    def toggle_expanded(self) -> None:
-        self.set_expanded(not self._expanded)
-
-    def set_expanded(self, expanded: bool) -> None:
-        self._expanded = bool(expanded)
-        self.body_widget.setVisible(self._expanded)
-        set_icon(
-            self.btn_collapse,
-            "chevron-up" if self._expanded else "chevron-down",
-            "muted",
-            14,
-        )
-        self.btn_collapse.setToolTip("Thu gọn" if self._expanded else "Mở rộng")
-
-    def _browse_dir(self) -> None:
-        start = self.path_edit.text().strip() or str(Path.home())
-        chosen = QFileDialog.getExistingDirectory(self, "Chọn thư mục F5-TTS / E2-TTS", start)
-        if chosen:
-            chosen = str(Path(chosen).resolve().as_posix())
-            self.path_edit.setText(chosen)
-            self.check_packages_status()
-            self.changed.emit()
-
-    def _on_path_changed(self, _text: str) -> None:
-        self.check_packages_status()
-        self.changed.emit()
-
-    def _filter_packages(self, text: str) -> None:
-        query = str(text or "").strip().lower()
-        terms = [t for t in query.split() if t]
-        for w in self.pkg_widgets.values():
-            if not terms:
-                w["frame"].setVisible(True)
-            else:
-                blob = w.get("search_blob", "")
-                w["frame"].setVisible(all(t in blob for t in terms))
-
-    @staticmethod
-    def _is_pkg_installed(root: Path, pkg: Dict[str, Any]) -> bool:
-        if not root.exists():
-            return False
-        target = root / pkg["target_subpath"]
-        if not target.exists():
-            return False
-        for f in pkg.get("check_files", []):
-            c1 = target / f
-            c2 = root / f
-            if (c1.is_file() and c1.stat().st_size > 0) or (c2.is_file() and c2.stat().st_size > 0):
-                return True
-        return False
-
-    def check_packages_status(self, errors: Optional[Dict[str, str]] = None) -> None:
-        raw = self.path_edit.text().strip()
-        if not raw:
-            path = Path(default_f5tts_path())
-        else:
-            p = Path(raw)
-            path = (ROOT / p).resolve() if not p.is_absolute() else p
-        all_core_ok = True
-        has_any = False
-        errors = errors or {}
-        root_exists = path.exists()
-
-        for pkg in F5_PACKAGES:
-            pkg_id = pkg["id"]
-            w = self.pkg_widgets.get(pkg_id)
-            if not w:
-                continue
-            is_installed = root_exists and self._is_pkg_installed(path, pkg)
-            if is_installed:
-                has_any = True
-                if w.get("state") != "installed":
-                    w["state"] = "installed"
-                    w["status_badge"].setText("✓ Đã có")
-                    w["status_badge"].setStyleSheet(
-                        f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
-                        "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-                    )
-                    w["btn_dl"].setText("Tải lại")
-            elif pkg_id in errors:
-                if pkg.get("core"):
-                    all_core_ok = False
-                if w.get("state") != "error":
-                    w["state"] = "error"
-                    w["status_badge"].setText("Lỗi tải")
-                    w["status_badge"].setToolTip(f"Lỗi: {errors[pkg_id]}")
-                    w["status_badge"].setStyleSheet(
-                        f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
-                        "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-                    )
-                    w["btn_dl"].setText("Thử lại")
-            else:
-                if pkg.get("core"):
-                    all_core_ok = False
-                if w.get("state") != "missing":
-                    w["state"] = "missing"
-                    w["status_badge"].setText("Chưa tải")
-                    w["status_badge"].setStyleSheet(
-                        f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
-                        "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-                    )
-                    w["btn_dl"].setText("Tải về")
-
-        if not self._has_gpu:
-            self.status_badge.setText("Yêu cầu GPU")
-            self.status_badge.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.TEXT_MUTED}; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-            return
-
-        if path.exists() and all_core_ok:
-            self.status_badge.setText("Đã cài đủ")
-            self.status_badge.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-            self.btn_install.setText("🚀 Đã cài đủ phần bắt buộc")
-        elif path.exists() and has_any:
-            self.status_badge.setText("Thiếu gói")
-            self.status_badge.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-            self.btn_install.setText("🚀 Tải các phần bắt buộc (~2.65 GB)")
-        else:
-            self.status_badge.setText("Chưa cài")
-            self.status_badge.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-            self.btn_install.setText("🚀 Tải các phần bắt buộc (~2.65 GB)")
-
-    def _download_single_clicked(self, pkg: Dict[str, Any]) -> None:
-        self._start_download([pkg])
-
-    def _download_required_clicked(self) -> None:
-        required = [p for p in F5_PACKAGES if p.get("core")]
-        self._start_download(required)
-
-    def _start_download(self, pkgs: List[Dict[str, Any]]) -> None:
-        if not self._has_gpu:
-            return
-        if self._downloader is not None and self._downloader.isRunning():
-            return
-        root_path = self.path_edit.text().strip()
-        if not root_path:
-            paint_status(self.engine_status, "warning")
-            self.engine_status.setText("Vui lòng chọn thư mục cài đặt F5-TTS / E2-TTS trước khi tải.")
-            return
-
-        self.progress_container.setVisible(True)
-        self.progress_bar.setValue(0)
-        self.lbl_progress.setText("Đang khởi tạo kết nối tải F5-TTS / E2-TTS…")
-        self.btn_cancel_dl.setText("Hủy")
-        self.btn_cancel_dl.setEnabled(True)
-        self.btn_install.setEnabled(False)
-
-        self._downloader = PiperDownloadWorker(root_path, pkgs, parent=self)
-        self._downloader.progress.connect(self._on_download_progress)
-        self._downloader.pkg_status_changed.connect(self._on_pkg_status_changed)
-        self._downloader.all_finished.connect(self._on_download_finished)
-        self._downloader.start()
-
-    def _on_download_progress(self, percent: int, text: str) -> None:
-        self.progress_bar.setValue(percent)
-        self.lbl_progress.setText(text)
-
-    def _on_pkg_status_changed(self, pkg_id: str, status_kind: str, text: str) -> None:
-        w = self.pkg_widgets.get(pkg_id)
-        if not w:
-            return
-        w["status_badge"].setText(text)
-        if status_kind == "downloading":
-            w["status_badge"].setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.BLUE}; "
-                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-            )
-        elif status_kind == "installed":
-            w["status_badge"].setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
-                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-            )
-            w["btn_dl"].setText("Tải lại")
-        elif status_kind == "error":
-            w["status_badge"].setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
-                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-            )
-            w["btn_dl"].setText("Thử lại")
-
-    def _on_download_finished(self, success: bool, message: str) -> None:
-        errors = dict(getattr(self._downloader, "errors", {})) if self._downloader else {}
-        self._downloader = None
-        self.btn_install.setEnabled(True)
-        self.btn_cancel_dl.setText("Đóng")
-        self.btn_cancel_dl.setEnabled(True)
-        self.lbl_progress.setText(message)
-        paint_status(self.engine_status, "success" if success else "warning")
-        self.engine_status.setText(message)
-        self.check_packages_status(errors=errors)
-        self.changed.emit()
-
-    def _cancel_download_clicked(self) -> None:
-        if self._downloader and self._downloader.isRunning():
-            self._downloader.cancel()
-            self.lbl_progress.setText("Đang dừng tiến trình tải…")
-            self.btn_cancel_dl.setEnabled(False)
-        else:
-            self.progress_container.setVisible(False)
-
-    def apply_theme(self) -> None:
-        self.setStyleSheet(
-            f"QFrame#F5TTSCard {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 8px; }}"
-        )
-        if hasattr(self, "downloads_box"):
-            self.downloads_box.setStyleSheet(
-                f"QFrame#DownloadsBox {{ background-color: {theme.SURFACE_ALT}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
-            )
-        if hasattr(self, "pkg_widgets"):
-            for w in self.pkg_widgets.values():
-                w["frame"].setStyleSheet(
-                    f"QFrame#PkgRow {{ background-color: {theme.SURFACE}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
-                )
-
-
-XTTS_PACKAGES: List[Dict[str, Any]] = [
-    {
-        "id": "xtts_v2_base",
-        "name": "Coqui XTTS-v2 Base (Đa ngôn ngữ 17 thứ tiếng)",
-        "tag": "Bắt buộc · XTTS-v2 Core",
-        "tag_color": theme.ACCENT,
-        "tag_bg": theme.SURFACE_RAISED,
-        "repo": "coqui/XTTS-v2",
-        "files": [
-            ("model.pth", "models/XTTS_v2/model.pth"),
-            ("config.json", "models/XTTS_v2/config.json"),
-            ("vocab.json", "models/XTTS_v2/vocab.json"),
-            ("speakers_xtts.pth", "models/XTTS_v2/speakers_xtts.pth"),
-            ("dvae.pth", "models/XTTS_v2/dvae.pth"),
-            ("mel_stats.pth", "models/XTTS_v2/mel_stats.pth"),
-        ],
-        "size": "~1.87 GB",
-        "desc": "Model chính Coqui XTTS-v2 hỗ trợ đa ngôn ngữ và clone giọng từ 6 giây âm thanh mẫu trên GPU.",
-        "target_subpath": "models/XTTS_v2",
-        "check_files": ["model.pth", "config.json"],
-        "core": True,
-        "required": True,
-    },
-    {
-        "id": "vixtts_model",
-        "name": "viXTTS — Coqui XTTS-v2 Tiếng Việt (Fine-tuned)",
-        "tag": "Tiếng Việt (vi_VN)",
-        "tag_color": theme.SUCCESS,
-        "tag_bg": theme.SURFACE_RAISED,
-        "repo": "capleaf/viXTTS",
-        "files": [
-            ("model.pth", "models/viXTTS/model.pth"),
-            ("config.json", "models/viXTTS/config.json"),
-            ("vocab.json", "models/viXTTS/vocab.json"),
-            ("vi_sample.wav", "models/viXTTS/vi_sample.wav"),
-        ],
-        "size": "~1.87 GB",
-        "desc": "Bản tinh chỉnh Coqui XTTS-v2 chuyên biệt cho Tiếng Việt (viXTTS) tự nhiên và chuẩn dấu.",
-        "target_subpath": "models/viXTTS",
-        "check_files": ["model.pth", "config.json"],
-        "core": False,
-        "required": False,
-    },
-]
-
-
-class XTTSCard(QFrame):
-    """Local Coqui XTTS-v2 card. Enabled when GPU is detected; dimmed/disabled when no GPU."""
-
-    changed = Signal()
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setObjectName("XTTSCard")
-        self._downloader: Optional[PiperDownloadWorker] = None
-        self.pkg_widgets: Dict[str, Dict[str, Any]] = {}
-        self._has_gpu: bool = False
-        self._gpu_info: str = ""
-
-        self._opacity_effect = QGraphicsOpacityEffect(self)
-        self._opacity_effect.setOpacity(1.0)
-        self.setGraphicsEffect(self._opacity_effect)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(12)
-
-        # ── 1. Header ────────────────────────────────────────────────────────
-        top_row = QHBoxLayout()
-        top_row.setSpacing(8)
-
-        title_lbl = QLabel("Giọng đọc local – Coqui XTTS-v2")
-        title_font = QFont()
-        title_font.setBold(True)
-        title_font.setPointSize(10)
-        title_lbl.setFont(title_font)
-        top_row.addWidget(title_lbl)
-
-        self.gpu_tag_lbl = QLabel("Yêu cầu GPU · Đa ngôn ngữ")
-        self.gpu_tag_lbl.setStyleSheet(
-            f"background: {theme.SURFACE_RAISED}; color: {theme.ACCENT}; "
-            "border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: bold;"
-        )
-        top_row.addWidget(self.gpu_tag_lbl)
-        top_row.addStretch(1)
-
-        self.status_badge = QLabel("Chưa cài")
-        top_row.addWidget(self.status_badge)
-
-        self._expanded = True
-        self.btn_collapse = icon_button(
-            "chevron-up", "Thu gọn / Mở rộng", role="muted", size=14, side=26
-        )
-        self.btn_collapse.clicked.connect(self.toggle_expanded)
-        top_row.addWidget(self.btn_collapse)
-        layout.addLayout(top_row)
-
-        self.desc_lbl = QLabel(
-            "Mô hình Coqui XTTS-v2 hỗ trợ đa ngôn ngữ (17 thứ tiếng + viXTTS Tiếng Việt) và clone giọng từ mẫu âm thanh ngắn. "
-            "Yêu cầu máy có card đồ họa rời (GPU NVIDIA CUDA) — nếu không có GPU phần này sẽ được làm mờ."
-        )
-        self.desc_lbl.setWordWrap(True)
-        self.desc_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
-        layout.addWidget(self.desc_lbl)
-
-        self.body_widget = QWidget(self)
-        body_layout = QVBoxLayout(self.body_widget)
-        body_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.setSpacing(12)
-        layout.addWidget(self.body_widget)
-
-        # ── 2. Path row ──────────────────────────────────────────────────────
-        path_row = QHBoxLayout()
-        path_row.setSpacing(6)
-        path_lbl = QLabel("Thư mục Coqui XTTS-v2:")
-        path_lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
-        self.path_edit = QLineEdit(default_xtts_path())
-        self.path_edit.textChanged.connect(self._on_path_changed)
-        btn_browse = icon_button(
-            "folder-open", "Chọn thư mục Coqui XTTS-v2…", role="muted", size=14, side=30
-        )
-        btn_browse.clicked.connect(self._browse_dir)
-
-        path_row.addWidget(path_lbl)
-        path_row.addWidget(self.path_edit, 1)
-        path_row.addWidget(btn_browse)
-        body_layout.addLayout(path_row)
-
-        # ── 3. Download Manager Box ──────────────────────────────────────────
-        self.downloads_box = QFrame()
-        self.downloads_box.setObjectName("DownloadsBox")
-        dl_layout = QVBoxLayout(self.downloads_box)
-        dl_layout.setContentsMargins(12, 12, 12, 12)
-        dl_layout.setSpacing(10)
-
-        dl_header = QHBoxLayout()
-        dl_title = QLabel("📦 Tải tài nguyên mô hình Coqui XTTS-v2")
-        dl_title_font = QFont()
-        dl_title_font.setBold(True)
-        dl_title_font.setPointSize(10)
-        dl_title.setFont(dl_title_font)
-        dl_header.addWidget(dl_title)
-        dl_header.addStretch(1)
-        dl_layout.addLayout(dl_header)
-
-        btn_bar = QHBoxLayout()
-        btn_bar.setSpacing(8)
-
-        self.btn_install = QPushButton("🚀 Tải các phần bắt buộc (~1.87 GB)")
-        self.btn_install.setObjectName("primaryButton")
-        set_icon(self.btn_install, "download", "white", 13)
-        self.btn_install.clicked.connect(self._download_required_clicked)
-        btn_bar.addWidget(self.btn_install)
-
-        self.btn_check_engine = QPushButton("🔄 Quét lại")
-        set_icon(self.btn_check_engine, "check-circle", "muted", 12)
-        self.btn_check_engine.clicked.connect(self.check_packages_status)
-        btn_bar.addWidget(self.btn_check_engine)
-
-        self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("🔍 Tìm model Coqui XTTS-v2...")
-        self.search_edit.setClearButtonEnabled(True)
-        self.search_edit.setMinimumWidth(220)
-        self.search_edit.textChanged.connect(self._filter_packages)
-        btn_bar.addWidget(self.search_edit, 1)
-
-        dl_layout.addLayout(btn_bar)
-
-        self.progress_container = QWidget()
-        prog_layout = QVBoxLayout(self.progress_container)
-        prog_layout.setContentsMargins(0, 4, 0, 4)
-        prog_layout.setSpacing(4)
-
-        prog_top = QHBoxLayout()
-        self.lbl_progress = QLabel("Đang chuẩn bị tải…")
-        self.lbl_progress.setStyleSheet(f"font-size: 11px; color: {theme.ACCENT}; font-weight: bold;")
-        prog_top.addWidget(self.lbl_progress, 1)
-
-        self.btn_cancel_dl = QPushButton("Hủy")
-        self.btn_cancel_dl.setFixedWidth(50)
-        self.btn_cancel_dl.clicked.connect(self._cancel_download_clicked)
-        prog_top.addWidget(self.btn_cancel_dl)
-        prog_layout.addLayout(prog_top)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFixedHeight(8)
-        self.progress_bar.setTextVisible(False)
-        prog_layout.addWidget(self.progress_bar)
-
-        self.progress_container.setVisible(False)
-        dl_layout.addWidget(self.progress_container)
-
-        for pkg in XTTS_PACKAGES:
-            row_frame = QFrame()
-            row_frame.setObjectName("PkgRow")
-            row_layout = QHBoxLayout(row_frame)
-            row_layout.setContentsMargins(10, 8, 10, 8)
-            row_layout.setSpacing(10)
-
-            info_col = QVBoxLayout()
-            info_col.setSpacing(2)
-
-            title_row = QHBoxLayout()
-            title_row.setSpacing(8)
-            name_lbl = QLabel(pkg["name"])
-            name_font = QFont()
-            name_font.setBold(True)
-            name_font.setPointSize(9)
-            name_lbl.setFont(name_font)
-            title_row.addWidget(name_lbl)
-
-            tag_lbl = QLabel(pkg["tag"])
-            tag_lbl.setStyleSheet(
-                f"background: {pkg['tag_bg']}; color: {pkg['tag_color']}; "
-                f"border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600;"
-            )
-            title_row.addWidget(tag_lbl)
-            title_row.addStretch(1)
-            info_col.addLayout(title_row)
-
-            sub_lbl = QLabel(f"{pkg['size']} — {pkg['desc']}")
-            sub_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 10.5px;")
-            sub_lbl.setWordWrap(True)
-            info_col.addWidget(sub_lbl)
-            row_layout.addLayout(info_col, 1)
-
-            status_badge = QLabel("Chưa kiểm tra")
-            status_badge.setFixedWidth(80)
-            status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            row_layout.addWidget(status_badge)
-
-            btn_dl = QPushButton("Tải về")
-            btn_dl.setFixedWidth(70)
-            btn_dl.clicked.connect(lambda _, p=pkg: self._download_single_clicked(p))
-            row_layout.addWidget(btn_dl)
-
-            search_blob = f"{pkg['id']} {pkg['name']} {pkg['tag']} {pkg['desc']}".lower()
-            self.pkg_widgets[pkg["id"]] = {
-                "frame": row_frame,
-                "row": row_frame,
-                "status_badge": status_badge,
-                "btn_dl": btn_dl,
-                "pkg": pkg,
-                "search_blob": search_blob,
-                "state": None,
-            }
-            dl_layout.addWidget(row_frame)
-
-        body_layout.addWidget(self.downloads_box)
-
-        self.engine_status = QLabel("")
-        body_layout.addWidget(self.engine_status)
-
-        self.apply_theme()
-        self.refresh_gpu_status()
-
-    def is_gpu_enabled(self) -> bool:
-        return self._has_gpu
-
-    def refresh_gpu_status(self, force_refresh: bool = False) -> None:
-        has_gpu, gpu_desc = detect_gpu_status(force_refresh=force_refresh)
-        self.set_gpu_available(has_gpu, gpu_desc)
-
-    def set_gpu_available(self, has_gpu: bool, gpu_info: str = "") -> None:
-        """Enable the card when GPU is available; dim and disable it when no GPU is detected."""
-        self._has_gpu = bool(has_gpu)
-        self._gpu_info = str(gpu_info or "")
-        if self._has_gpu:
-            self._opacity_effect.setOpacity(1.0)
-            self.body_widget.setEnabled(True)
-            self.gpu_tag_lbl.setText(f"GPU Sẵn sàng · {self._gpu_info}" if self._gpu_info else "GPU Sẵn sàng · Đa ngôn ngữ")
-            self.gpu_tag_lbl.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
-                "border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: bold;"
-            )
-            self.check_packages_status()
-        else:
-            self._opacity_effect.setOpacity(0.45)
-            self.body_widget.setEnabled(False)
-            self.gpu_tag_lbl.setText("⚠ Không có GPU (Đã làm mờ)")
-            self.gpu_tag_lbl.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
-                "border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: bold;"
-            )
-            self.status_badge.setText("Yêu cầu GPU")
-            self.status_badge.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.TEXT_MUTED}; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-
-    def is_expanded(self) -> bool:
-        return self._expanded
-
-    def toggle_expanded(self) -> None:
-        self.set_expanded(not self._expanded)
-
-    def set_expanded(self, expanded: bool) -> None:
-        self._expanded = bool(expanded)
-        self.body_widget.setVisible(self._expanded)
-        set_icon(
-            self.btn_collapse,
-            "chevron-up" if self._expanded else "chevron-down",
-            "muted",
-            14,
-        )
-        self.btn_collapse.setToolTip("Thu gọn" if self._expanded else "Mở rộng")
-
-    def _browse_dir(self) -> None:
-        start = self.path_edit.text().strip() or str(Path.home())
-        chosen = QFileDialog.getExistingDirectory(self, "Chọn thư mục Coqui XTTS-v2", start)
-        if chosen:
-            chosen = str(Path(chosen).resolve().as_posix())
-            self.path_edit.setText(chosen)
-            self.check_packages_status()
-            self.changed.emit()
-
-    def _on_path_changed(self, _text: str) -> None:
-        self.check_packages_status()
-        self.changed.emit()
-
-    def _filter_packages(self, text: str) -> None:
-        query = str(text or "").strip().lower()
-        terms = [t for t in query.split() if t]
-        for w in self.pkg_widgets.values():
-            if not terms:
-                w["frame"].setVisible(True)
-            else:
-                blob = w.get("search_blob", "")
-                w["frame"].setVisible(all(t in blob for t in terms))
-
-    @staticmethod
-    def _is_pkg_installed(root: Path, pkg: Dict[str, Any]) -> bool:
-        if not root.exists():
-            return False
-        target = root / pkg["target_subpath"]
-        if not target.exists():
-            return False
-        for f in pkg.get("check_files", []):
-            c1 = target / f
-            c2 = root / f
-            if (c1.is_file() and c1.stat().st_size > 0) or (c2.is_file() and c2.stat().st_size > 0):
-                return True
-        return False
-
-    def check_packages_status(self, errors: Optional[Dict[str, str]] = None) -> None:
-        raw = self.path_edit.text().strip()
-        if not raw:
-            path = Path(default_xtts_path())
-        else:
-            p = Path(raw)
-            path = (ROOT / p).resolve() if not p.is_absolute() else p
-        all_core_ok = True
-        has_any = False
-        errors = errors or {}
-        root_exists = path.exists()
-
-        for pkg in XTTS_PACKAGES:
-            pkg_id = pkg["id"]
-            w = self.pkg_widgets.get(pkg_id)
-            if not w:
-                continue
-            is_installed = root_exists and self._is_pkg_installed(path, pkg)
-            if is_installed:
-                has_any = True
-                if w.get("state") != "installed":
-                    w["state"] = "installed"
-                    w["status_badge"].setText("✓ Đã có")
-                    w["status_badge"].setStyleSheet(
-                        f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
-                        "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-                    )
-                    w["btn_dl"].setText("Tải lại")
-            elif pkg_id in errors:
-                if pkg.get("core"):
-                    all_core_ok = False
-                if w.get("state") != "error":
-                    w["state"] = "error"
-                    w["status_badge"].setText("Lỗi tải")
-                    w["status_badge"].setToolTip(f"Lỗi: {errors[pkg_id]}")
-                    w["status_badge"].setStyleSheet(
-                        f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
-                        "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-                    )
-                    w["btn_dl"].setText("Thử lại")
-            else:
-                if pkg.get("core"):
-                    all_core_ok = False
-                if w.get("state") != "missing":
-                    w["state"] = "missing"
-                    w["status_badge"].setText("Chưa tải")
-                    w["status_badge"].setStyleSheet(
-                        f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
-                        "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-                    )
-                    w["btn_dl"].setText("Tải về")
-
-        if not self._has_gpu:
-            self.status_badge.setText("Yêu cầu GPU")
-            self.status_badge.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.TEXT_MUTED}; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-            return
-
-        if path.exists() and all_core_ok:
-            self.status_badge.setText("Đã cài đủ")
-            self.status_badge.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-            self.btn_install.setText("🚀 Đã cài đủ phần bắt buộc")
-        elif path.exists() and has_any:
-            self.status_badge.setText("Thiếu gói")
-            self.status_badge.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-            self.btn_install.setText("🚀 Tải các phần bắt buộc (~1.87 GB)")
-        else:
-            self.status_badge.setText("Chưa cài")
-            self.status_badge.setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
-                "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-            )
-            self.btn_install.setText("🚀 Tải các phần bắt buộc (~1.87 GB)")
-
-    def _download_single_clicked(self, pkg: Dict[str, Any]) -> None:
-        self._start_download([pkg])
-
-    def _download_required_clicked(self) -> None:
-        required = [p for p in XTTS_PACKAGES if p.get("core")]
-        self._start_download(required)
-
-    def _start_download(self, pkgs: List[Dict[str, Any]]) -> None:
-        if not self._has_gpu:
-            return
-        if self._downloader is not None and self._downloader.isRunning():
-            return
-        root_path = self.path_edit.text().strip()
-        if not root_path:
-            paint_status(self.engine_status, "warning")
-            self.engine_status.setText("Vui lòng chọn thư mục cài đặt Coqui XTTS-v2 trước khi tải.")
-            return
-
-        self.progress_container.setVisible(True)
-        self.progress_bar.setValue(0)
-        self.lbl_progress.setText("Đang khởi tạo kết nối tải Coqui XTTS-v2…")
-        self.btn_cancel_dl.setText("Hủy")
-        self.btn_cancel_dl.setEnabled(True)
-        self.btn_install.setEnabled(False)
-
-        self._downloader = PiperDownloadWorker(root_path, pkgs, parent=self)
-        self._downloader.progress.connect(self._on_download_progress)
-        self._downloader.pkg_status_changed.connect(self._on_pkg_status_changed)
-        self._downloader.all_finished.connect(self._on_download_finished)
-        self._downloader.start()
-
-    def _on_download_progress(self, percent: int, text: str) -> None:
-        self.progress_bar.setValue(percent)
-        self.lbl_progress.setText(text)
-
-    def _on_pkg_status_changed(self, pkg_id: str, status_kind: str, text: str) -> None:
-        w = self.pkg_widgets.get(pkg_id)
-        if not w:
-            return
-        w["status_badge"].setText(text)
-        if status_kind == "downloading":
-            w["status_badge"].setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.BLUE}; "
-                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-            )
-        elif status_kind == "installed":
-            w["status_badge"].setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
-                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-            )
-            w["btn_dl"].setText("Tải lại")
-        elif status_kind == "error":
-            w["status_badge"].setStyleSheet(
-                f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
-                "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
-            )
-            w["btn_dl"].setText("Thử lại")
-
-    def _on_download_finished(self, success: bool, message: str) -> None:
-        errors = dict(getattr(self._downloader, "errors", {})) if self._downloader else {}
-        self._downloader = None
-        self.btn_install.setEnabled(True)
-        self.btn_cancel_dl.setText("Đóng")
-        self.btn_cancel_dl.setEnabled(True)
-        self.lbl_progress.setText(message)
-        paint_status(self.engine_status, "success" if success else "warning")
-        self.engine_status.setText(message)
-        self.check_packages_status(errors=errors)
-        self.changed.emit()
-
-    def _cancel_download_clicked(self) -> None:
-        if self._downloader and self._downloader.isRunning():
-            self._downloader.cancel()
-            self.lbl_progress.setText("Đang dừng tiến trình tải…")
-            self.btn_cancel_dl.setEnabled(False)
-        else:
-            self.progress_container.setVisible(False)
-
-    def apply_theme(self) -> None:
-        self.setStyleSheet(
-            f"QFrame#XTTSCard {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 8px; }}"
-        )
-        if hasattr(self, "downloads_box"):
-            self.downloads_box.setStyleSheet(
-                f"QFrame#DownloadsBox {{ background-color: {theme.SURFACE_ALT}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
-            )
-        if hasattr(self, "pkg_widgets"):
-            for w in self.pkg_widgets.values():
-                w["frame"].setStyleSheet(
-                    f"QFrame#PkgRow {{ background-color: {theme.SURFACE}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
-                )
-
-
 class GeneralSettingsPage(QWidget):
     """General application settings & tool paths."""
 
@@ -3536,23 +2673,7 @@ class GeneralSettingsPage(QWidget):
         piper_row.addWidget(btn_piper)
         paths_form.addRow("Thư mục PiperTTS", self._wrap(piper_row))
 
-        # F5-TTS / E2-TTS path
-        f5_row = QHBoxLayout()
-        self.f5tts_edit = QLineEdit(default_f5tts_path())
-        btn_f5 = icon_button("folder", "Chọn thư mục F5-TTS / E2-TTS", role="muted", size=14, side=30)
-        btn_f5.clicked.connect(lambda: self._browse_dir(self.f5tts_edit, "Chọn thư mục F5-TTS / E2-TTS"))
-        f5_row.addWidget(self.f5tts_edit, 1)
-        f5_row.addWidget(btn_f5)
-        paths_form.addRow("Thư mục F5-TTS", self._wrap(f5_row))
 
-        # Coqui XTTS-v2 path
-        xtts_row = QHBoxLayout()
-        self.xtts_edit = QLineEdit(default_xtts_path())
-        btn_xtts = icon_button("folder", "Chọn thư mục Coqui XTTS-v2", role="muted", size=14, side=30)
-        btn_xtts.clicked.connect(lambda: self._browse_dir(self.xtts_edit, "Chọn thư mục Coqui XTTS-v2"))
-        xtts_row.addWidget(self.xtts_edit, 1)
-        xtts_row.addWidget(btn_xtts)
-        paths_form.addRow("Thư mục XTTS-v2", self._wrap(xtts_row))
 
         # FFmpeg
         ff_row = QHBoxLayout()
@@ -3732,39 +2853,7 @@ class SettingsTab(QWidget):
         self.card_piper.path_edit.textChanged.connect(_sync_piper_from_card)
         self.general_page.piper_edit.textChanged.connect(_sync_piper_from_general)
 
-        # Two-way sync between General page and F5TTS card path inputs
-        def _sync_f5_from_card(text: str) -> None:
-            if self.general_page.f5tts_edit.text() != text:
-                self.general_page.f5tts_edit.blockSignals(True)
-                self.general_page.f5tts_edit.setText(text)
-                self.general_page.f5tts_edit.blockSignals(False)
 
-        def _sync_f5_from_general(text: str) -> None:
-            if self.card_f5tts.path_edit.text() != text:
-                self.card_f5tts.path_edit.blockSignals(True)
-                self.card_f5tts.path_edit.setText(text)
-                self.card_f5tts.path_edit.blockSignals(False)
-                self.card_f5tts.check_packages_status()
-
-        self.card_f5tts.path_edit.textChanged.connect(_sync_f5_from_card)
-        self.general_page.f5tts_edit.textChanged.connect(_sync_f5_from_general)
-
-        # Two-way sync between General page and XTTS card path inputs
-        def _sync_xtts_from_card(text: str) -> None:
-            if self.general_page.xtts_edit.text() != text:
-                self.general_page.xtts_edit.blockSignals(True)
-                self.general_page.xtts_edit.setText(text)
-                self.general_page.xtts_edit.blockSignals(False)
-
-        def _sync_xtts_from_general(text: str) -> None:
-            if self.card_xtts.path_edit.text() != text:
-                self.card_xtts.path_edit.blockSignals(True)
-                self.card_xtts.path_edit.setText(text)
-                self.card_xtts.path_edit.blockSignals(False)
-                self.card_xtts.check_packages_status()
-
-        self.card_xtts.path_edit.textChanged.connect(_sync_xtts_from_card)
-        self.general_page.xtts_edit.textChanged.connect(_sync_xtts_from_general)
 
         self.inner_tabs.addTab(api_wrapper, "API")
 
@@ -3859,15 +2948,7 @@ class SettingsTab(QWidget):
         self.card_piper.changed.connect(self._on_changed)
         layout.addWidget(self.card_piper)
 
-        # Local F5-TTS / E2-TTS (Yêu cầu GPU · Zero-Shot)
-        self.card_f5tts = F5TTSCard(parent=page)
-        self.card_f5tts.changed.connect(self._on_changed)
-        layout.addWidget(self.card_f5tts)
 
-        # Local Coqui XTTS-v2 (Yêu cầu GPU · Đa ngôn ngữ)
-        self.card_xtts = XTTSCard(parent=page)
-        self.card_xtts.changed.connect(self._on_changed)
-        layout.addWidget(self.card_xtts)
 
         layout.addStretch(1)
         self.api_tabs.addTab(wrap_scroll(page), "Giọng đọc")
@@ -3950,17 +3031,7 @@ class SettingsTab(QWidget):
             self.card_piper.path_edit.setText(piper_norm)
             self.card_piper.check_packages_status()
 
-            raw_f5 = str(paths.get("f5tts") or "").strip()
-            f5_norm = normalize_f5tts_path(raw_f5)
-            self.general_page.f5tts_edit.setText(f5_norm)
-            self.card_f5tts.path_edit.setText(f5_norm)
-            self.card_f5tts.refresh_gpu_status()
 
-            raw_xtts = str(paths.get("xtts") or "").strip()
-            xtts_norm = normalize_xtts_path(raw_xtts)
-            self.general_page.xtts_edit.setText(xtts_norm)
-            self.card_xtts.path_edit.setText(xtts_norm)
-            self.card_xtts.refresh_gpu_status()
 
             self.general_page.ffmpeg_edit.setText(str(paths.get("ffmpeg") or "ffmpeg"))
             self.general_page.ffprobe_edit.setText(str(paths.get("ffprobe") or "ffprobe"))
@@ -4065,33 +3136,7 @@ class SettingsTab(QWidget):
         except Exception:
             paths["piper"] = piper_norm
 
-        f5_val = self.card_f5tts.path_edit.text().strip() or self.general_page.f5tts_edit.text().strip()
-        f5_norm = normalize_f5tts_path(f5_val)
-        try:
-            f5_p = Path(f5_norm).resolve()
-            root_p = ROOT.resolve()
-            if f5_p == (root_p / "F5TTS").resolve():
-                paths["f5tts"] = "F5TTS"
-            elif f5_p == (root_p / "tts" / "F5TTS").resolve():
-                paths["f5tts"] = "tts/F5TTS"
-            else:
-                paths["f5tts"] = f5_norm
-        except Exception:
-            paths["f5tts"] = f5_norm
 
-        xtts_val = self.card_xtts.path_edit.text().strip() or self.general_page.xtts_edit.text().strip()
-        xtts_norm = normalize_xtts_path(xtts_val)
-        try:
-            xtts_p = Path(xtts_norm).resolve()
-            root_p = ROOT.resolve()
-            if xtts_p == (root_p / "XTTS").resolve():
-                paths["xtts"] = "XTTS"
-            elif xtts_p == (root_p / "tts" / "XTTS").resolve():
-                paths["xtts"] = "tts/XTTS"
-            else:
-                paths["xtts"] = xtts_norm
-        except Exception:
-            paths["xtts"] = xtts_norm
 
         paths["ffmpeg"] = self.general_page.ffmpeg_edit.text().strip() or "ffmpeg"
         paths["ffprobe"] = self.general_page.ffprobe_edit.text().strip() or "ffprobe"
@@ -4142,10 +3187,7 @@ class SettingsTab(QWidget):
             self.card_h2mtts.apply_theme()
         if hasattr(self, "card_piper"):
             self.card_piper.apply_theme()
-        if hasattr(self, "card_f5tts"):
-            self.card_f5tts.apply_theme()
-        if hasattr(self, "card_xtts"):
-            self.card_xtts.apply_theme()
+
         if hasattr(self, "card_cloudflare_image"):
             self.card_cloudflare_image.apply_theme()
 

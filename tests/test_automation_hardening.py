@@ -167,28 +167,19 @@ def test_tts_config_tab_clean_names_and_layout(qapp):
     assert not tts_tab.region_container.isHidden()
     assert tts_tab.lang_container.isHidden()
 
-    # Switch to EdgeTTS / F5-TTS: language visible, region hidden
-    tts_tab.provider_combo.setCurrentIndex(tts_tab.provider_combo.findData("f5tts"))
+    # Switch to EdgeTTS: language visible, region hidden, gender visible
+    tts_tab.provider_combo.setCurrentIndex(tts_tab.provider_combo.findData("edge"))
     assert tts_tab.region_container.isHidden()
     assert not tts_tab.lang_container.isHidden()
     assert tts_tab.language_combo.count() > 1
     assert not tts_tab.gender_combo.isHidden()
+
+    # Switch to PiperTTS: language visible, gender hidden, row label becomes "Ngôn ngữ"
+    tts_tab.provider_combo.setCurrentIndex(tts_tab.provider_combo.findData("piper"))
+    assert tts_tab.region_container.isHidden()
+    assert not tts_tab.lang_container.isHidden()
+    assert tts_tab.gender_combo.isHidden()
+    assert tts_tab.gender_label.text() == "Ngôn ngữ"
     tts_tab.close()
 
-
-def test_f5tts_ref_audio_and_samples_integration(tmp_path: Path):
-    """Verify F5-TTS reference voices and transcripts are correctly loaded."""
-    from core.piper_tts_engine import F5TTSEngine, F5_REF_SAMPLES
-
-    mock_dir = tmp_path / "f5_test"
-    mock_dir.mkdir(parents=True, exist_ok=True)
-    eng = F5TTSEngine({"paths": {"f5tts": str(mock_dir)}})
-    assert len(F5_REF_SAMPLES) >= 18
-
-    # Verify voice sample generation method creates wav and txt
-    eng.ensure_voice_sample("Christopher_Male")
-    v_dir = mock_dir / "voices"
-    assert (v_dir / "Christopher_Male.txt").is_file()
-    txt = (v_dir / "Christopher_Male.txt").read_text(encoding="utf-8")
-    assert "ocean" in txt
 

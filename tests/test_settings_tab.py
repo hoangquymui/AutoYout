@@ -431,11 +431,11 @@ def test_dubbing_language_subtab_and_routing(app, tmp_path: Path) -> None:
     assert list(dub_tab.lang_engine_combos.keys()) == ["vi", "en", "ja"]
     assert "hi" not in dub_tab.lang_engine_combos
 
-    # Check Vietnamese and English have H2MTTS / EdgeTTS / PiperTTS / F5-TTS & E2-TTS / Coqui XTTS-v2 options
+    # Check Vietnamese and English have H2MTTS / EdgeTTS / PiperTTS options
     for lang_code in ("vi", "en"):
         combo = dub_tab.lang_engine_combos[lang_code]
         options = [combo.itemData(i) for i in range(combo.count())]
-        assert options == ["h2mtts", "edge", "piper", "f5tts", "xtts"]
+        assert options == ["h2mtts", "edge", "piper"]
 
     # Point to an empty Piper directory so PiperTTS is not installed
     empty_piper = tmp_path / "empty_piper"
@@ -512,9 +512,9 @@ def test_full_edge_piper_catalog_search_and_tts_config_tab(app, tmp_path: Path) 
     assert tts_tab.run_with_box.title() == "Chạy với"
     assert tts_tab.pacing_box.title() == "Nhịp đọc"
 
-    # Check Model providers (H2MTTS, EdgeTTS, PiperTTS, F5-TTS / E2-TTS, Coqui XTTS-v2)
+    # Check Model providers (H2MTTS, EdgeTTS, PiperTTS)
     providers = [tts_tab.provider_combo.itemData(i) for i in range(tts_tab.provider_combo.count())]
-    assert providers == ["h2mtts", "edge", "piper", "f5tts", "xtts"]
+    assert providers == ["h2mtts", "edge", "piper"]
 
     # Check Chạy với options (Tự động, GPU, CPU)
     backends = [tts_tab.backend_combo.itemData(i) for i in range(tts_tab.backend_combo.count())]
@@ -534,155 +534,134 @@ def test_full_edge_piper_catalog_search_and_tts_config_tab(app, tmp_path: Path) 
     assert "Chưa cài đặt" in tts_tab.voice_combo.currentText()
 
 
-def test_f5tts_e2tts_gpu_detection_enables_or_dims(app) -> None:
-    from core.piper_tts_engine import set_gpu_override
+def test_h2mtts_piper_trash_and_clean_buttons(app, tmp_path: Path) -> None:
+    """Verify that H2MTTSCard and PiperTTSCard have trash buttons to delete models and clean temp files."""
+    from ui.tab_settings import H2MTTSCard, PiperTTSCard, PIPER_PACKAGES, H2M_PACKAGES
+    from ui.tab_tts import TTSConfigTab, _PreviewWorker
+
+    # 1. Test PiperTTS trash button and file deletion
+    mock_piper = tmp_path / "mock_piper"
+    mock_piper.mkdir(parents=True, exist_ok=True)
+    models_dir = mock_piper / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create dummy files for alan-low model
+    alan_onnx = models_dir / "en_GB-alan-low.onnx"
+    alan_json = models_dir / "en_GB-alan-low.onnx.json"
+    alan_onnx.write_text("dummy onnx")
+    alan_json.write_text("dummy json")
+    assert alan_onnx.is_file()
+    assert alan_json.is_file()
+
+    # Also create a .tmp and .part file
+    (mock_piper / "download.part").write_text("partial")
+    (mock_piper / "cache.tmp").write_text("temp")
+
+    piper_card = PiperTTSCard()
+    piper_card.path_edit.setText(str(mock_piper))
+    piper_card.check_packages_status()
+
+    # Verify alan pkg shows "Đã có" and trash button is visible
+    alan_pkg_id = "piper_en_GB-alan-low"
+    assert alan_pkg_id in piper_card.pkg_widgets
+    alan_widget = piper_card.pkg_widgets[alan_pkg_id]
+    assert "Đã có" in alan_widget["status_badge"].text()
+    assert not alan_widget["btn_trash"].isHidden()
+
+    # Call _delete_pkg_files directly
+    pkg_def = next(p for p in PIPER_PACKAGES if p["id"] == alan_pkg_id)
+    piper_card._delete_pkg_files(mock_piper, pkg_def)
+    assert not alan_onnx.exists()
+    assert not alan_json.exists()
+
+    # After deletion and check_packages_status -> status is "Chưa tải", trash button hidden
+    piper_card.check_packages_status()
+    assert "Chưa tải" in alan_widget["status_badge"].text()
+    assert alan_widget["btn_trash"].isHidden()
+
+    # Test clean engine button exists
+    assert hasattr(piper_card, "btn_clean_engine")
+    assert "Dọn dẹp" in piper_card.btn_clean_engine.text()
+
+    # 2. Test H2MTTS trash button and clean button
+    mock_h2m = tmp_path / "mock_h2m"
+    mock_h2m.mkdir(parents=True, exist_ok=True)
+    turbo_dir = mock_h2m / "models" / "H2M-TTS-v3-Turbo"
+    turbo_dir.mkdir(parents=True, exist_ok=True)
+    for f in ["vieneu-v3-turbo-q8_0.gguf", "sea_g2p.bin", "denoiser.onnx", "onnx_int8", "update"]:
+        (turbo_dir / f).write_text("dummy")
+
+    h2m_card = H2MTTSCard()
+    h2m_card.path_edit.setText(str(mock_h2m))
+    h2m_card.check_packages_status()
+    assert hasattr(h2m_card, "btn_clean_engine")
+    assert "Dọn dẹp" in h2m_card.btn_clean_engine.text()
+
+    h2m_pkg_id = "turbo"
+    assert h2m_pkg_id in h2m_card.pkg_widgets
+    h2m_widget = h2m_card.pkg_widgets[h2m_pkg_id]
+    assert "Đã có" in h2m_widget["status_badge"].text()
+    assert not h2m_widget["btn_trash"].isHidden()
+
+    # Delete H2M package files
+    h2m_pkg_def = next(p for p in H2M_PACKAGES if p["id"] == h2m_pkg_id)
+    h2m_card._delete_pkg_files(mock_h2m, h2m_pkg_def)
+    assert not (turbo_dir / "vieneu-v3-turbo-q8_0.gguf").exists()
+    h2m_card.check_packages_status()
+    assert "Chưa tải" in h2m_widget["status_badge"].text()
+    assert h2m_widget["btn_trash"].isHidden()
+
+    # 3. Verify _PreviewWorker can be constructed via keyword arguments without TypeError
+    tts_tab = TTSConfigTab()
+    worker = _PreviewWorker(
+        {},
+        "I am Hoang Quy Mui, tester of this program",
+        provider="piper",
+        voice="en_GB-alan-low",
+        parent=tts_tab,
+    )
+    assert worker._provider == "piper"
+    assert worker._voice == "en_GB-alan-low"
+
+
+def test_piper_model_filtering_and_no_edge_fallback(app, tmp_path: Path) -> None:
+    """Verify that only downloaded Piper models appear, and Piper never falls back to Edge."""
+    from core.language_profiles import LanguageProfile
+    from core.piper_tts_engine import PiperTTSEngine
     from ui.tab_dubbing import DubbingTab
-    from ui.tab_settings import F5TTSCard, XTTSCard
-    from ui.tab_tts import TTSConfigTab
 
-    try:
-        # 1. Simulate NO GPU -> F5TTSCard & XTTSCard are dimmed & disabled, combo items are disabled
-        set_gpu_override(False, "Chỉ có CPU")
-        f5_card = F5TTSCard()
-        assert f5_card.is_gpu_enabled() is False
-        assert f5_card.body_widget.isEnabled() is False
-        assert f5_card._opacity_effect.opacity() < 1.0
-        assert "Yêu cầu GPU" in f5_card.status_badge.text()
+    mock_piper = tmp_path / "mock_piper"
+    mock_piper.mkdir(parents=True, exist_ok=True)
+    models_dir = mock_piper / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
 
-        xtts_card = XTTSCard()
-        assert xtts_card.is_gpu_enabled() is False
-        assert xtts_card.body_widget.isEnabled() is False
-        assert xtts_card._opacity_effect.opacity() < 1.0
-        assert "Yêu cầu GPU" in xtts_card.status_badge.text()
+    # Put only vi_VN-25hours_single-low
+    vi_onnx = models_dir / "vi_VN-25hours_single-low.onnx"
+    vi_json = models_dir / "vi_VN-25hours_single-low.onnx.json"
+    vi_onnx.write_text("onnx")
+    vi_json.write_text("{}")
 
-        tts_tab = TTSConfigTab()
-        f5_idx = tts_tab.provider_combo.findData("f5tts")
-        xtts_idx = tts_tab.provider_combo.findData("xtts")
-        assert tts_tab.provider_combo.model().item(f5_idx).isEnabled() is False
-        assert tts_tab.provider_combo.model().item(xtts_idx).isEnabled() is False
+    p_eng = PiperTTSEngine({"paths": {"piper": str(mock_piper)}})
+    installed = p_eng.installed_voices()
+    assert len(installed) == 1
+    assert "25hours_single-low" in installed[0][1]
 
-        dub_tab = DubbingTab()
-        vi_combo = dub_tab.lang_engine_combos["vi"]
-        vi_f5_idx = vi_combo.findData("f5tts")
-        vi_xtts_idx = vi_combo.findData("xtts")
-        assert vi_combo.model().item(vi_f5_idx).isEnabled() is False
-        assert vi_combo.model().item(vi_xtts_idx).isEnabled() is False
+    # Vietnamese voices should have 1 voice
+    vi_voices = p_eng.installed_voices("vi")
+    assert len(vi_voices) == 1
 
-        # 2. Simulate GPU present -> F5TTSCard & XTTSCard are enabled & normal opacity, combo items are enabled
-        set_gpu_override(True, "NVIDIA RTX 4090 · 24.0 GB")
-        f5_card.refresh_gpu_status()
-        assert f5_card.is_gpu_enabled() is True
-        assert f5_card.body_widget.isEnabled() is True
-        assert f5_card._opacity_effect.opacity() == 1.0
+    # Japanese voices should be empty (NOT fall back to Edge)
+    ja_voices = p_eng.installed_voices("ja")
+    assert len(ja_voices) == 0
 
-        xtts_card.refresh_gpu_status()
-        assert xtts_card.is_gpu_enabled() is True
-        assert xtts_card.body_widget.isEnabled() is True
-        assert xtts_card._opacity_effect.opacity() == 1.0
+    # In DubbingTab, Japanese row with Piper must show warning "Chưa tải model"
+    dub_tab = DubbingTab()
+    dub_tab.sync_languages([LanguageProfile("ja", "prompt ja", name="Tiếng Nhật")])
+    dub_tab.load_from({"paths": {"piper": str(mock_piper)}})
+    dub_tab.lang_engine_combos["ja"].setCurrentIndex(dub_tab.lang_engine_combos["ja"].findData("piper"))
+    ja_text = dub_tab.lang_voice_combos["ja"].currentText()
+    assert "Chưa tải model" in ja_text or "Chưa cài đặt" in ja_text
 
-        tts_tab.refresh_gpu_state()
-        assert tts_tab.provider_combo.model().item(f5_idx).isEnabled() is True
-        assert tts_tab.provider_combo.model().item(xtts_idx).isEnabled() is True
-
-        dub_tab.sync_languages()
-        vi_combo2 = dub_tab.lang_engine_combos["vi"]
-        vi_f5_idx2 = vi_combo2.findData("f5tts")
-        vi_xtts_idx2 = vi_combo2.findData("xtts")
-        assert vi_combo2.model().item(vi_f5_idx2).isEnabled() is True
-        assert vi_combo2.model().item(vi_xtts_idx2).isEnabled() is True
-
-        # 3. Check Male (Nam) & Female (Nữ) voices for F5-TTS / E2-TTS and Coqui XTTS-v2
-        tts_tab.provider_combo.setCurrentIndex(tts_tab.provider_combo.findData("f5tts"))
-        f5_all_labels = [tts_tab.voice_combo.itemText(i) for i in range(tts_tab.voice_combo.count())]
-        assert any("Nữ" in lbl for lbl in f5_all_labels)
-        assert any("Nam" in lbl for lbl in f5_all_labels)
-
-        # Filter by Nữ
-        tts_tab.gender_combo.setCurrentIndex(tts_tab.gender_combo.findData("Nữ"))
-        f5_female_labels = [tts_tab.voice_combo.itemText(i) for i in range(tts_tab.voice_combo.count())]
-        assert len(f5_female_labels) > 0
-        assert all("Nữ" in lbl for lbl in f5_female_labels)
-
-        # Filter by Nam on Coqui XTTS-v2
-        tts_tab.provider_combo.setCurrentIndex(tts_tab.provider_combo.findData("xtts"))
-        tts_tab.gender_combo.setCurrentIndex(tts_tab.gender_combo.findData("Nam"))
-        xtts_male_labels = [tts_tab.voice_combo.itemText(i) for i in range(tts_tab.voice_combo.count())]
-        assert len(xtts_male_labels) > 0
-        assert all("Nam" in lbl for lbl in xtts_male_labels)
-
-        # 4. Verify _PreviewWorker can be constructed via keyword arguments without TypeError
-        from ui.tab_tts import _PreviewWorker
-        worker = _PreviewWorker(
-            {},
-            "I am Hoang Quy Mui, tester of this program",
-            provider="piper",
-            voice="en_GB-alan-low",
-            parent=tts_tab,
-        )
-        assert worker._provider == "piper"
-        assert worker._voice == "en_GB-alan-low"
-    finally:
-        set_gpu_override(None)
-
-
-def test_strict_model_filtering_and_no_edge_fallback(app, tmp_path) -> None:
-    """Verify that only downloaded model checkpoints appear, and F5/XTTS never fall back to Edge."""
-    from core.piper_tts_engine import F5TTSEngine, XTTSEngine, set_gpu_override
-    from ui.tab_dubbing import DubbingTab
-    from ui.tab_tts import TTSConfigTab
-
-    try:
-        set_gpu_override(True, "Quadro P2200 · 5.0 GB")
-
-        # 1. Custom mock root with ONLY F5TTS_v1_Base (no Vietnamese, no E2-TTS)
-        mock_f5 = tmp_path / "mock_f5"
-        (mock_f5 / "models" / "F5TTS_v1_Base").mkdir(parents=True, exist_ok=True)
-        (mock_f5 / "models" / "F5TTS_v1_Base" / "model_1250000.safetensors").write_text("dummy")
-
-        f5_eng = F5TTSEngine({"paths": {"f5tts": str(mock_f5)}})
-        installed = f5_eng.installed_voices()
-        installed_ids = [vid for _, vid in installed]
-        # Only F5TTS_v1_Base voices should exist
-        assert len(installed) == 4
-        assert all(vid.startswith("F5TTS_v1_Base::") for vid in installed_ids)
-        # Vietnamese voices must NOT be returned!
-        vi_voices = f5_eng.installed_voices("vi")
-        assert len(vi_voices) == 0
-
-        # In TTSConfigTab, loading this mock path should show only Emma, Clara, Liam, Ryan
-        tts_tab = TTSConfigTab()
-        tts_tab.load_from({"paths": {"f5tts": str(mock_f5)}, "tts": {"provider": "f5tts"}})
-        f5_labels = [tts_tab.voice_combo.itemText(i) for i in range(tts_tab.voice_combo.count())]
-        assert len(f5_labels) == 4
-        assert not any("Ngọc Ánh" in lbl for lbl in f5_labels)
-        assert not any("Thanh Hà" in lbl for lbl in f5_labels)
-
-        # In DubbingTab, Vietnamese row with F5-TTS must show warning "Chưa tải model F5-TTS cho Tiếng Việt"
-        dub_tab = DubbingTab()
-        dub_tab.load_from({"paths": {"f5tts": str(mock_f5)}})
-        dub_tab.lang_engine_combos["vi"].setCurrentIndex(dub_tab.lang_engine_combos["vi"].findData("f5tts"))
-        vi_text = dub_tab.lang_voice_combos["vi"].currentText()
-        assert "Chưa tải model F5-TTS cho Tiếng Việt" in vi_text
-
-        # 2. Custom mock root with ONLY XTTS_v2 (no viXTTS)
-        mock_xtts = tmp_path / "mock_xtts"
-        (mock_xtts / "models" / "XTTS_v2").mkdir(parents=True, exist_ok=True)
-        (mock_xtts / "models" / "XTTS_v2" / "model.pth").write_text("dummy")
-
-        xtts_eng = XTTSEngine({"paths": {"xtts": str(mock_xtts)}})
-        installed_xtts = xtts_eng.installed_voices()
-        assert len(installed_xtts) == 14  # Only 14 studio speakers
-        assert all(vid.startswith("XTTS_v2::") for _, vid in installed_xtts)
-        # Vietnamese viXTTS voices must NOT be returned!
-        assert len(xtts_eng.installed_voices("vi")) == 0
-
-        # In DubbingTab, Vietnamese row with XTTS must show warning "Chưa tải model Coqui XTTS cho Tiếng Việt"
-        dub_tab.load_from({"paths": {"xtts": str(mock_xtts)}})
-        dub_tab.lang_engine_combos["vi"].setCurrentIndex(dub_tab.lang_engine_combos["vi"].findData("xtts"))
-        vi_xtts_text = dub_tab.lang_voice_combos["vi"].currentText()
-        assert "Chưa tải model Coqui XTTS cho Tiếng Việt" in vi_xtts_text
-    finally:
-        set_gpu_override(None)
 
 
 

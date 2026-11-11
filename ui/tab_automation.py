@@ -729,7 +729,11 @@ class AutomationTab(QWidget):
     def set_topic_name(self, topic: str) -> None:
         self.topic_input.setText(str(topic or "").strip())
 
-    def sync_languages(self, profiles: Optional[List[Any]] = None) -> None:
+    def sync_languages(
+        self,
+        profiles: Optional[List[Any]] = None,
+        extra_codes: Optional[Iterable[str]] = None,
+    ) -> None:
         checked_before = {
             code: cb.isChecked() for code, cb in self._lang_checkboxes.items()
         }
@@ -748,6 +752,15 @@ class AutomationTab(QWidget):
                 seen.add(code)
                 custom = getattr(prof, "name", "") or language_name(code)
                 label = f"{custom} ({code})" if code not in custom else custom
+                items.append((code, label))
+
+        if extra_codes:
+            for raw_c in extra_codes:
+                code = normalize_language_code(str(raw_c or ""), "")
+                if not code or code in seen:
+                    continue
+                seen.add(code)
+                label = f"{language_name(code)} ({code})"
                 items.append((code, label))
 
         while self.lang_checkboxes_layout.count():
@@ -874,8 +887,6 @@ class AutomationTab(QWidget):
         self.card_thumbnail.set_step_enabled(bool(auto.get("thumbnail_enabled", True)))
         self.card_upload.set_step_enabled(bool(auto.get("upload_enabled", True)))
 
-        self.sync_languages()
-
         target_langs = auto.get("target_languages")
         script_langs = (settings.get("script") or {}).get("languages")
 
@@ -886,6 +897,9 @@ class AutomationTab(QWidget):
                     codes_from_script.append(item)
                 elif isinstance(item, dict) and "language" in item:
                     codes_from_script.append(item["language"])
+
+        extra = list(target_langs or []) + codes_from_script
+        self.sync_languages(extra_codes=extra)
 
         if target_langs is not None and isinstance(target_langs, list):
             self.set_target_languages(target_langs)
