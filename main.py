@@ -7,7 +7,11 @@ import logging
 import os
 import sys
 import traceback
+import warnings
 from pathlib import Path
+
+# Suppress benign future deprecation warnings (e.g. google.api_core python version notices)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Provide safe dummy stream when stdout/stderr are None (e.g. in PyInstaller windowed apps)
 class _SafeStream(io.StringIO):

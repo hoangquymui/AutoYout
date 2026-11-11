@@ -8,8 +8,11 @@ import subprocess
 import sys
 import tempfile
 import time
+import warnings
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 try:
     import torch
