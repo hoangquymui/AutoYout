@@ -23,6 +23,7 @@ from core.edge_tts_engine import EdgeTTSEngine
 from core.piper_tts_engine import (
     PiperTTSEngine,
     resolve_tts_engine_for_language,
+    resolve_voice_for_language_engine,
 )
 from core.ffmpeg_renderer import (
     FFmpegRenderer,
@@ -629,9 +630,13 @@ class PipelineWorker(QThread):
                     language = language_of(item)
                     eng_choice = engine_of(item)
                     if eng_choice == "h2mtts" and local_engine is not None:
+                        h2m_voice = resolve_voice_for_language_engine(
+                            self.settings, language, "h2mtts"
+                        ) or None
                         result = local_engine.synthesize(
                             item.text,
                             item.audio_path,
+                            voice=h2m_voice,
                             progress_cb=report,
                             message_cb=lambda msg: self.status_changed.emit(msg, True),
                             pause_cb=self.is_paused,

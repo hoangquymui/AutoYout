@@ -60,6 +60,7 @@ class _PreviewWorker(QThread):
         text: str,
         provider: str = "h2mtts",
         voice: str = "",
+        language: str = "",
         parent=None,
         **kwargs,
     ) -> None:
@@ -68,6 +69,7 @@ class _PreviewWorker(QThread):
         self._text = text
         self._provider = provider
         self._voice = voice
+        self._language = str(language or "").strip().lower()
         self._cancel = threading.Event()
 
     def cancel(self) -> None:
@@ -86,11 +88,13 @@ class _PreviewWorker(QThread):
             stamp = datetime.now().strftime("%H%M%S_%f")
             out_path = out_dir / f"preview_{stamp}.mp3"
             if self._provider in ("edge", "piper"):
-                lang = "vi"
-                if self._voice and "-" in self._voice and "_" not in self._voice:
-                    lang = self._voice.split("-")[0].lower()
-                elif self._voice and "_" in self._voice and self._provider == "piper":
-                    lang = self._voice.split("_")[0].lower()
+                lang = self._language
+                if not lang:
+                    lang = "vi"
+                    if self._voice and "-" in self._voice and "_" not in self._voice:
+                        lang = self._voice.split("-")[0].lower()
+                    elif self._voice and "_" in self._voice and self._provider == "piper":
+                        lang = self._voice.split("_")[0].lower()
                 engine.synthesize(
                     self._text,
                     out_path,
@@ -487,13 +491,21 @@ class TTSConfigTab(QWidget):
         except Exception:
             paths["h2mtts"] = h2_norm
         tts = settings.setdefault("tts", {})
-        tts["provider"] = self.provider_combo.currentData() or "h2mtts"
+        provider = str(self.provider_combo.currentData() or "h2mtts")
+        lang = str(self.language_combo.currentData() or "vi").strip().lower() or "vi"
+        tts["provider"] = provider
         tts["engine"] = self.engine_combo.currentData() or "turbo"
         tts["backend"] = self.backend_combo.currentData() or "auto"
-        tts["language"] = self.language_combo.currentData() or "vi"
+        tts["language"] = lang
         voice = self.voice_combo.currentData()
         if voice:
-            tts["voice"] = voice
+            if provider == "piper":
+                tts.setdefault("piper_voices", {})[lang] = voice
+            elif provider == "edge":
+                tts.setdefault("edge_voices", {})[lang] = voice
+            else:
+                tts["voice"] = voice
+                tts.setdefault("h2m_voices", {})[lang] = voice
         tts["speed"] = round(float(self.speed_spin.value()), 3)
         tts["gap_sentence"] = round(float(self.gap_sentence_spin.value()), 2)
         tts["gap_paragraph"] = round(float(self.gap_paragraph_spin.value()), 2)
@@ -653,7 +665,18 @@ class TTSConfigTab(QWidget):
         self.voice_combo.blockSignals(False)
         preferred = current
         if not preferred and self._settings:
-            preferred = str((self._settings.get("tts") or {}).get("voice") or "")
+            tts_cfg = self._settings.get("tts") or {}
+            eff_lang = lang_filter or "vi"
+            if provider == "piper":
+                preferred = str((tts_cfg.get("piper_voices") or {}).get(eff_lang) or "")
+            elif provider == "edge":
+                preferred = str((tts_cfg.get("edge_voices") or {}).get(eff_lang) or "")
+            else:
+                preferred = str(
+                    (tts_cfg.get("h2m_voices") or {}).get(eff_lang)
+                    or tts_cfg.get("voice")
+                    or ""
+                )
         if not preferred and provider == "h2mtts" and self._engine is not None:
             preferred = self._engine.default_voice(self.engine_combo.currentData() or "turbo")
         if preferred:
@@ -729,6 +752,7 @@ class TTSConfigTab(QWidget):
             self.preview_status.setText("Đoạn nghe thử đã được rút còn 600 ký tự.")
         voice_data = str(self.voice_combo.currentData() or "")
         provider = str(self.provider_combo.currentData() or "h2mtts")
+        lang_data = str(self.language_combo.currentData() or "vi").strip().lower() or "vi"
         if not voice_data:
             self.preview_status.setText("Chưa có giọng đọc khả dụng.")
             paint_status(self.preview_status, "warning")
@@ -740,6 +764,7 @@ class TTSConfigTab(QWidget):
             text,
             provider=provider,
             voice=voice_data,
+            language=lang_data,
             parent=self,
         )
         self._worker.progress.connect(self._on_preview_progress)

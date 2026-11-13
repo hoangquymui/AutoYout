@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import warnings
+import wave
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -334,6 +335,7 @@ class PiperTTSEngine:
             tts = {}
         self.root = Path(normalize_piper_path(paths.get("piper") or default_piper_path()))
         self.ffmpeg = resolve_tool(str(paths.get("ffmpeg") or "ffmpeg"), "ffmpeg")
+        self.ffprobe = resolve_tool(str(paths.get("ffprobe") or "ffprobe"), "ffprobe")
         self.bitrate = str(tts.get("bitrate") or "192k")
         try:
             self.default_speed = float(tts.get("speed", 1.0) or 1.0)
@@ -502,8 +504,8 @@ class PiperTTSEngine:
         pause_cb: PauseCb = None,
         cancel_cb: CancelCb = None,
     ) -> SynthResult:
-        clean_text = " ".join(str(text or "").split())
-        if not clean_text:
+        raw_text = str(text or "").strip()
+        if not raw_text:
             raise TTSError("Văn bản rỗng, không có gì để đọc.")
 
         code = normalize_language(language)
@@ -512,12 +514,19 @@ class PiperTTSEngine:
         # Tiền xử lý tiếng Nhật: Chuyển đổi Hán tự (Kanji) sang Hiragana bằng pykakasi.
         # Piper C++ binary không nhúng OpenJTalk/MeCab nên espeak-ng sẽ đánh vần chữ Hán
         # thành "Chinese letter" thay vì phát âm tiếng Nhật chuẩn xác.
-        if (code == "ja" or chosen_voice.startswith(("ja_", "ja-"))) and clean_text:
+        if (code == "ja" or chosen_voice.startswith(("ja_", "ja-"))) and raw_text:
             try:
                 import pykakasi
                 kks = pykakasi.kakasi()
-                conv = kks.convert(clean_text)
-                clean_text = "".join(item["hira"] for item in conv)
+                converted_lines: List[str] = []
+                for line in raw_text.splitlines():
+                    stripped = line.strip()
+                    if not stripped:
+                        converted_lines.append("")
+                    else:
+                        conv = kks.convert(stripped)
+                        converted_lines.append("".join(item["hira"] for item in conv))
+                raw_text = "\n".join(converted_lines).strip()
             except Exception as exc:
                 logger.warning("Không thể chuyển đổi Kanji sang Hiragana: %s", exc)
 
@@ -546,8 +555,36 @@ class PiperTTSEngine:
                     "Vui lòng vào Cài đặt → API → Giọng đọc để tải lại model."
                 )
 
+        tts_cfg = (
+            self.settings.get("tts")
+            if isinstance(self.settings, dict) and isinstance(self.settings.get("tts"), dict)
+            else {}
+        )
+        try:
+            cfg_max_chars = int(tts_cfg.get("max_chars", 350) or 350)
+        except (TypeError, ValueError):
+            cfg_max_chars = 350
+        eff_max_chars = max(200, min(900, cfg_max_chars))
+        try:
+            gap_sentence = max(0.0, float(tts_cfg.get("gap_sentence", 0.3) or 0.0))
+        except (TypeError, ValueError):
+            gap_sentence = 0.3
+        try:
+            gap_paragraph = max(0.0, float(tts_cfg.get("gap_paragraph", 0.8) or 0.0))
+        except (TypeError, ValueError):
+            gap_paragraph = 0.8
+
         chunks = [
-            c.text for c in chunk_text(clean_text, min_chars=250, max_chars=900) if c.text.strip()
+            c
+            for c in chunk_text(
+                raw_text,
+                min_chars=min(200, eff_max_chars),
+                max_chars=eff_max_chars,
+                gap_sentence=gap_sentence,
+                gap_paragraph=gap_paragraph,
+                gap_inner=min(0.15, gap_sentence),
+            )
+            if c.text.strip()
         ]
         if not chunks:
             raise TTSError("Văn bản rỗng sau khi chia đoạn.")
@@ -565,7 +602,11 @@ class PiperTTSEngine:
         temp_dir = Path(tempfile.mkdtemp(prefix="ay_piper_", dir=str(target.parent)))
 
         try:
-            wav_parts: List[Path] = []
+            concat_parts: List[Path] = []
+            cues_list: List[Tuple[float, float, str]] = []
+            cursor_time = 0.0
+            detected_rate = 22050
+
             for idx, chunk in enumerate(chunks):
                 while pause_cb and pause_cb():
                     if cancel_cb and cancel_cb():
@@ -589,7 +630,7 @@ class PiperTTSEngine:
                     cmd.extend(["--espeak_data", str(espeak_dir)])
                 proc = subprocess.run(
                     cmd,
-                    input=chunk.encode("utf-8"),
+                    input=chunk.text.encode("utf-8"),
                     cwd=str(binary.parent),
                     capture_output=True,
                     timeout=120,
@@ -598,21 +639,79 @@ class PiperTTSEngine:
                 if proc.returncode != 0 or not part_wav.is_file() or part_wav.stat().st_size == 0:
                     err = proc.stderr.decode("utf-8", errors="replace")[:300]
                     raise TTSError(f"PiperTTS lỗi tạo audio đoạn {idx + 1}: {err}")
-                wav_parts.append(part_wav)
+
+                wav_dur = 0.0
+                wav_ch = 1
+                wav_sw = 2
+                try:
+                    with wave.open(str(part_wav), "rb") as wf:
+                        detected_rate = wf.getframerate() or 22050
+                        wav_ch = wf.getnchannels() or 1
+                        wav_sw = wf.getsampwidth() or 2
+                        wav_dur = wf.getnframes() / float(detected_rate)
+                except Exception:
+                    wav_dur = probe_duration(part_wav, self.ffprobe)
+
+                if wav_dur > 0:
+                    cues_list.append((cursor_time, cursor_time + wav_dur, chunk.text.strip()))
+                    cursor_time += wav_dur
+
+                concat_parts.append(part_wav)
+
+                if idx < len(chunks) - 1 and chunk.gap_after > 0:
+                    sil_wav = temp_dir / f"silence_{idx:04d}.wav"
+                    n_frames = max(1, int(round(chunk.gap_after * detected_rate)))
+                    try:
+                        with wave.open(str(sil_wav), "wb") as swf:
+                            swf.setnchannels(wav_ch)
+                            swf.setsampwidth(wav_sw)
+                            swf.setframerate(detected_rate)
+                            swf.writeframes(b"\x00" * (n_frames * wav_ch * wav_sw))
+                        concat_parts.append(sil_wav)
+                        cursor_time += n_frames / float(detected_rate)
+                    except Exception as exc:
+                        logger.warning("Không tạo được khoảng nghỉ PiperTTS: %s", exc)
+
                 if progress_cb:
                     progress_cb(int(round(100 * (idx + 1) / len(chunks))))
 
-            if len(wav_parts) == 1 and target.suffix.lower() == ".wav":
-                os.replace(wav_parts[0], target)
+            if len(concat_parts) == 1 and target.suffix.lower() == ".wav":
+                os.replace(concat_parts[0], target)
+            elif len(concat_parts) == 1:
+                cmd_ff = [
+                    self.ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(concat_parts[0]),
+                ]
+                if target.suffix.lower() == ".mp3":
+                    cmd_ff.extend(["-c:a", "libmp3lame", "-b:a", self.bitrate])
+                cmd_ff.append(str(target))
+                res = subprocess.run(
+                    cmd_ff,
+                    cwd=str(temp_dir),
+                    capture_output=True,
+                    timeout=180,
+                    creationflags=_CREATE_NO_WINDOW,
+                )
+                if res.returncode != 0 or not target.is_file():
+                    err = res.stderr.decode("utf-8", errors="replace")[:300]
+                    raise TTSError(f"FFmpeg xuất audio PiperTTS lỗi: {err}")
             else:
                 concat_txt = temp_dir / "concat.txt"
                 concat_txt.write_text(
-                    "\n".join(f"file '{p.name}'" for p in wav_parts),
+                    "\n".join(f"file '{p.name}'" for p in concat_parts),
                     encoding="utf-8",
                 )
                 cmd_ff = [
                     self.ffmpeg,
                     "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
                     "-f",
                     "concat",
                     "-safe",
@@ -634,16 +733,19 @@ class PiperTTSEngine:
                     err = res.stderr.decode("utf-8", errors="replace")[:300]
                     raise TTSError(f"FFmpeg ghép audio PiperTTS lỗi: {err}")
 
-            dur = probe_duration(target)
+            dur = probe_duration(target, self.ffprobe)
+            if dur <= 0:
+                dur = cursor_time
             return SynthResult(
                 path=target,
                 duration=dur,
-                sample_rate=22050,
+                sample_rate=detected_rate,
                 chunks=len(chunks),
-                characters=len(clean_text),
+                characters=len(" ".join(raw_text.split())),
                 voice=model_path.stem,
                 engine="piper",
                 backend="onnx",
+                cues=cues_list or None,
             )
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)

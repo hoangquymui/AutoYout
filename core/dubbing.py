@@ -28,6 +28,7 @@ from core.languages import DEFAULT_LANGUAGE, normalize_language
 from core.piper_tts_engine import (
     PiperTTSEngine,
     resolve_tts_engine_for_language,
+    resolve_voice_for_language_engine,
 )
 from core.subtitles import (
     Cue,
@@ -585,9 +586,12 @@ class DubbingEngine:
                 cue.status = STATUS_PROCESSING
                 cue.error = ""
                 if kind == "h2mtts":
+                    eff_voice = cue.voice or resolve_voice_for_language_engine(
+                        self.settings, language, "h2mtts"
+                    ) or None
                     engine.synthesize(
                         cue.text, path,
-                        voice=cue.voice or None,
+                        voice=eff_voice,
                         speed=self.speed,
                         pause_cb=pause_cb,
                         cancel_cb=cancel_cb,
