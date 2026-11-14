@@ -431,11 +431,11 @@ def test_dubbing_language_subtab_and_routing(app, tmp_path: Path) -> None:
     assert list(dub_tab.lang_engine_combos.keys()) == ["vi", "en", "ja"]
     assert "hi" not in dub_tab.lang_engine_combos
 
-    # Check Vietnamese and English have H2MTTS / EdgeTTS / PiperTTS options
+    # Check Vietnamese and English have H2MTTS / EdgeTTS / PiperTTS / Supertonic / Kokoro options
     for lang_code in ("vi", "en"):
         combo = dub_tab.lang_engine_combos[lang_code]
         options = [combo.itemData(i) for i in range(combo.count())]
-        assert options == ["h2mtts", "edge", "piper"]
+        assert options == ["h2mtts", "edge", "piper", "supertonic", "kokoro"]
 
     # Point to an empty Piper directory so PiperTTS is not installed
     empty_piper = tmp_path / "empty_piper"
@@ -512,9 +512,9 @@ def test_full_edge_piper_catalog_search_and_tts_config_tab(app, tmp_path: Path) 
     assert tts_tab.run_with_box.title() == "Chạy với"
     assert tts_tab.pacing_box.title() == "Nhịp đọc"
 
-    # Check Model providers (H2MTTS, EdgeTTS, PiperTTS)
+    # Check Model providers (H2MTTS, EdgeTTS, PiperTTS, Supertonic 3, Kokoro-82M)
     providers = [tts_tab.provider_combo.itemData(i) for i in range(tts_tab.provider_combo.count())]
-    assert providers == ["h2mtts", "edge", "piper"]
+    assert providers == ["h2mtts", "edge", "piper", "supertonic", "kokoro"]
 
     # Check Chạy với options (Tự động, GPU, CPU)
     backends = [tts_tab.backend_combo.itemData(i) for i in range(tts_tab.backend_combo.count())]

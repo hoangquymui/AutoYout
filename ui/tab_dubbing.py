@@ -48,6 +48,7 @@ from core.dubbing import (
     load_cues,
     save_cues,
 )
+from core.kokoro_tts_engine import KokoroTTSEngine
 from core.language_profiles import load_profiles
 from core.languages import LANGUAGES, language_name, normalize_language, normalize_language_code
 from core.piper_tts_engine import (
@@ -62,6 +63,7 @@ from core.piper_tts_engine import (
 )
 from core.project_manager import ITEM_TTS_DONE
 from core.subtitles import format_timestamp
+from core.supertonic_tts_engine import SupertonicTTSEngine
 from core.tts_engine import SynthesisCancelled
 from ui import theme
 from ui.components.audio_player import AudioPreview
@@ -422,7 +424,7 @@ class DubbingTab(QWidget):
 
         desc = QLabel(
             "Danh sách ngôn ngữ được đồng bộ tự động theo các ngôn ngữ đã thêm ở tab Kịch bản. "
-            "Lựa chọn bộ máy giọng đọc (H2MTTS / EdgeTTS / PiperTTS) và model giọng tương ứng cho từng ngôn ngữ."
+            "Lựa chọn bộ máy giọng đọc (H2MTTS / EdgeTTS / PiperTTS / Supertonic 3 / Kokoro-82M) và model giọng tương ứng cho từng ngôn ngữ."
         )
         desc.setWordWrap(True)
         desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
@@ -511,6 +513,8 @@ class DubbingTab(QWidget):
                 eng_combo.addItem("H2MTTS", "h2mtts")
                 eng_combo.addItem("EdgeTTS", "edge")
                 eng_combo.addItem("PiperTTS", "piper")
+                eng_combo.addItem("Supertonic 3", "supertonic")
+                eng_combo.addItem("Kokoro-82M", "kokoro")
                 eng_id = resolve_tts_engine_for_language(self._settings, code)
                 eng_idx = eng_combo.findData(eng_id)
                 if eng_idx >= 0:
@@ -583,6 +587,16 @@ class DubbingTab(QWidget):
                     "⚠ Chưa cài đặt PiperTTS / chưa tải model (Vào Cài đặt → Giọng đọc để tải)",
                     "",
                 )
+        elif engine_id in ("supertonic", "kokoro"):
+            eng_cls = SupertonicTTSEngine if engine_id == "supertonic" else KokoroTTSEngine
+            c_engine = eng_cls(self._settings or {})
+            ok, err_msg = c_engine.check_ready(lang_code)
+            voices = c_engine.available_voices(lang_code)
+            if ok and voices:
+                for vid, label in voices:
+                    voice_combo.addItem(label, vid)
+            else:
+                voice_combo.addItem(f"⚠ {err_msg}", "")
         else:
             voices = get_edge_voices_for_language(lang_code)
             for label, val in voices:
@@ -623,15 +637,21 @@ class DubbingTab(QWidget):
         self._populate_language_voices(lang_code, engine_id, saved_voice)
 
         if not getattr(self, "_loading_settings", False):
-            if engine_id == "piper":
-                p_engine = PiperTTSEngine(self._settings)
-                ok, err_msg = p_engine.check_ready(lang_code)
+            local_checkers = {
+                "piper": ("Chưa cài đặt PiperTTS", PiperTTSEngine),
+                "supertonic": ("Supertonic 3 chưa sẵn sàng", SupertonicTTSEngine),
+                "kokoro": ("Kokoro-82M chưa sẵn sàng", KokoroTTSEngine),
+            }
+            if engine_id in local_checkers:
+                title, eng_cls = local_checkers[engine_id]
+                eng_inst = eng_cls(self._settings or {})
+                ok, err_msg = eng_inst.check_ready(lang_code)
                 if not ok:
                     paint_status(self.lang_status_label, "error")
                     self.lang_status_label.setText(f"⚠ {err_msg}")
                     self.lang_status_label.setVisible(True)
                     if self.isVisible():
-                        QMessageBox.warning(self, "Chưa cài đặt PiperTTS", err_msg)
+                        QMessageBox.warning(self, title, err_msg)
                 else:
                     self.lang_status_label.setVisible(False)
             elif engine_id == "h2mtts" and lang_code != "vi":
@@ -723,6 +743,8 @@ class DubbingTab(QWidget):
         lang_engines = tts_cfg.setdefault("language_engines", {})
         edge_voices = tts_cfg.setdefault("edge_voices", {})
         piper_voices = tts_cfg.setdefault("piper_voices", {})
+        supertonic_voices = tts_cfg.setdefault("supertonic_voices", {})
+        kokoro_voices = tts_cfg.setdefault("kokoro_voices", {})
         h2m_voices = tts_cfg.setdefault("h2m_voices", {})
 
         for code, eng_combo in self.lang_engine_combos.items():
@@ -736,6 +758,10 @@ class DubbingTab(QWidget):
                         edge_voices[code] = v_val
                     elif eng_id == "piper":
                         piper_voices[code] = v_val
+                    elif eng_id == "supertonic":
+                        supertonic_voices[code] = v_val
+                    elif eng_id == "kokoro":
+                        kokoro_voices[code] = v_val
                     elif eng_id == "h2mtts":
                         h2m_voices[code] = v_val
                         if code == "vi":

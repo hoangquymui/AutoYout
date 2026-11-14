@@ -24,12 +24,14 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 from core.ai_client import clean_transcript_heuristics
 from core.edge_tts_engine import EdgeTTSEngine
 from core.ffmpeg_renderer import FFmpegRenderer
+from core.kokoro_tts_engine import KokoroTTSEngine
 from core.languages import DEFAULT_LANGUAGE, normalize_language
 from core.piper_tts_engine import (
     PiperTTSEngine,
     resolve_tts_engine_for_language,
     resolve_voice_for_language_engine,
 )
+from core.supertonic_tts_engine import SupertonicTTSEngine
 from core.subtitles import (
     Cue,
     cues_to_text,
@@ -528,24 +530,22 @@ class DubbingEngine:
 
         engine_kind = resolve_tts_engine_for_language(self.settings, language)
 
-        if engine_kind == "h2mtts":
-            engine = TTSEngine(self.settings)
+        seq_factories = {
+            "h2mtts": TTSEngine,
+            "piper": PiperTTSEngine,
+            "supertonic": SupertonicTTSEngine,
+            "kokoro": KokoroTTSEngine,
+        }
+        if engine_kind in seq_factories:
+            engine = seq_factories[engine_kind](self.settings)
             try:
                 for cue in pending:
                     self._idle(pause_cb, cancel_cb)
-                    self._render_cue(engine, manager, item_base, out_dir, cue,
-                                     language, None, finish, pause_cb, cancel_cb,
-                                     engine_kind="h2mtts")
-            finally:
-                engine.close()
-        elif engine_kind == "piper":
-            engine = PiperTTSEngine(self.settings)
-            try:
-                for cue in pending:
-                    self._idle(pause_cb, cancel_cb)
-                    self._render_cue(engine, manager, item_base, out_dir, cue,
-                                     language, None, finish, pause_cb, cancel_cb,
-                                     engine_kind="piper")
+                    self._render_cue(
+                        engine, manager, item_base, out_dir, cue,
+                        language, None, finish, pause_cb, cancel_cb,
+                        engine_kind=engine_kind,
+                    )
             finally:
                 engine.close()
         else:

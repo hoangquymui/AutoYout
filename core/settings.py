@@ -98,6 +98,49 @@ def normalize_piper_path(value: str | os.PathLike | None) -> str:
     return str(p.resolve().as_posix())
 
 
+def _default_tts_dir(folder_name: str) -> str:
+    if (ROOT / "tts" / folder_name).is_dir():
+        return str((ROOT / "tts" / folder_name).as_posix())
+    return str((ROOT / folder_name).as_posix())
+
+
+def _normalize_tts_dir(value: str | os.PathLike | None, folder_name: str) -> str:
+    default_fn = lambda: _default_tts_dir(folder_name)
+    raw = str(value or "").strip()
+    if not raw:
+        return default_fn()
+    p = Path(raw)
+    if not p.is_absolute():
+        return str((ROOT / p).resolve().as_posix())
+    norm_lower = raw.replace("\\", "/").lower()
+    root_norm = str(ROOT).replace("\\", "/").lower()
+    if "mui/f375" in norm_lower and "mui/f375" not in root_norm:
+        return default_fn()
+    if not p.exists():
+        return default_fn()
+    return str(p.resolve().as_posix())
+
+
+def default_supertonic_path() -> str:
+    """Return default Supertonic 3 directory path inside this project."""
+    return _default_tts_dir("SupertonicTTS")
+
+
+def normalize_supertonic_path(value: str | os.PathLike | None) -> str:
+    """Normalize SupertonicTTS path to a valid path on the current machine."""
+    return _normalize_tts_dir(value, "SupertonicTTS")
+
+
+def default_kokoro_path() -> str:
+    """Return default KokoroTTS directory path inside this project."""
+    return _default_tts_dir("KokoroTTS")
+
+
+def normalize_kokoro_path(value: str | os.PathLike | None) -> str:
+    """Normalize KokoroTTS path to a valid path on the current machine."""
+    return _normalize_tts_dir(value, "KokoroTTS")
+
+
 
 def load_settings() -> Dict[str, Any]:
     defaults = load_json(DEFAULT_SETTINGS_PATH, {}) or {}
@@ -110,11 +153,15 @@ def load_settings() -> Dict[str, Any]:
     merged.setdefault("youtube", {})
     merged.setdefault("app", {})
 
-    # Normalize h2mtts and piper paths so they always work on the current machine
+    # Normalize h2mtts, piper, supertonic, and kokoro paths so they always work on the current machine
     h2 = str(merged["paths"].get("h2mtts") or "").strip()
     merged["paths"]["h2mtts"] = normalize_h2mtts_path(h2)
     piper_raw = str(merged["paths"].get("piper") or "").strip()
     merged["paths"]["piper"] = normalize_piper_path(piper_raw)
+    st_raw = str(merged["paths"].get("supertonic") or "").strip()
+    merged["paths"]["supertonic"] = normalize_supertonic_path(st_raw)
+    kk_raw = str(merged["paths"].get("kokoro") or "").strip()
+    merged["paths"]["kokoro"] = normalize_kokoro_path(kk_raw)
     merged["paths"].pop("f5tts", None)
     merged["paths"].pop("xtts", None)
 

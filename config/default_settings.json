@@ -2,6 +2,8 @@
   "paths": {
     "h2mtts": "H2MTTS",
     "piper": "PiperTTS",
+    "supertonic": "SupertonicTTS",
+    "kokoro": "KokoroTTS",
     "ffmpeg": "ffmpeg",
     "ffprobe": "ffprobe"
   },
@@ -25,6 +27,8 @@
     "voice": "Hải Đăng",
     "edge_voices": {},
     "piper_voices": {},
+    "supertonic_voices": {},
+    "kokoro_voices": {},
     "language_engines": {},
     "speed": 1.0,
     "gap_sentence": 0.3,

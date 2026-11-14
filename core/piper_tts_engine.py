@@ -276,7 +276,7 @@ def detect_gpu_status(force_refresh: bool = False) -> Tuple[bool, str]:
 
 
 def resolve_tts_engine_for_language(settings: Optional[Dict[str, Any]], language: str) -> str:
-    """Return the configured TTS engine ID ('h2mtts', 'edge', or 'piper') for a language."""
+    """Return the configured TTS engine ID ('h2mtts', 'edge', 'piper', 'supertonic', or 'kokoro') for a language."""
     code = normalize_language(language)
     cfg = settings if isinstance(settings, dict) else {}
     tts_cfg = cfg.get("tts") if isinstance(cfg.get("tts"), dict) else {}
@@ -286,6 +286,10 @@ def resolve_tts_engine_for_language(settings: Optional[Dict[str, Any]], language
         return "h2mtts"
     if chosen in ("piper", "pipertts"):
         return "piper"
+    if chosen in ("supertonic", "supertonic3", "supertonic_tts"):
+        return "supertonic"
+    if chosen in ("kokoro", "kokoro82m", "kokoro_tts"):
+        return "kokoro"
     if chosen in ("edge", "edgetts", "edge_tts"):
         return "edge"
     # Default: Vietnamese uses h2mtts, other languages use edge
@@ -309,6 +313,14 @@ def resolve_voice_for_language_engine(
             or PIPER_DEFAULT_VOICES.get(code)
             or "vi_VN-vais1000-medium"
         ).strip()
+    if engine_id == "supertonic":
+        st_voices = tts_cfg.get("supertonic_voices") if isinstance(tts_cfg.get("supertonic_voices"), dict) else {}
+        return str(st_voices.get(code) or "F1").strip()
+    if engine_id == "kokoro":
+        from core.kokoro_tts_engine import KOKORO_DEFAULT_VOICES
+
+        kk_voices = tts_cfg.get("kokoro_voices") if isinstance(tts_cfg.get("kokoro_voices"), dict) else {}
+        return str(kk_voices.get(code) or KOKORO_DEFAULT_VOICES.get(code) or "af_heart").strip()
     # edge
     edge_voices = tts_cfg.get("edge_voices") if isinstance(tts_cfg.get("edge_voices"), dict) else {}
     from core.languages import edge_voice

@@ -44,9 +44,13 @@ from PySide6.QtWidgets import (
 from core.settings import (
     ROOT,
     default_h2mtts_path,
+    default_kokoro_path,
     default_piper_path,
+    default_supertonic_path,
     normalize_h2mtts_path,
+    normalize_kokoro_path,
     normalize_piper_path,
+    normalize_supertonic_path,
 )
 from core.piper_tts_engine import sanitize_piper_config
 from ui import theme
@@ -2633,6 +2637,250 @@ class PiperTTSCard(QFrame):
                 )
 
 
+class _HFDownloadWorker(QThread):
+    """Download HuggingFace repo files sequentially into a local directory."""
+
+    progress = Signal(int, int, str)  # current, total, filename
+    finished_all = Signal(bool, str)
+
+    def __init__(self, target_dir: Path, jobs: List[Tuple[str, str, Optional[str]]], parent=None) -> None:
+        super().__init__(parent)
+        self._target_dir = Path(target_dir)
+        self._jobs = list(jobs)  # (repo_id, filename, revision)
+        self._cancel = False
+
+    def cancel(self) -> None:
+        self._cancel = True
+
+    def run(self) -> None:
+        try:
+            from huggingface_hub import hf_hub_download
+        except Exception as exc:
+            self.finished_all.emit(False, f"Thiếu thư viện huggingface_hub: {exc}")
+            return
+
+        total = max(1, len(self._jobs))
+        done = 0
+        self._target_dir.mkdir(parents=True, exist_ok=True)
+        for idx, (repo_id, filename, rev) in enumerate(self._jobs, 1):
+            if self._cancel:
+                self.finished_all.emit(False, f"Đã dừng tải ({done}/{total} file).")
+                return
+            self.progress.emit(idx - 1, total, filename)
+            try:
+                hf_hub_download(
+                    repo_id=repo_id,
+                    filename=filename,
+                    revision=rev or None,
+                    local_dir=str(self._target_dir),
+                )
+                done += 1
+            except Exception as exc:
+                self.finished_all.emit(False, f"Lỗi tải {filename}: {exc}")
+                return
+            self.progress.emit(idx, total, filename)
+        self.finished_all.emit(True, f"Đã tải xong {done}/{total} file model.")
+
+
+class HFModelTTSCard(QFrame):
+    """Unified settings card for Supertonic 3 and Kokoro-82M (auto-discovery + HF download + status)."""
+
+    changed = Signal()
+
+    def __init__(self, engine_kind: str, parent=None) -> None:
+        super().__init__(parent)
+        self._kind = engine_kind  # "supertonic" | "kokoro"
+        self._worker: Optional[_HFDownloadWorker] = None
+        self.setObjectName("HFModelTTSCard")
+        self._build_ui()
+        self.apply_theme()
+
+    def _build_ui(self) -> None:
+        is_st = self._kind == "supertonic"
+        title_txt = "Supertonic 3 (ONNX Đa ngôn ngữ)" if is_st else "Kokoro-82M (ONNX CPU / PyTorch GPU)"
+        tag_txt = "44.1 kHz · 31 ngôn ngữ · CPU" if is_st else "24 kHz · 8 ngôn ngữ · CPU/GPU"
+        sub_txt = (
+            "Model ONNX thuần CPU chất lượng cao từ Supertone (10 giọng F1..F5, M1..M5; hỗ trợ vi, en, ja, ko, fr, es, pt, pl, ...).\n"
+            "Tự động nhận model đã tải sẵn trong cit-voice-studio hoặc thư mục bên dưới."
+            if is_st
+            else "Model 82M siêu tự nhiên hỗ trợ EN (US/UK), FR, ES, PT, IT, HI, JA, ZH (chạy CPU ONNX hoặc tăng tốc GPU CUDA).\n"
+            "Tự động nhận model đã tải sẵn trong cit-voice-studio hoặc thư mục bên dưới."
+        )
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 12, 14, 12)
+        root.setSpacing(8)
+
+        hdr = QHBoxLayout()
+        hdr.setSpacing(8)
+        title = QLabel(title_txt)
+        title.setStyleSheet("font-size: 13px; font-weight: bold;")
+        hdr.addWidget(title)
+        badge = QLabel(tag_txt)
+        badge.setStyleSheet(
+            f"background: {theme.SURFACE_RAISED}; color: {theme.ACCENT}; "
+            "border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: bold;"
+        )
+        hdr.addWidget(badge)
+        hdr.addStretch(1)
+        self.status_lbl = QLabel("Đang kiểm tra…")
+        hdr.addWidget(self.status_lbl)
+        root.addLayout(hdr)
+
+        sub = QLabel(sub_txt)
+        sub.setWordWrap(True)
+        sub.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+        root.addWidget(sub)
+
+        path_row = QHBoxLayout()
+        path_row.setSpacing(6)
+        lbl_dir = QLabel("Thư mục:")
+        lbl_dir.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+        path_row.addWidget(lbl_dir)
+        default_dir = default_supertonic_path() if is_st else default_kokoro_path()
+        self.path_edit = QLineEdit(default_dir)
+        self.path_edit.textChanged.connect(lambda: (self.check_status(), self.changed.emit()))
+        path_row.addWidget(self.path_edit, 1)
+        btn_browse = icon_button("folder", f"Chọn thư mục {title_txt}", role="muted", size=14, side=28)
+        btn_browse.clicked.connect(self._browse_dir)
+        path_row.addWidget(btn_browse)
+        btn_scan = QPushButton("Quét lại")
+        btn_scan.setFixedHeight(28)
+        btn_scan.clicked.connect(self.check_status)
+        path_row.addWidget(btn_scan)
+        root.addLayout(path_row)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        if is_st:
+            self.btn_dl_main = QPushButton("Tải Supertonic 3 (~260 MB)")
+            self.btn_dl_main.clicked.connect(self._download_supertonic)
+            btn_row.addWidget(self.btn_dl_main)
+        else:
+            self.btn_dl_main = QPushButton("Tải Kokoro Core ONNX (~340 MB)")
+            self.btn_dl_main.clicked.connect(lambda: self._download_kokoro_pack("core"))
+            btn_row.addWidget(self.btn_dl_main)
+
+            self.btn_dl_ja = QPushButton("+ Pack JA")
+            self.btn_dl_ja.clicked.connect(lambda: self._download_kokoro_pack("ja"))
+            btn_row.addWidget(self.btn_dl_ja)
+
+            self.btn_dl_zh = QPushButton("+ Pack ZH")
+            self.btn_dl_zh.clicked.connect(lambda: self._download_kokoro_pack("zh"))
+            btn_row.addWidget(self.btn_dl_zh)
+
+            self.btn_dl_gpu = QPushButton("+ PyTorch GPU (~330 MB)")
+            self.btn_dl_gpu.clicked.connect(lambda: self._download_kokoro_pack("torch"))
+            btn_row.addWidget(self.btn_dl_gpu)
+
+        btn_row.addStretch(1)
+        root.addLayout(btn_row)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setVisible(False)
+        root.addWidget(self.progress_bar)
+
+        self.progress_lbl = QLabel("")
+        self.progress_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+        self.progress_lbl.setVisible(False)
+        root.addWidget(self.progress_lbl)
+
+    def _browse_dir(self) -> None:
+        start = self.path_edit.text().strip() or str(ROOT)
+        chosen = QFileDialog.getExistingDirectory(self, "Chọn thư mục lưu model", start)
+        if chosen:
+            self.path_edit.setText(chosen.replace("\\", "/"))
+
+    def _engine(self):
+        cfg = {"paths": {self._kind: self.path_edit.text().strip()}}
+        if self._kind == "supertonic":
+            from core.supertonic_tts_engine import SupertonicTTSEngine
+
+            return SupertonicTTSEngine(cfg)
+        from core.kokoro_tts_engine import KokoroTTSEngine
+
+        return KokoroTTSEngine(cfg)
+
+    def check_status(self) -> None:
+        eng = self._engine()
+        ok, msg = eng.check_ready()
+        if self._kind == "kokoro" and ok:
+            torch_root = eng.resolve_torch_root()
+            gpu_note = " · GPU PyTorch sẵn sàng" if torch_root is not None else " · CPU ONNX"
+            msg = msg + gpu_note
+        self.status_lbl.setText(f"● {msg}")
+        paint_status(self.status_lbl, "success" if ok else "warning")
+
+    def _start_jobs(self, jobs: List[Tuple[str, str, Optional[str]]]) -> None:
+        if self._worker and self._worker.isRunning():
+            return
+        raw = self.path_edit.text().strip()
+        target = Path(
+            normalize_supertonic_path(raw) if self._kind == "supertonic" else normalize_kokoro_path(raw)
+        )
+        self.progress_bar.setRange(0, max(1, len(jobs)))
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
+        self.progress_lbl.setText("Đang chuẩn bị tải từ Hugging Face…")
+        self.progress_lbl.setVisible(True)
+        self.btn_dl_main.setEnabled(False)
+
+        self._worker = _HFDownloadWorker(target, jobs, parent=self)
+        self._worker.progress.connect(
+            lambda cur, tot, fname: (
+                self.progress_bar.setValue(cur),
+                self.progress_lbl.setText(f"[{cur}/{tot}] {fname}"),
+            )
+        )
+        self._worker.finished_all.connect(self._on_download_done)
+        self._worker.start()
+
+    def _on_download_done(self, ok: bool, msg: str) -> None:
+        self._worker = None
+        self.btn_dl_main.setEnabled(True)
+        self.progress_lbl.setText(msg)
+        self.check_status()
+        self.changed.emit()
+
+    def _download_supertonic(self) -> None:
+        from core.supertonic_tts_engine import SUPERTONIC_ALL_FILES, SUPERTONIC_REPO, SUPERTONIC_REV
+
+        jobs = [(SUPERTONIC_REPO, f, SUPERTONIC_REV) for f in SUPERTONIC_ALL_FILES]
+        self._start_jobs(jobs)
+
+    def _download_kokoro_pack(self, pack: str) -> None:
+        from core.kokoro_tts_engine import (
+            KOKORO_JA_VOICES,
+            KOKORO_ONNX_REPO,
+            KOKORO_ONNX_REV,
+            KOKORO_TORCH_REPO,
+            KOKORO_TORCH_REV,
+            KOKORO_ZH_VOICES,
+        )
+
+        if pack == "ja":
+            jobs = [(KOKORO_ONNX_REPO, f"voices/{v}.bin", KOKORO_ONNX_REV) for v in KOKORO_JA_VOICES]
+        elif pack == "zh":
+            jobs = [(KOKORO_ONNX_REPO, f"voices/{v}.bin", KOKORO_ONNX_REV) for v in KOKORO_ZH_VOICES]
+        elif pack == "torch":
+            jobs = [
+                (KOKORO_TORCH_REPO, "config.json", KOKORO_TORCH_REV),
+                (KOKORO_TORCH_REPO, "kokoro-v1_0.pth", KOKORO_TORCH_REV),
+            ]
+        else:
+            core_voices = ("af_heart", "af_bella", "am_adam", "bf_emma", "bm_george", "ef_dora", "ff_siwis", "if_sara", "pf_dora", "hf_alpha")
+            jobs = [(KOKORO_ONNX_REPO, "onnx/model.onnx", KOKORO_ONNX_REV)] + [
+                (KOKORO_ONNX_REPO, f"voices/{v}.bin", KOKORO_ONNX_REV) for v in core_voices
+            ]
+        self._start_jobs(jobs)
+
+    def apply_theme(self) -> None:
+        self.setStyleSheet(
+            f"QFrame#HFModelTTSCard {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 8px; }}"
+        )
+
+
 class GeneralSettingsPage(QWidget):
     """General application settings & tool paths."""
 
@@ -2673,6 +2921,24 @@ class GeneralSettingsPage(QWidget):
         piper_row.addWidget(self.piper_edit, 1)
         piper_row.addWidget(btn_piper)
         paths_form.addRow("Thư mục PiperTTS", self._wrap(piper_row))
+
+        # Supertonic 3 path
+        st_row = QHBoxLayout()
+        self.supertonic_edit = QLineEdit(default_supertonic_path())
+        btn_st = icon_button("folder", "Chọn thư mục Supertonic 3", role="muted", size=14, side=30)
+        btn_st.clicked.connect(lambda: self._browse_dir(self.supertonic_edit, "Chọn thư mục Supertonic 3"))
+        st_row.addWidget(self.supertonic_edit, 1)
+        st_row.addWidget(btn_st)
+        paths_form.addRow("Thư mục Supertonic 3", self._wrap(st_row))
+
+        # Kokoro-82M path
+        kk_row = QHBoxLayout()
+        self.kokoro_edit = QLineEdit(default_kokoro_path())
+        btn_kk = icon_button("folder", "Chọn thư mục Kokoro-82M", role="muted", size=14, side=30)
+        btn_kk.clicked.connect(lambda: self._browse_dir(self.kokoro_edit, "Chọn thư mục Kokoro-82M"))
+        kk_row.addWidget(self.kokoro_edit, 1)
+        kk_row.addWidget(btn_kk)
+        paths_form.addRow("Thư mục Kokoro-82M", self._wrap(kk_row))
 
 
 
@@ -2854,6 +3120,26 @@ class SettingsTab(QWidget):
         self.card_piper.path_edit.textChanged.connect(_sync_piper_from_card)
         self.general_page.piper_edit.textChanged.connect(_sync_piper_from_general)
 
+        def _bind_two_way(card: HFModelTTSCard, edit: QLineEdit) -> None:
+            def _from_card(text: str) -> None:
+                if edit.text() != text:
+                    edit.blockSignals(True)
+                    edit.setText(text)
+                    edit.blockSignals(False)
+
+            def _from_gen(text: str) -> None:
+                if card.path_edit.text() != text:
+                    card.path_edit.blockSignals(True)
+                    card.path_edit.setText(text)
+                    card.path_edit.blockSignals(False)
+                    card.check_status()
+
+            card.path_edit.textChanged.connect(_from_card)
+            edit.textChanged.connect(_from_gen)
+
+        _bind_two_way(self.card_supertonic, self.general_page.supertonic_edit)
+        _bind_two_way(self.card_kokoro, self.general_page.kokoro_edit)
+
 
 
         self.inner_tabs.addTab(api_wrapper, "API")
@@ -2916,7 +3202,7 @@ class SettingsTab(QWidget):
         layout.addWidget(
             PageHeader(
                 "Giọng đọc",
-                "Thuyết minh đa ngôn ngữ cho video với Edge-TTS, H2MTTS và PiperTTS offline.",
+                "Thuyết minh đa ngôn ngữ cho video với Edge-TTS, H2MTTS, PiperTTS, Supertonic 3 và Kokoro-82M offline.",
             )
         )
 
@@ -2948,6 +3234,15 @@ class SettingsTab(QWidget):
         self.card_piper = PiperTTSCard(parent=page)
         self.card_piper.changed.connect(self._on_changed)
         layout.addWidget(self.card_piper)
+
+        # Local Supertonic 3 & Kokoro-82M (CIT Voice Studio models)
+        self.card_supertonic = HFModelTTSCard("supertonic", parent=page)
+        self.card_supertonic.changed.connect(self._on_changed)
+        layout.addWidget(self.card_supertonic)
+
+        self.card_kokoro = HFModelTTSCard("kokoro", parent=page)
+        self.card_kokoro.changed.connect(self._on_changed)
+        layout.addWidget(self.card_kokoro)
 
 
 
@@ -3031,6 +3326,16 @@ class SettingsTab(QWidget):
             self.general_page.piper_edit.setText(piper_norm)
             self.card_piper.path_edit.setText(piper_norm)
             self.card_piper.check_packages_status()
+
+            st_norm = normalize_supertonic_path(str(paths.get("supertonic") or "").strip())
+            self.general_page.supertonic_edit.setText(st_norm)
+            self.card_supertonic.path_edit.setText(st_norm)
+            self.card_supertonic.check_status()
+
+            kk_norm = normalize_kokoro_path(str(paths.get("kokoro") or "").strip())
+            self.general_page.kokoro_edit.setText(kk_norm)
+            self.card_kokoro.path_edit.setText(kk_norm)
+            self.card_kokoro.check_status()
 
 
 
@@ -3137,6 +3442,33 @@ class SettingsTab(QWidget):
         except Exception:
             paths["piper"] = piper_norm
 
+        def _save_rel_path(key: str, raw_val: str, norm_fn, folder_name: str) -> None:
+            norm = norm_fn(raw_val)
+            try:
+                p_res = Path(norm).resolve()
+                root_p = ROOT.resolve()
+                if p_res == (root_p / folder_name).resolve():
+                    paths[key] = folder_name
+                elif p_res == (root_p / "tts" / folder_name).resolve():
+                    paths[key] = f"tts/{folder_name}"
+                else:
+                    paths[key] = norm
+            except Exception:
+                paths[key] = norm
+
+        _save_rel_path(
+            "supertonic",
+            self.card_supertonic.path_edit.text().strip() or self.general_page.supertonic_edit.text().strip(),
+            normalize_supertonic_path,
+            "SupertonicTTS",
+        )
+        _save_rel_path(
+            "kokoro",
+            self.card_kokoro.path_edit.text().strip() or self.general_page.kokoro_edit.text().strip(),
+            normalize_kokoro_path,
+            "KokoroTTS",
+        )
+
 
 
         paths["ffmpeg"] = self.general_page.ffmpeg_edit.text().strip() or "ffmpeg"
@@ -3188,6 +3520,10 @@ class SettingsTab(QWidget):
             self.card_h2mtts.apply_theme()
         if hasattr(self, "card_piper"):
             self.card_piper.apply_theme()
+        if hasattr(self, "card_supertonic"):
+            self.card_supertonic.apply_theme()
+        if hasattr(self, "card_kokoro"):
+            self.card_kokoro.apply_theme()
 
         if hasattr(self, "card_cloudflare_image"):
             self.card_cloudflare_image.apply_theme()

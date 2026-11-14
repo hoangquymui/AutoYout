@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.edge_tts_engine import EdgeTTSEngine
+from core.kokoro_tts_engine import KokoroTTSEngine
 from core.languages import language_name, normalize_language, normalize_language_code
 from core.language_profiles import load_profiles
 from core.piper_tts_engine import (
@@ -36,6 +37,7 @@ from core.piper_tts_engine import (
     detect_gpu_status,
 )
 from core.settings import ROOT, default_h2mtts_path, normalize_h2mtts_path
+from core.supertonic_tts_engine import SupertonicTTSEngine
 from core.tts_engine import SynthesisCancelled, TTSEngine
 from ui.components.audio_player import AudioPreview
 from ui.components.icons import set_icon
@@ -80,6 +82,10 @@ class _PreviewWorker(QThread):
             engine = EdgeTTSEngine(self._settings)
         elif self._provider == "piper":
             engine = PiperTTSEngine(self._settings)
+        elif self._provider == "supertonic":
+            engine = SupertonicTTSEngine(self._settings)
+        elif self._provider == "kokoro":
+            engine = KokoroTTSEngine(self._settings)
         else:
             engine = TTSEngine(self._settings)
         try:
@@ -87,7 +93,7 @@ class _PreviewWorker(QThread):
             out_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now().strftime("%H%M%S_%f")
             out_path = out_dir / f"preview_{stamp}.mp3"
-            if self._provider in ("edge", "piper"):
+            if self._provider in ("edge", "piper", "supertonic", "kokoro"):
                 lang = self._language
                 if not lang:
                     lang = "vi"
@@ -95,6 +101,10 @@ class _PreviewWorker(QThread):
                         lang = self._voice.split("-")[0].lower()
                     elif self._voice and "_" in self._voice and self._provider == "piper":
                         lang = self._voice.split("_")[0].lower()
+                    elif self._provider == "kokoro" and self._voice:
+                        from core.kokoro_tts_engine import _voice_lang
+
+                        lang = _voice_lang(self._voice)
                 engine.synthesize(
                     self._text,
                     out_path,
@@ -180,6 +190,8 @@ class TTSConfigTab(QWidget):
         self.provider_combo.addItem("H2MTTS", "h2mtts")
         self.provider_combo.addItem("EdgeTTS", "edge")
         self.provider_combo.addItem("PiperTTS", "piper")
+        self.provider_combo.addItem("Supertonic 3", "supertonic")
+        self.provider_combo.addItem("Kokoro-82M", "kokoro")
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         model_form.addRow("Model", self.provider_combo)
 
@@ -438,7 +450,7 @@ class TTSConfigTab(QWidget):
         raw_h2m = normalize_h2mtts_path(str((settings.get("paths") or {}).get("h2mtts") or "").strip())
         self.h2m_edit.setText(raw_h2m)
         provider = str(tts.get("provider") or "h2mtts").strip().lower()
-        if provider not in ("h2mtts", "edge", "piper"):
+        if provider not in ("h2mtts", "edge", "piper", "supertonic", "kokoro"):
             provider = "h2mtts"
         self.provider_combo.blockSignals(True)
         self._set_combo(self.provider_combo, provider)
@@ -501,6 +513,10 @@ class TTSConfigTab(QWidget):
         if voice:
             if provider == "piper":
                 tts.setdefault("piper_voices", {})[lang] = voice
+            elif provider == "supertonic":
+                tts.setdefault("supertonic_voices", {})[lang] = voice
+            elif provider == "kokoro":
+                tts.setdefault("kokoro_voices", {})[lang] = voice
             elif provider == "edge":
                 tts.setdefault("edge_voices", {})[lang] = voice
             else:
@@ -548,7 +564,7 @@ class TTSConfigTab(QWidget):
         self.refresh_gpu_state()
         provider = str(self.provider_combo.currentData() or "h2mtts")
         is_h2m = provider == "h2mtts"
-        has_gender = provider in ("h2mtts", "edge")
+        has_gender = provider in ("h2mtts", "edge", "supertonic", "kokoro")
 
         if has_gender:
             self.gender_label.setText("Giới tính")
@@ -611,6 +627,27 @@ class TTSConfigTab(QWidget):
                 )
                 paint_status(self.model_status, "warning")
                 self.model_status.setToolTip(str(p_eng.root))
+        elif provider in ("supertonic", "kokoro"):
+            eng_cls = SupertonicTTSEngine if provider == "supertonic" else KokoroTTSEngine
+            eng_name = "Supertonic 3" if provider == "supertonic" else "Kokoro-82M"
+            c_eng = eng_cls(self._settings or {})
+            ok, msg = c_eng.check_ready(lang_filter)
+            voices = c_eng.available_voices(language=lang_filter, gender=gender_filter)
+            if voices:
+                for vid, vlabel in voices:
+                    self.voice_combo.addItem(vlabel, vid)
+                status_text = (
+                    f"Đã nạp {len(voices)} giọng {eng_name} ({c_eng.root})."
+                    if ok
+                    else f"{len(voices)} giọng · {msg}"
+                )
+                self.model_status.setText(status_text)
+                paint_status(self.model_status, "success" if ok else "warning")
+            else:
+                self.voice_combo.addItem(f"⚠ {msg}", "")
+                self.model_status.setText(msg)
+                paint_status(self.model_status, "warning")
+            self.model_status.setToolTip(str(c_eng.root))
         else:
             # H2MTTS
             if self._engine is None:
@@ -669,6 +706,10 @@ class TTSConfigTab(QWidget):
             eff_lang = lang_filter or "vi"
             if provider == "piper":
                 preferred = str((tts_cfg.get("piper_voices") or {}).get(eff_lang) or "")
+            elif provider == "supertonic":
+                preferred = str((tts_cfg.get("supertonic_voices") or {}).get(eff_lang) or "")
+            elif provider == "kokoro":
+                preferred = str((tts_cfg.get("kokoro_voices") or {}).get(eff_lang) or "")
             elif provider == "edge":
                 preferred = str((tts_cfg.get("edge_voices") or {}).get(eff_lang) or "")
             else:

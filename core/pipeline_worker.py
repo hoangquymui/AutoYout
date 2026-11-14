@@ -20,11 +20,13 @@ from PySide6.QtCore import QThread, Signal
 
 from core.dubbing import DubbingEngine, DubbingError, load_cues
 from core.edge_tts_engine import EdgeTTSEngine
+from core.kokoro_tts_engine import KokoroTTSEngine
 from core.piper_tts_engine import (
     PiperTTSEngine,
     resolve_tts_engine_for_language,
     resolve_voice_for_language_engine,
 )
+from core.supertonic_tts_engine import SupertonicTTSEngine
 from core.ffmpeg_renderer import (
     FFmpegRenderer,
     RenderCancelled,
@@ -553,9 +555,13 @@ class PipelineWorker(QThread):
 
         local_items = [item for item in targets if engine_of(item) == "h2mtts"]
         piper_items = [item for item in targets if engine_of(item) == "piper"]
+        supertonic_items = [item for item in targets if engine_of(item) == "supertonic"]
+        kokoro_items = [item for item in targets if engine_of(item) == "kokoro"]
         online_items = [item for item in targets if engine_of(item) == "edge"]
         local_engine = TTSEngine(self.settings) if local_items else None
         piper_engine = PiperTTSEngine(self.settings) if piper_items else None
+        supertonic_engine = SupertonicTTSEngine(self.settings) if supertonic_items else None
+        kokoro_engine = KokoroTTSEngine(self.settings) if kokoro_items else None
         online_engine = EdgeTTSEngine(self.settings) if online_items else None
         if online_items:
             logger.info("TTS: %d file dùng edge-tts (%s).", len(online_items),
@@ -563,6 +569,12 @@ class PipelineWorker(QThread):
         if piper_items:
             logger.info("TTS: %d file dùng PiperTTS (%s).", len(piper_items),
                         ", ".join(sorted({language_of(item) for item in piper_items})))
+        if supertonic_items:
+            logger.info("TTS: %d file dùng Supertonic 3 (%s).", len(supertonic_items),
+                        ", ".join(sorted({language_of(item) for item in supertonic_items})))
+        if kokoro_items:
+            logger.info("TTS: %d file dùng Kokoro-82M (%s).", len(kokoro_items),
+                        ", ".join(sorted({language_of(item) for item in kokoro_items})))
         errors: List[str] = []
         total = len(targets)
         skipped = sum(1 for item in self.manager.get_items() if item.text.strip()) - total
@@ -652,6 +664,34 @@ class PipelineWorker(QThread):
                             pause_cb=self.is_paused,
                             cancel_cb=self.is_cancelled,
                         )
+                    elif eng_choice == "supertonic" and supertonic_engine is not None:
+                        st_voice = resolve_voice_for_language_engine(
+                            self.settings, language, "supertonic"
+                        ) or None
+                        result = supertonic_engine.synthesize(
+                            item.text,
+                            item.audio_path,
+                            language=language,
+                            voice=st_voice,
+                            progress_cb=report,
+                            message_cb=lambda msg: self.status_changed.emit(msg, True),
+                            pause_cb=self.is_paused,
+                            cancel_cb=self.is_cancelled,
+                        )
+                    elif eng_choice == "kokoro" and kokoro_engine is not None:
+                        kk_voice = resolve_voice_for_language_engine(
+                            self.settings, language, "kokoro"
+                        ) or None
+                        result = kokoro_engine.synthesize(
+                            item.text,
+                            item.audio_path,
+                            language=language,
+                            voice=kk_voice,
+                            progress_cb=report,
+                            message_cb=lambda msg: self.status_changed.emit(msg, True),
+                            pause_cb=self.is_paused,
+                            cancel_cb=self.is_cancelled,
+                        )
                     else:
                         if online_engine is None:
                             online_engine = EdgeTTSEngine(self.settings)
@@ -715,6 +755,10 @@ class PipelineWorker(QThread):
                 logger.info("Đã đóng TTS engine, giải phóng bộ nhớ.")
             if piper_engine is not None:
                 piper_engine.close()
+            if supertonic_engine is not None:
+                supertonic_engine.close()
+            if kokoro_engine is not None:
+                kokoro_engine.close()
         self.task_changed.emit(100)
         return errors
 

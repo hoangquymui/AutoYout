@@ -18,9 +18,19 @@ safetensors>=0.4
 torch>=2.2
 torchaudio>=2.2
 
-# Multi-language narration (vi stays on H2MTTS, PiperTTS offline / edge-tts)
+# Multi-language narration (vi stays on H2MTTS, PiperTTS / Supertonic 3 / Kokoro-82M offline, edge-tts online)
 edge-tts>=6.1
 pykakasi>=2.3.0
+kokoro-onnx>=0.6.1
+phonemizer>=3.3.0
+espeakng-loader>=0.2.4
+misaki>=0.9.4
+fugashi>=1.5.2
+unidic-lite>=1.0.8
+jieba>=0.42.1
+pypinyin>=0.53.0
+cn2an>=0.5.22
+mojimoji>=0.0.13
 
 # Kịch bản: lấy transcript YouTube từ phụ đề có sẵn (youtube-transcript-api)
 youtube-transcript-api>=0.6.3
