@@ -71,9 +71,11 @@ def find_model_root(
     required_relpaths: Sequence[str],
     preferred_rev: str = "",
     extra_dirs: Sequence[Path | str | None] = (),
+    alias_repo_ids: Sequence[str] = (),
 ) -> Optional[Path]:
     """Locate a complete model directory either directly in ``extra_dirs`` or in HF hub caches."""
-    repo_folder = "models--" + repo_id.replace("/", "--")
+    repo_ids = [repo_id, *[r for r in alias_repo_ids if r and r != repo_id]]
+    repo_folders = ["models--" + r.replace("/", "--") for r in repo_ids]
 
     # 1. Check explicit / managed directories directly (or snapshots nested inside them)
     for raw in extra_dirs:
@@ -82,32 +84,34 @@ def find_model_root(
         p = Path(raw)
         if _has_required_files(p, required_relpaths):
             return p
-        for nested_base in (
-            p / repo_folder / "snapshots",
-            p / "hf_cache" / "hub" / repo_folder / "snapshots",
-            p / "snapshots",
-        ):
-            if nested_base.is_dir():
-                if preferred_rev and _has_required_files(nested_base / preferred_rev, required_relpaths):
-                    return nested_base / preferred_rev
-                for snap in sorted(nested_base.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
-                    if _has_required_files(snap, required_relpaths):
-                        return snap
+        for repo_folder in repo_folders:
+            for nested_base in (
+                p / repo_folder / "snapshots",
+                p / "hf_cache" / "hub" / repo_folder / "snapshots",
+                p / "snapshots",
+            ):
+                if nested_base.is_dir():
+                    if preferred_rev and _has_required_files(nested_base / preferred_rev, required_relpaths):
+                        return nested_base / preferred_rev
+                    for snap in sorted(nested_base.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+                        if _has_required_files(snap, required_relpaths):
+                            return snap
 
     # 2. Check HF hub caches (e.g. cit-voice-studio or ~/.cache/huggingface/hub)
     for hub in hf_cache_roots():
-        snaps_dir = hub / repo_folder / "snapshots"
-        if not snaps_dir.is_dir():
-            continue
-        if preferred_rev and _has_required_files(snaps_dir / preferred_rev, required_relpaths):
-            return snaps_dir / preferred_rev
-        try:
-            snaps = sorted(snaps_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True)
-        except OSError:
-            snaps = []
-        for snap in snaps:
-            if _has_required_files(snap, required_relpaths):
-                return snap
+        for repo_folder in repo_folders:
+            snaps_dir = hub / repo_folder / "snapshots"
+            if not snaps_dir.is_dir():
+                continue
+            if preferred_rev and _has_required_files(snaps_dir / preferred_rev, required_relpaths):
+                return snaps_dir / preferred_rev
+            try:
+                snaps = sorted(snaps_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True)
+            except OSError:
+                snaps = []
+            for snap in snaps:
+                if _has_required_files(snap, required_relpaths):
+                    return snap
     return None
 
 

@@ -563,7 +563,7 @@ class DubbingTab(QWidget):
         if engine_id == "h2mtts":
             if lang_code != "vi":
                 voice_combo.addItem(
-                    "⚠ H2MTTS chỉ hỗ trợ Tiếng Việt (vi) — Hãy chọn EdgeTTS hoặc PiperTTS",
+                    "⚠ H2MTTS chỉ hỗ trợ Tiếng Việt (vi) — Hãy chọn EdgeTTS, PiperTTS, Supertonic 3 hoặc Kokoro-82M",
                     "",
                 )
             else:
@@ -657,7 +657,7 @@ class DubbingTab(QWidget):
             elif engine_id == "h2mtts" and lang_code != "vi":
                 err_msg = (
                     f"H2MTTS chỉ hỗ trợ giọng đọc Tiếng Việt (vi), không hỗ trợ ngôn ngữ "
-                    f"'{language_name(lang_code)} ({lang_code})'. Vui lòng chọn EdgeTTS hoặc PiperTTS."
+                    f"'{language_name(lang_code)} ({lang_code})'. Vui lòng chọn EdgeTTS, PiperTTS, Supertonic 3 hoặc Kokoro-82M."
                 )
                 paint_status(self.lang_status_label, "error")
                 self.lang_status_label.setText(f"⚠ {err_msg}")

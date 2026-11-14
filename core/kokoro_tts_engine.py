@@ -35,10 +35,12 @@ from utils.media_probe import resolve_tool
 
 logger = get_logger("tts.kokoro")
 
-KOKORO_ONNX_REPO = "onnx-community/Kokoro-82M-v1.0-ONNX"
-KOKORO_ONNX_REV = "1939ad2a8e416c0acfeecc08a694d14ef25f2231"
-KOKORO_TORCH_REPO = "hexgrad/Kokoro-82M"
-KOKORO_TORCH_REV = "f3ff3571791e39611d31c381e3a41a3af07b4987"
+KOKORO_ONNX_REPO = "hoangmui410/Kokoro-82M-ONNX"
+KOKORO_ONNX_REV = "main"
+KOKORO_ONNX_ALIAS_REPOS: Tuple[str, ...] = ("onnx-community/Kokoro-82M-v1.0-ONNX",)
+KOKORO_TORCH_REPO = "hoangmui410/Kokoro-82M-Torch"
+KOKORO_TORCH_REV = "main"
+KOKORO_TORCH_ALIAS_REPOS: Tuple[str, ...] = ("hexgrad/Kokoro-82M",)
 
 KOKORO_REQUIRED_ONNX_FILES: Tuple[str, ...] = ("onnx/model.onnx",)
 KOKORO_REQUIRED_TORCH_FILES: Tuple[str, ...] = ("config.json", "kokoro-v1_0.pth")
@@ -167,6 +169,7 @@ class KokoroTTSEngine:
             required_relpaths=KOKORO_REQUIRED_ONNX_FILES,
             preferred_rev=KOKORO_ONNX_REV,
             extra_dirs=extra,
+            alias_repo_ids=KOKORO_ONNX_ALIAS_REPOS,
         )
 
     def resolve_torch_root(self) -> Optional[Path]:
@@ -178,6 +181,7 @@ class KokoroTTSEngine:
             required_relpaths=KOKORO_REQUIRED_TORCH_FILES,
             preferred_rev=KOKORO_TORCH_REV,
             extra_dirs=extra,
+            alias_repo_ids=KOKORO_TORCH_ALIAS_REPOS,
         )
 
     @property
@@ -239,7 +243,9 @@ class KokoroTTSEngine:
         bins = self._collect_voice_bins()
         if not bins:
             return []
-        lang_norm = normalize_language(language) if language else ""
+        lang_norm = normalize_language(language) if str(language or "").strip() else ""
+        if lang_norm and lang_norm not in _LANG_TO_PREFIXES:
+            return []
         prefixes = _LANG_TO_PREFIXES.get(lang_norm) if lang_norm else None
         g_norm = str(gender or "").strip().lower()
 
@@ -295,7 +301,7 @@ class KokoroTTSEngine:
 
     def _want_gpu(self) -> bool:
         backend = str(self.tts_cfg.get("backend") or "auto").strip().lower()
-        if backend == "cpu":
+        if backend in ("cpu", "onnx"):
             return False
         if self.resolve_torch_root() is None:
             return False

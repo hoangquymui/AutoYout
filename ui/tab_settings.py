@@ -2646,7 +2646,7 @@ class _HFDownloadWorker(QThread):
     def __init__(self, target_dir: Path, jobs: List[Tuple[str, str, Optional[str]]], parent=None) -> None:
         super().__init__(parent)
         self._target_dir = Path(target_dir)
-        self._jobs = list(jobs)  # (repo_id, filename, revision)
+        self._jobs = list(jobs)  # (repo_id, filename_or_star, revision)
         self._cancel = False
 
     def cancel(self) -> None:
@@ -2654,15 +2654,32 @@ class _HFDownloadWorker(QThread):
 
     def run(self) -> None:
         try:
-            from huggingface_hub import hf_hub_download
+            from huggingface_hub import HfApi, hf_hub_download
         except Exception as exc:
             self.finished_all.emit(False, f"Thiếu thư viện huggingface_hub: {exc}")
             return
 
-        total = max(1, len(self._jobs))
+        expanded: List[Tuple[str, str, Optional[str]]] = []
+        api = None
+        for repo_id, filename, rev in self._jobs:
+            if filename == "*":
+                try:
+                    api = api or HfApi()
+                    files = api.list_repo_files(repo_id=repo_id, revision=rev or None, repo_type="model")
+                    for rf in files:
+                        if rf.startswith(".") or rf == ".gitattributes":
+                            continue
+                        expanded.append((repo_id, rf, rev))
+                except Exception as exc:
+                    self.finished_all.emit(False, f"Lỗi lấy danh sách file từ {repo_id}: {exc}")
+                    return
+            else:
+                expanded.append((repo_id, filename, rev))
+
+        total = max(1, len(expanded))
         done = 0
         self._target_dir.mkdir(parents=True, exist_ok=True)
-        for idx, (repo_id, filename, rev) in enumerate(self._jobs, 1):
+        for idx, (repo_id, filename, rev) in enumerate(expanded, 1):
             if self._cancel:
                 self.finished_all.emit(False, f"Đã dừng tải ({done}/{total} file).")
                 return
@@ -2683,7 +2700,7 @@ class _HFDownloadWorker(QThread):
 
 
 class HFModelTTSCard(QFrame):
-    """Unified settings card for Supertonic 3 and Kokoro-82M (auto-discovery + HF download + status)."""
+    """Unified settings card for Supertonic 3 and Kokoro-82M (auto-discovery + HF download + delete + status)."""
 
     changed = Signal()
 
@@ -2699,12 +2716,13 @@ class HFModelTTSCard(QFrame):
         is_st = self._kind == "supertonic"
         title_txt = "Supertonic 3 (ONNX Đa ngôn ngữ)" if is_st else "Kokoro-82M (ONNX CPU / PyTorch GPU)"
         tag_txt = "44.1 kHz · 31 ngôn ngữ · CPU" if is_st else "24 kHz · 8 ngôn ngữ · CPU/GPU"
+        repo_hint = "hoangmui410/Supertonic-3" if is_st else "hoangmui410/Kokoro-82M-ONNX & Kokoro-82M-Torch"
         sub_txt = (
             "Model ONNX thuần CPU chất lượng cao từ Supertone (10 giọng F1..F5, M1..M5; hỗ trợ vi, en, ja, ko, fr, es, pt, pl, ...).\n"
-            "Tự động nhận model đã tải sẵn trong cit-voice-studio hoặc thư mục bên dưới."
+            f"Kho tải: {repo_hint} · Tự động nhận model có sẵn trong cit-voice-studio hoặc thư mục bên dưới."
             if is_st
-            else "Model 82M siêu tự nhiên hỗ trợ EN (US/UK), FR, ES, PT, IT, HI, JA, ZH (chạy CPU ONNX hoặc tăng tốc GPU CUDA).\n"
-            "Tự động nhận model đã tải sẵn trong cit-voice-studio hoặc thư mục bên dưới."
+            else "Model 82M tự nhiên với 54 giọng hỗ trợ EN (US/UK), FR, ES, PT, IT, HI, JA, ZH (CPU ONNX / GPU CUDA PyTorch).\n"
+            f"Kho tải: {repo_hint} · Tự động nhận model có sẵn trong cit-voice-studio hoặc thư mục bên dưới."
         )
 
         root = QVBoxLayout(self)
@@ -2753,27 +2771,27 @@ class HFModelTTSCard(QFrame):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
         if is_st:
-            self.btn_dl_main = QPushButton("Tải Supertonic 3 (~260 MB)")
+            self.btn_dl_main = QPushButton("Tải Supertonic 3 (~383 MB)")
             self.btn_dl_main.clicked.connect(self._download_supertonic)
             btn_row.addWidget(self.btn_dl_main)
         else:
-            self.btn_dl_main = QPushButton("Tải Kokoro Core ONNX (~340 MB)")
-            self.btn_dl_main.clicked.connect(lambda: self._download_kokoro_pack("core"))
+            self.btn_dl_main = QPushButton("Tải Kokoro ONNX + 54 giọng (~338 MB)")
+            self.btn_dl_main.clicked.connect(lambda: self._download_kokoro_pack("all_onnx"))
             btn_row.addWidget(self.btn_dl_main)
 
-            self.btn_dl_ja = QPushButton("+ Pack JA")
-            self.btn_dl_ja.clicked.connect(lambda: self._download_kokoro_pack("ja"))
-            btn_row.addWidget(self.btn_dl_ja)
-
-            self.btn_dl_zh = QPushButton("+ Pack ZH")
-            self.btn_dl_zh.clicked.connect(lambda: self._download_kokoro_pack("zh"))
-            btn_row.addWidget(self.btn_dl_zh)
-
-            self.btn_dl_gpu = QPushButton("+ PyTorch GPU (~330 MB)")
+            self.btn_dl_gpu = QPushButton("+ PyTorch GPU (~312 MB)")
             self.btn_dl_gpu.clicked.connect(lambda: self._download_kokoro_pack("torch"))
             btn_row.addWidget(self.btn_dl_gpu)
 
+        self.btn_cancel_dl = QPushButton("Huỷ tải")
+        self.btn_cancel_dl.setVisible(False)
+        self.btn_cancel_dl.clicked.connect(self._cancel_download)
+        btn_row.addWidget(self.btn_cancel_dl)
+
         btn_row.addStretch(1)
+        self.btn_delete = icon_button("trash", f"Xoá model trong thư mục {title_txt}", role="muted", size=14, side=28)
+        self.btn_delete.clicked.connect(self._delete_local_model)
+        btn_row.addWidget(self.btn_delete)
         root.addLayout(btn_row)
 
         self.progress_bar = QProgressBar()
@@ -2792,6 +2810,10 @@ class HFModelTTSCard(QFrame):
         if chosen:
             self.path_edit.setText(chosen.replace("\\", "/"))
 
+    def _local_dir(self) -> Path:
+        raw = self.path_edit.text().strip()
+        return Path(normalize_supertonic_path(raw) if self._kind == "supertonic" else normalize_kokoro_path(raw))
+
     def _engine(self):
         cfg = {"paths": {self._kind: self.path_edit.text().strip()}}
         if self._kind == "supertonic":
@@ -2804,31 +2826,74 @@ class HFModelTTSCard(QFrame):
 
     def check_status(self) -> None:
         eng = self._engine()
-        ok, msg = eng.check_ready()
-        if self._kind == "kokoro" and ok:
-            torch_root = eng.resolve_torch_root()
-            gpu_note = " · GPU PyTorch sẵn sàng" if torch_root is not None else " · CPU ONNX"
-            msg = msg + gpu_note
-        self.status_lbl.setText(f"● {msg}")
-        paint_status(self.status_lbl, "success" if ok else "warning")
+        ok, full_msg = eng.check_ready()
+        if ok:
+            voices_cnt = len(eng.available_voices())
+            if self._kind == "kokoro":
+                gpu_note = " · GPU PyTorch & CPU ONNX" if eng.resolve_torch_root() is not None else " · CPU ONNX"
+                short = f"● Đã sẵn sàng · {voices_cnt} giọng{gpu_note}"
+            else:
+                short = f"● Đã sẵn sàng · {voices_cnt} giọng (CPU ONNX)"
+            self.status_lbl.setText(short)
+            self.status_lbl.setToolTip(full_msg)
+            paint_status(self.status_lbl, "success")
+        else:
+            self.status_lbl.setText("● Chưa tải model")
+            self.status_lbl.setToolTip(full_msg)
+            paint_status(self.status_lbl, "warning")
+
+        local_dir = self._local_dir()
+        has_local = local_dir.is_dir() and any(local_dir.iterdir())
+        if hasattr(self, "btn_delete"):
+            self.btn_delete.setEnabled(has_local and not (self._worker and self._worker.isRunning()))
+
+    def _delete_local_model(self) -> None:
+        target = self._local_dir()
+        if not target.is_dir():
+            return
+        reply = QMessageBox.question(
+            self,
+            "Xoá model cục bộ",
+            f"Bạn có chắc chắn muốn xoá thư mục model đã tải tại:\n{target}\n\n"
+            "(Không ảnh hưởng tới cache ngoài như cit-voice-studio.)",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            shutil.rmtree(target)
+        except Exception as exc:
+            QMessageBox.warning(self, "Không thể xoá", f"Lỗi xoá {target}: {exc}")
+            return
+        self.check_status()
+        self.changed.emit()
+
+    def _cancel_download(self) -> None:
+        if self._worker and self._worker.isRunning():
+            self._worker.cancel()
+            self.btn_cancel_dl.setEnabled(False)
+            self.progress_lbl.setText("Đang huỷ tiến trình tải…")
 
     def _start_jobs(self, jobs: List[Tuple[str, str, Optional[str]]]) -> None:
         if self._worker and self._worker.isRunning():
             return
-        raw = self.path_edit.text().strip()
-        target = Path(
-            normalize_supertonic_path(raw) if self._kind == "supertonic" else normalize_kokoro_path(raw)
-        )
-        self.progress_bar.setRange(0, max(1, len(jobs)))
-        self.progress_bar.setValue(0)
+        target = self._local_dir()
+        self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(True)
-        self.progress_lbl.setText("Đang chuẩn bị tải từ Hugging Face…")
+        self.progress_lbl.setText("Đang kết nối Hugging Face…")
         self.progress_lbl.setVisible(True)
         self.btn_dl_main.setEnabled(False)
+        if hasattr(self, "btn_dl_gpu"):
+            self.btn_dl_gpu.setEnabled(False)
+        self.btn_delete.setEnabled(False)
+        self.btn_cancel_dl.setVisible(True)
+        self.btn_cancel_dl.setEnabled(True)
 
         self._worker = _HFDownloadWorker(target, jobs, parent=self)
         self._worker.progress.connect(
             lambda cur, tot, fname: (
+                self.progress_bar.setRange(0, max(1, tot)),
                 self.progress_bar.setValue(cur),
                 self.progress_lbl.setText(f"[{cur}/{tot}] {fname}"),
             )
@@ -2839,15 +2904,17 @@ class HFModelTTSCard(QFrame):
     def _on_download_done(self, ok: bool, msg: str) -> None:
         self._worker = None
         self.btn_dl_main.setEnabled(True)
+        if hasattr(self, "btn_dl_gpu"):
+            self.btn_dl_gpu.setEnabled(True)
+        self.btn_cancel_dl.setVisible(False)
         self.progress_lbl.setText(msg)
         self.check_status()
         self.changed.emit()
 
     def _download_supertonic(self) -> None:
-        from core.supertonic_tts_engine import SUPERTONIC_ALL_FILES, SUPERTONIC_REPO, SUPERTONIC_REV
+        from core.supertonic_tts_engine import SUPERTONIC_REPO, SUPERTONIC_REV
 
-        jobs = [(SUPERTONIC_REPO, f, SUPERTONIC_REV) for f in SUPERTONIC_ALL_FILES]
-        self._start_jobs(jobs)
+        self._start_jobs([(SUPERTONIC_REPO, "*", SUPERTONIC_REV)])
 
     def _download_kokoro_pack(self, pack: str) -> None:
         from core.kokoro_tts_engine import (
@@ -2864,15 +2931,9 @@ class HFModelTTSCard(QFrame):
         elif pack == "zh":
             jobs = [(KOKORO_ONNX_REPO, f"voices/{v}.bin", KOKORO_ONNX_REV) for v in KOKORO_ZH_VOICES]
         elif pack == "torch":
-            jobs = [
-                (KOKORO_TORCH_REPO, "config.json", KOKORO_TORCH_REV),
-                (KOKORO_TORCH_REPO, "kokoro-v1_0.pth", KOKORO_TORCH_REV),
-            ]
+            jobs = [(KOKORO_TORCH_REPO, "*", KOKORO_TORCH_REV)]
         else:
-            core_voices = ("af_heart", "af_bella", "am_adam", "bf_emma", "bm_george", "ef_dora", "ff_siwis", "if_sara", "pf_dora", "hf_alpha")
-            jobs = [(KOKORO_ONNX_REPO, "onnx/model.onnx", KOKORO_ONNX_REV)] + [
-                (KOKORO_ONNX_REPO, f"voices/{v}.bin", KOKORO_ONNX_REV) for v in core_voices
-            ]
+            jobs = [(KOKORO_ONNX_REPO, "*", KOKORO_ONNX_REV)]
         self._start_jobs(jobs)
 
     def apply_theme(self) -> None:

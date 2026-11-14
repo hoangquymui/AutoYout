@@ -29,8 +29,9 @@ from utils.media_probe import resolve_tool
 
 logger = get_logger("tts.supertonic")
 
-SUPERTONIC_REPO = "supertone-oss-archive/supertonic-3"
-SUPERTONIC_REV = "aafc6e32416a594460b32413efc49d7fe4ce6d46"
+SUPERTONIC_REPO = "hoangmui410/Supertonic-3"
+SUPERTONIC_REV = "main"
+SUPERTONIC_ALIAS_REPOS: Tuple[str, ...] = ("supertone-oss-archive/supertonic-3",)
 
 SUPERTONIC_VOICES: Tuple[Tuple[str, str, str], ...] = (
     ("F1", "Female", "F1 · Nữ (ấm áp, tự nhiên)"),
@@ -133,6 +134,7 @@ class SupertonicTTSEngine:
             required_relpaths=SUPERTONIC_REQUIRED_FILES,
             preferred_rev=SUPERTONIC_REV,
             extra_dirs=extra,
+            alias_repo_ids=SUPERTONIC_ALIAS_REPOS,
         )
 
     @property
@@ -161,7 +163,10 @@ class SupertonicTTSEngine:
         return True, f"Supertonic 3 ONNX sẵn sàng ({found})"
 
     def available_voices(self, language: str = "", gender: str = "") -> List[Tuple[str, str]]:
-        """Return ``(voice_id, display_label)`` pairs filtered by optional gender."""
+        """Return ``(voice_id, display_label)`` pairs filtered by optional language and gender."""
+        lang_norm = normalize_language(language) if str(language or "").strip() else ""
+        if lang_norm and lang_norm not in SUPERTONIC_LANGUAGES:
+            return []
         g_norm = str(gender or "").strip().lower()
         found = self.resolve_root()
         out: List[Tuple[str, str]] = []
@@ -173,9 +178,6 @@ class SupertonicTTSEngine:
             if found is not None and not (found / "voice_styles" / f"{vid}.json").is_file():
                 continue
             out.append((vid, vdesc))
-        if not out and found is not None:
-            # Fallback list even if filtered tightly
-            return [(vid, vdesc) for vid, _, vdesc in SUPERTONIC_VOICES if (found / "voice_styles" / f"{vid}.json").is_file()]
         return out
 
     def _ensure_loaded(self) -> Path:

@@ -229,6 +229,102 @@ def test_ui_roundtrip_supertonic_and_kokoro():
     settings_tab.load_from(cfg)
     assert hasattr(settings_tab, "card_supertonic")
     assert hasattr(settings_tab, "card_kokoro")
+    assert hasattr(settings_tab.card_supertonic, "btn_dl_main")
+    assert hasattr(settings_tab.card_supertonic, "btn_cancel_dl")
+    assert hasattr(settings_tab.card_supertonic, "btn_delete")
+    assert hasattr(settings_tab.card_kokoro, "btn_dl_main")
+    assert hasattr(settings_tab.card_kokoro, "btn_dl_gpu")
+    assert hasattr(settings_tab.card_kokoro, "btn_cancel_dl")
+    assert hasattr(settings_tab.card_kokoro, "btn_delete")
     settings_tab.apply_to(out_cfg)
     assert "supertonic" in out_cfg["paths"]
     assert "kokoro" in out_cfg["paths"]
+
+    dub_tab.close()
+    dub_tab.deleteLater()
+    settings_tab.close()
+    settings_tab.deleteLater()
+
+
+def test_engine_unsupported_language_and_backend_flags():
+    from core.kokoro_tts_engine import (
+        KOKORO_ONNX_REPO,
+        KOKORO_TORCH_REPO,
+        KokoroTTSEngine,
+    )
+    from core.supertonic_tts_engine import SUPERTONIC_REPO, SupertonicTTSEngine
+
+    assert SUPERTONIC_REPO == "hoangmui410/Supertonic-3"
+    assert KOKORO_ONNX_REPO == "hoangmui410/Kokoro-82M-ONNX"
+    assert KOKORO_TORCH_REPO == "hoangmui410/Kokoro-82M-Torch"
+
+    cfg = load_settings()
+    assert KokoroTTSEngine(cfg).available_voices(language="vi") == []
+    assert SupertonicTTSEngine(cfg).available_voices(language="zh") == []
+
+    cfg_onnx = copy.deepcopy(cfg)
+    cfg_onnx["tts"]["backend"] = "onnx"
+    assert KokoroTTSEngine(cfg_onnx)._want_gpu() is False
+
+    cfg_cpu = copy.deepcopy(cfg)
+    cfg_cpu["tts"]["backend"] = "cpu"
+    assert KokoroTTSEngine(cfg_cpu)._want_gpu() is False
+
+
+def test_tts_tab_provider_language_backend_and_sample_preview():
+    from PySide6.QtWidgets import QApplication
+    from core.language_profiles import LanguageProfile
+    from ui.tab_tts import TTSConfigTab
+
+    _app = QApplication.instance() or QApplication([])
+
+    cfg = load_settings()
+    cfg["tts"]["provider"] = "h2mtts"
+    cfg["tts"]["language"] = "vi"
+
+    tab = TTSConfigTab()
+    tab.sync_languages([
+        LanguageProfile("vi", "", name="Tiếng Việt"),
+        LanguageProfile("en", "", name="English"),
+        LanguageProfile("ja", "", name="日本語 (Japanese)"),
+        LanguageProfile("fr", "", name="Français"),
+    ])
+    tab.load_from(cfg)
+
+    assert tab.language_combo.currentData() == "vi"
+    assert tab.backend_combo.isEnabled() is True
+
+    # Switching to kokoro must filter out unsupported 'vi' -> switch to 'en'
+    idx_kokoro = tab.provider_combo.findData("kokoro")
+    tab.provider_combo.setCurrentIndex(idx_kokoro)
+    assert tab.language_combo.findData("vi") < 0
+    assert tab.language_combo.currentData() == "en"
+    assert tab.backend_combo.isEnabled() is True
+    assert "voice preview from autoyout" in tab.preview_edit.toPlainText().lower()
+
+    # Switching to supertonic must disable backend_combo (CPU ONNX) and allow 'vi'
+    idx_sup = tab.provider_combo.findData("supertonic")
+    tab.provider_combo.setCurrentIndex(idx_sup)
+    assert tab.backend_combo.isEnabled() is False
+    assert tab.language_combo.findData("vi") >= 0
+    assert tab.language_combo.findData("zh") < 0
+
+    # Switching to piper / edge also disables backend_combo
+    tab.provider_combo.setCurrentIndex(tab.provider_combo.findData("piper"))
+    assert tab.backend_combo.isEnabled() is False
+    tab.provider_combo.setCurrentIndex(tab.provider_combo.findData("edge"))
+    assert tab.backend_combo.isEnabled() is False
+
+    # Language switch updates sample preview automatically if untouched
+    idx_ja = tab.language_combo.findData("ja")
+    tab.language_combo.setCurrentIndex(idx_ja)
+    assert "音声プレビュー" in tab.preview_edit.toPlainText()
+
+    # Infer language from voice id when 'Tất cả ngôn ngữ' ('') is selected
+    assert tab._infer_lang_from_voice("kokoro", "af_heart") == "en"
+    assert tab._infer_lang_from_voice("kokoro", "jf_alpha") == "ja"
+    assert tab._infer_lang_from_voice("piper", "ja_JP-hi_fi_captain-medium") == "ja"
+    assert tab._infer_lang_from_voice("edge", "fr-FR-DeniseNeural") == "fr"
+
+    tab.close()
+    tab.deleteLater()

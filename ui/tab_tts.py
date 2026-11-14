@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.edge_tts_engine import EdgeTTSEngine
-from core.kokoro_tts_engine import KokoroTTSEngine
+from core.kokoro_tts_engine import KOKORO_LANGUAGES, KokoroTTSEngine, _voice_lang
 from core.languages import language_name, normalize_language, normalize_language_code
 from core.language_profiles import load_profiles
 from core.piper_tts_engine import (
@@ -37,7 +37,7 @@ from core.piper_tts_engine import (
     detect_gpu_status,
 )
 from core.settings import ROOT, default_h2mtts_path, normalize_h2mtts_path
-from core.supertonic_tts_engine import SupertonicTTSEngine
+from core.supertonic_tts_engine import SUPERTONIC_LANGUAGES, SupertonicTTSEngine
 from core.tts_engine import SynthesisCancelled, TTSEngine
 from ui.components.audio_player import AudioPreview
 from ui.components.icons import set_icon
@@ -47,6 +47,21 @@ from utils.logger import get_logger
 logger = get_logger("ui.tts")
 
 _BITRATES = [("192 kbps", "192k"), ("256 kbps", "256k"), ("320 kbps", "320k")]
+_SAMPLE_PREVIEW_BY_LANG: Dict[str, str] = {
+    "vi": "Xin chào, đây là bản nghe thử giọng đọc của AutoYout. Chúc bạn một ngày tốt lành.",
+    "en": "Hello, this is a voice preview from AutoYout. Have a wonderful day!",
+    "ja": "こんにちは。これはAutoYoutの音声プレビューです。素晴らしい一日をお過ごしください。",
+    "zh": "你好，这是 AutoYout 的语音试听。祝你今天愉快！",
+    "ko": "안녕하세요. AutoYout 음성 미리 듣기입니다. 좋은 하루 보내세요!",
+    "fr": "Bonjour, ceci est un aperçu vocal d'AutoYout. Passez une excellente journée !",
+    "es": "Hola, esta es una vista previa de voz de AutoYout. ¡Que tengas un excelente día!",
+    "pt": "Olá, esta é uma prévia de voz do AutoYout. Tenha um ótimo dia!",
+    "de": "Hallo, dies ist eine Sprachvorschau von AutoYout. Einen schönen Tag noch!",
+    "it": "Ciao, questa è un'anteprima vocale di AutoYout. Buona giornata!",
+    "hi": "नमस्ते, यह AutoYout का वॉइस प्रीव्यू है। आपका दिन शुभ हो!",
+    "pl": "Cześć, to jest podgląd głosu AutoYout. Miłego dnia!",
+    "ru": "Привет, это предварительное прослушивание голоса AutoYout. Хорошего дня!",
+}
 
 
 class _PreviewWorker(QThread):
@@ -102,8 +117,6 @@ class _PreviewWorker(QThread):
                     elif self._voice and "_" in self._voice and self._provider == "piper":
                         lang = self._voice.split("_")[0].lower()
                     elif self._provider == "kokoro" and self._voice:
-                        from core.kokoro_tts_engine import _voice_lang
-
                         lang = _voice_lang(self._voice)
                 engine.synthesize(
                     self._text,
@@ -144,6 +157,9 @@ class TTSConfigTab(QWidget):
         self._engine: Optional[TTSEngine] = None
         self._worker: Optional[_PreviewWorker] = None
         self._pipeline_busy = False
+        self._active_provider: str = ""
+        self._last_profiles: Optional[List[Any]] = None
+        self._base_languages: List[Tuple[str, str]] = [("", "Tất cả ngôn ngữ"), ("vi", "Tiếng Việt (vi)")]
 
         page = QVBoxLayout(self)
         page.setContentsMargins(0, 0, 0, 0)
@@ -216,7 +232,7 @@ class TTSConfigTab(QWidget):
         self.lang_label.setStyleSheet("font-weight: 500;")
         self.language_combo = QComboBox()
         self.sync_languages()
-        self.language_combo.currentIndexChanged.connect(self._refresh_voice_list)
+        self.language_combo.currentIndexChanged.connect(self._on_language_changed)
         lang_h.addWidget(self.lang_label)
         lang_h.addWidget(self.language_combo, 1)
         filter_row.addWidget(self.lang_container, 1)
@@ -271,6 +287,10 @@ class TTSConfigTab(QWidget):
         self.backend_combo.addItem("GPU (CUDA / Tăng tốc phần cứng)", "gpu")
         self.backend_combo.addItem("CPU (ONNX Runtime)", "onnx")
         run_form.addRow("Thiết bị chạy", self.backend_combo)
+        self.backend_hint = QLabel("")
+        self.backend_hint.setObjectName("MutedLabel")
+        self.backend_hint.setWordWrap(True)
+        run_form.addRow("", self.backend_hint)
         left.addWidget(self.run_with_box)
 
         # ── 3. Khung "Nhịp đọc" (Tốc độ, Nghỉ câu, Nghỉ đoạn, Bitrate) ──────
@@ -401,6 +421,8 @@ class TTSConfigTab(QWidget):
                 profiles = load_profiles()
             except Exception:
                 profiles = []
+        else:
+            self._last_profiles = list(profiles)
 
         items: List[Tuple[str, str]] = [("", "Tất cả ngôn ngữ"), ("vi", "Tiếng Việt (vi)")]
         seen = {"", "vi"}
@@ -427,19 +449,56 @@ class TTSConfigTab(QWidget):
             seen.add(current_data)
             items.append((current_data, f"{language_name(current_data)} ({current_data})"))
 
+        self._base_languages = list(items)
+        provider = str(self.provider_combo.currentData() or "h2mtts") if hasattr(self, "provider_combo") else "h2mtts"
+        self._sync_languages_for_provider(provider, preferred_lang=current_data)
+
+    def _sync_languages_for_provider(self, provider: str, preferred_lang: Optional[str] = None) -> None:
+        """Restrict or restore language choices based on what the chosen TTS model supports."""
+        if not hasattr(self, "language_combo"):
+            return
+        prev_lang = preferred_lang if preferred_lang is not None else self.language_combo.currentData()
+        base = getattr(self, "_base_languages", [("", "Tất cả ngôn ngữ"), ("vi", "Tiếng Việt (vi)")])
+
+        supported_order: Optional[Tuple[str, ...]] = None
+        default_lang = "vi"
+        if provider == "kokoro":
+            supported_order = KOKORO_LANGUAGES
+            default_lang = "en"
+        elif provider == "supertonic":
+            supported_order = SUPERTONIC_LANGUAGES
+            default_lang = "vi"
+
+        if supported_order is None:
+            items = list(base)
+        else:
+            label_by_code = {c: lbl for c, lbl in base if c}
+            items = [("", "Tất cả ngôn ngữ")]
+            seen = {""}
+            # Keep user-configured / profile languages first if supported
+            for code, lbl in base:
+                if code and code in supported_order and code not in seen:
+                    items.append((code, lbl))
+                    seen.add(code)
+            # Then add remaining model-supported languages so user can always test any voice
+            for code in supported_order:
+                if code not in seen:
+                    lbl = label_by_code.get(code) or f"{language_name(code)} ({code})"
+                    items.append((code, lbl))
+                    seen.add(code)
+
         self.language_combo.blockSignals(True)
         self.language_combo.clear()
         for code, label in items:
             self.language_combo.addItem(label, code)
 
-        if current_data is not None:
-            idx = self.language_combo.findData(current_data)
-            if idx >= 0:
-                self.language_combo.setCurrentIndex(idx)
-            else:
-                self.language_combo.setCurrentIndex(0)
+        target_lang = prev_lang if prev_lang is not None else ""
+        idx = self.language_combo.findData(target_lang)
+        if idx >= 0:
+            self.language_combo.setCurrentIndex(idx)
         else:
-            self.language_combo.setCurrentIndex(0)
+            def_idx = self.language_combo.findData(default_lang)
+            self.language_combo.setCurrentIndex(def_idx if def_idx >= 0 else 0)
         self.language_combo.blockSignals(False)
 
     # ── settings ─────────────────────────────────────────────────────────────
@@ -473,19 +532,21 @@ class TTSConfigTab(QWidget):
                 elif isinstance(item, dict) and "language" in item:
                     extra.append(item["language"])
         if extra:
-            self.sync_languages(extra_codes=extra)
+            self.sync_languages(profiles=self._last_profiles, extra_codes=extra)
         else:
-            self.sync_languages()
+            self.sync_languages(profiles=self._last_profiles)
 
-        self._set_combo(self.language_combo, lang)
+        self._sync_languages_for_provider(provider, preferred_lang=lang)
         self.speed_spin.setValue(float(tts.get("speed", 1.0) or 1.0))
         self.gap_sentence_spin.setValue(float(tts.get("gap_sentence", 0.3) or 0.0))
         self.gap_paragraph_spin.setValue(float(tts.get("gap_paragraph", 0.8) or 0.0))
         self.max_chars_spin.setValue(int(tts.get("max_chars", 350) or 350))
         self._set_combo(self.bitrate_combo, tts.get("bitrate", "192k"))
         self.preview_edit.setPlainText(str(tts.get("preview_text") or ""))
+        self._active_provider = ""
         self._refresh_voice_list()
-        self._select_voice(str(tts.get("voice") or ""))
+        if tts.get("voice") and provider == "h2mtts":
+            self._select_voice(str(tts.get("voice") or ""))
 
     def apply_to(self, settings: Dict[str, Any]) -> None:
         paths = settings.setdefault("paths", {})
@@ -504,24 +565,27 @@ class TTSConfigTab(QWidget):
             paths["h2mtts"] = h2_norm
         tts = settings.setdefault("tts", {})
         provider = str(self.provider_combo.currentData() or "h2mtts")
-        lang = str(self.language_combo.currentData() or "vi").strip().lower() or "vi"
+        lang = str(self.language_combo.currentData() or "").strip().lower()
+        if provider == "h2mtts":
+            lang = "vi"
         tts["provider"] = provider
         tts["engine"] = self.engine_combo.currentData() or "turbo"
         tts["backend"] = self.backend_combo.currentData() or "auto"
-        tts["language"] = lang
+        tts["language"] = lang or ("en" if provider == "kokoro" else "vi")
         voice = self.voice_combo.currentData()
+        eff_lang = tts["language"]
         if voice:
             if provider == "piper":
-                tts.setdefault("piper_voices", {})[lang] = voice
+                tts.setdefault("piper_voices", {})[eff_lang] = voice
             elif provider == "supertonic":
-                tts.setdefault("supertonic_voices", {})[lang] = voice
+                tts.setdefault("supertonic_voices", {})[eff_lang] = voice
             elif provider == "kokoro":
-                tts.setdefault("kokoro_voices", {})[lang] = voice
+                tts.setdefault("kokoro_voices", {})[eff_lang] = voice
             elif provider == "edge":
-                tts.setdefault("edge_voices", {})[lang] = voice
+                tts.setdefault("edge_voices", {})[eff_lang] = voice
             else:
                 tts["voice"] = voice
-                tts.setdefault("h2m_voices", {})[lang] = voice
+                tts.setdefault("h2m_voices", {})["vi"] = voice
         tts["speed"] = round(float(self.speed_spin.value()), 3)
         tts["gap_sentence"] = round(float(self.gap_sentence_spin.value()), 2)
         tts["gap_paragraph"] = round(float(self.gap_paragraph_spin.value()), 2)
@@ -547,9 +611,44 @@ class TTSConfigTab(QWidget):
     def _on_engine_changed(self) -> None:
         self._refresh_voice_list()
 
+    def _maybe_update_sample_preview(self) -> None:
+        """Swap preview text cleanly when it is empty or still holds a default sample from another language."""
+        provider = str(self.provider_combo.currentData() or "h2mtts")
+        if provider == "h2mtts":
+            target_lang = "vi"
+        else:
+            target_lang = str(self.language_combo.currentData() or "").strip().lower()
+            if not target_lang:
+                voice_data = str(self.voice_combo.currentData() or "")
+                target_lang = self._infer_lang_from_voice(provider, voice_data)
+        sample = _SAMPLE_PREVIEW_BY_LANG.get(target_lang)
+        if not sample:
+            return
+        cur = self.preview_edit.toPlainText().strip()
+        if not cur or cur in _SAMPLE_PREVIEW_BY_LANG.values():
+            if cur != sample:
+                self.preview_edit.setPlainText(sample)
+
+    @staticmethod
+    def _infer_lang_from_voice(provider: str, voice_data: str) -> str:
+        if provider == "kokoro" and voice_data:
+            return _voice_lang(voice_data)
+        if provider == "piper" and "_" in voice_data:
+            return normalize_language(voice_data.split("_", 1)[0])
+        if provider == "edge" and "-" in voice_data:
+            return normalize_language(voice_data.split("-", 1)[0])
+        return "en" if provider == "kokoro" else "vi"
+
     def _on_provider_changed(self) -> None:
+        provider = str(self.provider_combo.currentData() or "h2mtts")
+        self._sync_languages_for_provider(provider)
         self._refresh_voice_list()
+        self._maybe_update_sample_preview()
         self.changed.emit()
+
+    def _on_language_changed(self) -> None:
+        self._refresh_voice_list()
+        self._maybe_update_sample_preview()
 
     def _on_reload_voices_clicked(self) -> None:
         provider = str(self.provider_combo.currentData() or "h2mtts")
@@ -563,8 +662,23 @@ class TTSConfigTab(QWidget):
     def _refresh_voice_list(self) -> None:
         self.refresh_gpu_state()
         provider = str(self.provider_combo.currentData() or "h2mtts")
+        provider_changed = provider != self._active_provider
+        self._active_provider = provider
         is_h2m = provider == "h2mtts"
         has_gender = provider in ("h2mtts", "edge", "supertonic", "kokoro")
+
+        # Update hardware backend availability & helpful hint
+        if hasattr(self, "backend_hint"):
+            gpu_capable = provider in ("h2mtts", "kokoro")
+            self.backend_combo.setEnabled(gpu_capable)
+            hints = {
+                "h2mtts": "H2MTTS Turbo hỗ trợ tăng tốc GPU CUDA hoặc CPU ONNX.",
+                "kokoro": "Kokoro-82M hỗ trợ GPU CUDA (PyTorch) và CPU (ONNX Runtime).",
+                "supertonic": "Supertonic 3 chạy thuần CPU ONNX (44.1 kHz), không yêu cầu GPU.",
+                "piper": "PiperTTS chạy thuần CPU ONNX siêu nhẹ, không yêu cầu GPU.",
+                "edge": "EdgeTTS tổng hợp giọng đọc trực tuyến qua dịch vụ Microsoft Edge.",
+            }
+            self.backend_hint.setText(hints.get(provider, ""))
 
         if has_gender:
             self.gender_label.setText("Giới tính")
@@ -589,7 +703,7 @@ class TTSConfigTab(QWidget):
         gender_filter = str(self.gender_combo.currentData() or "").strip()
         lang_filter = str(self.language_combo.currentData() or "").strip().lower()
 
-        current = self.voice_combo.currentData()
+        current = "" if provider_changed else str(self.voice_combo.currentData() or "")
         self.voice_combo.blockSignals(True)
         self.voice_combo.clear()
 
@@ -636,8 +750,14 @@ class TTSConfigTab(QWidget):
             if voices:
                 for vid, vlabel in voices:
                     self.voice_combo.addItem(vlabel, vid)
+                lang_note = f"{language_name(lang_filter)} ({lang_filter})" if lang_filter else "tất cả ngôn ngữ hỗ trợ"
+                extra_mode = ""
+                if provider == "kokoro":
+                    extra_mode = " · GPU PyTorch & CPU ONNX" if c_eng.resolve_torch_root() is not None else " · CPU ONNX"
+                else:
+                    extra_mode = " · CPU ONNX (44.1 kHz)"
                 status_text = (
-                    f"Đã nạp {len(voices)} giọng {eng_name} ({c_eng.root})."
+                    f"Đã nạp {len(voices)} giọng {eng_name} ({lang_note}){extra_mode}."
                     if ok
                     else f"{len(voices)} giọng · {msg}"
                 )
@@ -793,7 +913,9 @@ class TTSConfigTab(QWidget):
             self.preview_status.setText("Đoạn nghe thử đã được rút còn 600 ký tự.")
         voice_data = str(self.voice_combo.currentData() or "")
         provider = str(self.provider_combo.currentData() or "h2mtts")
-        lang_data = str(self.language_combo.currentData() or "vi").strip().lower() or "vi"
+        lang_data = str(self.language_combo.currentData() or "").strip().lower()
+        if not lang_data:
+            lang_data = self._infer_lang_from_voice(provider, voice_data)
         if not voice_data:
             self.preview_status.setText("Chưa có giọng đọc khả dụng.")
             paint_status(self.preview_status, "warning")
