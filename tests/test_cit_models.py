@@ -227,8 +227,27 @@ def test_ui_roundtrip_supertonic_and_kokoro():
 
     settings_tab = SettingsTab()
     settings_tab.load_from(cfg)
+    assert not hasattr(settings_tab.card_h2mtts, "specs_box")
+    assert hasattr(settings_tab.general_page, "specs_box")
+    assert hasattr(settings_tab.general_page, "rating_badge")
+    assert hasattr(settings_tab.general_page, "lbl_cpu")
+    assert hasattr(settings_tab.general_page, "lbl_ram")
+    assert hasattr(settings_tab.general_page, "lbl_gpu")
+    assert hasattr(settings_tab.general_page, "lbl_disk")
     assert hasattr(settings_tab, "card_supertonic")
     assert hasattr(settings_tab, "card_kokoro")
+    for card in (settings_tab.card_supertonic, settings_tab.card_kokoro):
+        assert hasattr(card, "btn_collapse")
+        assert hasattr(card, "body_widget")
+        assert hasattr(card, "downloads_box")
+        assert hasattr(card, "pkg_widgets")
+        assert hasattr(card, "status_badge")
+        assert card.is_expanded() is True
+        card.btn_collapse.click()
+        assert card.is_expanded() is False
+        assert card.body_widget.isHidden() is True
+        card.btn_collapse.click()
+        assert card.is_expanded() is True
     assert hasattr(settings_tab.card_supertonic, "btn_dl_main")
     assert hasattr(settings_tab.card_supertonic, "btn_cancel_dl")
     assert hasattr(settings_tab.card_supertonic, "btn_delete")

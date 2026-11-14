@@ -1343,60 +1343,7 @@ class H2MTTSCard(QFrame):
         body_layout.setSpacing(12)
         layout.addWidget(self.body_widget)
 
-        # ── 2. Hardware Specifications Box ───────────────────────────────────
-        self.specs_box = QFrame()
-        self.specs_box.setObjectName("SpecsBox")
-        specs_layout = QVBoxLayout(self.specs_box)
-        specs_layout.setContentsMargins(12, 10, 12, 10)
-        specs_layout.setSpacing(8)
-
-        rate_row = QHBoxLayout()
-        self.rating_badge = QLabel("• Đánh giá cấu hình: TỐT - bản GPU")
-        self.rating_badge.setStyleSheet(
-            f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
-            "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
-        )
-        rate_row.addWidget(self.rating_badge)
-        rate_row.addStretch(1)
-
-        self.btn_redetect = icon_button(
-            "refresh", "Dò lại cấu hình phần cứng", role="muted", size=13, side=28
-        )
-        self.btn_redetect.clicked.connect(self.detect_specs)
-        btn_redetect_text = QPushButton("Dò lại")
-        btn_redetect_text.setFlat(True)
-        btn_redetect_text.setStyleSheet(f"color: {theme.ACCENT}; font-size: 11px;")
-        btn_redetect_text.clicked.connect(self.detect_specs)
-        rate_row.addWidget(self.btn_redetect)
-        rate_row.addWidget(btn_redetect_text)
-        specs_layout.addLayout(rate_row)
-
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(16)
-        grid.setVerticalSpacing(4)
-        grid.addWidget(self._make_spec_label("CPU"), 0, 0)
-        self.lbl_cpu = QLabel("—")
-        grid.addWidget(self.lbl_cpu, 0, 1)
-
-        grid.addWidget(self._make_spec_label("RAM"), 1, 0)
-        self.lbl_ram = QLabel("—")
-        grid.addWidget(self.lbl_ram, 1, 1)
-
-        grid.addWidget(self._make_spec_label("GPU"), 2, 0)
-        self.lbl_gpu = QLabel("—")
-        grid.addWidget(self.lbl_gpu, 2, 1)
-
-        grid.addWidget(self._make_spec_label("Ổ đĩa trống"), 3, 0)
-        self.lbl_disk = QLabel("—")
-        grid.addWidget(self.lbl_disk, 3, 1)
-        specs_layout.addLayout(grid)
-
-        self.lbl_note = QLabel("• GPU ... - đọc nhanh hơn thời gian thực nhiều lần")
-        self.lbl_note.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
-        specs_layout.addWidget(self.lbl_note)
-        body_layout.addWidget(self.specs_box)
-
-        # ── 3. Path row ──────────────────────────────────────────────────────
+        # ── 2. Path row ──────────────────────────────────────────────────────
         path_row = QHBoxLayout()
         path_row.setSpacing(6)
         path_lbl = QLabel("Thư mục H2MTTS:")
@@ -1558,7 +1505,6 @@ class H2MTTSCard(QFrame):
         body_layout.addWidget(self.engine_status)
 
         self.apply_theme()
-        self.detect_specs()
         self.check_packages_status()
 
     def is_expanded(self) -> bool:
@@ -1578,13 +1524,6 @@ class H2MTTSCard(QFrame):
         )
         self.btn_collapse.setToolTip("Thu gọn" if self._expanded else "Mở rộng")
 
-    @staticmethod
-    def _make_spec_label(text: str) -> QLabel:
-        lbl = QLabel(text)
-        lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-weight: bold; font-size: 11px;")
-        lbl.setFixedWidth(80)
-        return lbl
-
     def _browse_dir(self) -> None:
         start = self.path_edit.text().strip() or str(Path.home())
         chosen = QFileDialog.getExistingDirectory(self, "Chọn thư mục H2MTTS", start)
@@ -1592,12 +1531,10 @@ class H2MTTSCard(QFrame):
             chosen = str(Path(chosen).resolve().as_posix())
             self.path_edit.setText(chosen)
             logger.info("Đã chọn thư mục H2MTTS: %s", chosen)
-            self.detect_specs()
             self.check_packages_status()
             self.changed.emit()
 
     def _on_path_changed(self, _text: str) -> None:
-        self.detect_specs()
         self.check_packages_status()
         self.changed.emit()
 
@@ -1703,7 +1640,6 @@ class H2MTTSCard(QFrame):
             return
         self._delete_pkg_files(path, pkg)
         self.check_packages_status()
-        self.detect_specs()
         self.changed.emit()
 
     def _delete_pkg_files(self, root: Path, pkg: Dict[str, Any]) -> None:
@@ -1760,7 +1696,6 @@ class H2MTTSCard(QFrame):
             for pkg in H2M_PACKAGES:
                 self._delete_pkg_files(path, pkg)
             self.check_packages_status()
-            self.detect_specs()
             self.changed.emit()
             QMessageBox.information(self, "Hoàn tất", "Đã dọn dẹp sạch toàn bộ model H2MTTS.")
         elif cleaned_files > 0:
@@ -1837,7 +1772,6 @@ class H2MTTSCard(QFrame):
             paint_status(self.engine_status, "warning")
         self.engine_status.setText(message)
         self.check_packages_status(errors=errors)
-        self.detect_specs()
         self.changed.emit()
 
     def _cancel_download_clicked(self) -> None:
@@ -1848,24 +1782,9 @@ class H2MTTSCard(QFrame):
         else:
             self.progress_container.setVisible(False)
 
-    def detect_specs(self) -> None:
-        path = self.path_edit.text().strip()
-        data = detect_hardware(path)
-
-        self.lbl_cpu.setText(data["cpu"])
-        self.lbl_ram.setText(data["ram"])
-        self.lbl_gpu.setText(data["gpu"])
-        self.lbl_disk.setText(data["disk"])
-        self.lbl_note.setText(data["note"])
-
-        self.rating_badge.setText(f"• Đánh giá cấu hình: {data['rating']}")
-
     def apply_theme(self) -> None:
         self.setStyleSheet(
             f"QFrame#H2MTTSCard {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 8px; }}"
-        )
-        self.specs_box.setStyleSheet(
-            f"QFrame#SpecsBox {{ background-color: {theme.SURFACE_ALT}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
         )
         if hasattr(self, "downloads_box"):
             self.downloads_box.setStyleSheet(
@@ -2700,7 +2619,7 @@ class _HFDownloadWorker(QThread):
 
 
 class HFModelTTSCard(QFrame):
-    """Unified settings card for Supertonic 3 and Kokoro-82M (auto-discovery + HF download + delete + status)."""
+    """Unified collapsible settings card for Supertonic 3 and Kokoro-82M matching H2MTTSCard."""
 
     changed = Signal()
 
@@ -2708,101 +2627,303 @@ class HFModelTTSCard(QFrame):
         super().__init__(parent)
         self._kind = engine_kind  # "supertonic" | "kokoro"
         self._worker: Optional[_HFDownloadWorker] = None
+        self._active_pkg_ids: List[str] = []
+        self.pkg_widgets: Dict[str, Dict[str, Any]] = {}
         self.setObjectName("HFModelTTSCard")
         self._build_ui()
         self.apply_theme()
+        self.check_status()
 
     def _build_ui(self) -> None:
         is_st = self._kind == "supertonic"
-        title_txt = "Supertonic 3 (ONNX Đa ngôn ngữ)" if is_st else "Kokoro-82M (ONNX CPU / PyTorch GPU)"
-        tag_txt = "44.1 kHz · 31 ngôn ngữ · CPU" if is_st else "24 kHz · 8 ngôn ngữ · CPU/GPU"
-        repo_hint = "hoangmui410/Supertonic-3" if is_st else "hoangmui410/Kokoro-82M-ONNX & Kokoro-82M-Torch"
-        sub_txt = (
-            "Model ONNX thuần CPU chất lượng cao từ Supertone (10 giọng F1..F5, M1..M5; hỗ trợ vi, en, ja, ko, fr, es, pt, pl, ...).\n"
-            f"Kho tải: {repo_hint} · Tự động nhận model có sẵn trong cit-voice-studio hoặc thư mục bên dưới."
+        display_name = "Supertonic 3" if is_st else "Kokoro-82M"
+        header_title = f"Giọng đọc local – {display_name}"
+        tag_txt = "44.1 kHz · 16 ngôn ngữ · CPU" if is_st else "24 kHz · 8 ngôn ngữ · CPU/GPU"
+        repo_hint = (
+            "hoangmui410/Supertonic-3"
             if is_st
-            else "Model 82M tự nhiên với 54 giọng hỗ trợ EN (US/UK), FR, ES, PT, IT, HI, JA, ZH (CPU ONNX / GPU CUDA PyTorch).\n"
-            f"Kho tải: {repo_hint} · Tự động nhận model có sẵn trong cit-voice-studio hoặc thư mục bên dưới."
+            else "hoangmui410/Kokoro-82M-ONNX & Kokoro-82M-Torch"
+        )
+        desc_txt = (
+            "Chạy model ONNX thuần CPU chất lượng cao từ Supertone (44.1 kHz, 10 giọng F1..F5 & M1..M5; "
+            "hỗ trợ vi, en, ja, ko, fr, es, pt, pl…). Tự động nhận model có sẵn trong cit-voice-studio hoặc thư mục trên máy."
+            if is_st
+            else "Model 82M tự nhiên với 54 giọng hỗ trợ EN (US/UK), FR, ES, PT, IT, HI, JA, ZH "
+            "(chạy CPU ONNX Runtime hoặc GPU CUDA PyTorch). Tự động nhận model có sẵn trong cit-voice-studio hoặc thư mục trên máy."
         )
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(14, 12, 14, 12)
-        root.setSpacing(8)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
 
-        hdr = QHBoxLayout()
-        hdr.setSpacing(8)
-        title = QLabel(title_txt)
-        title.setStyleSheet("font-size: 13px; font-weight: bold;")
-        hdr.addWidget(title)
-        badge = QLabel(tag_txt)
-        badge.setStyleSheet(
-            f"background: {theme.SURFACE_RAISED}; color: {theme.ACCENT}; "
-            "border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: bold;"
+        # ── 1. Header (identical to H2MTTSCard & PiperTTSCard) ───────────────
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
+
+        title_lbl = QLabel(header_title)
+        title_font = QFont()
+        title_font.setBold(True)
+        title_font.setPointSize(10)
+        title_lbl.setFont(title_font)
+        top_row.addWidget(title_lbl)
+
+        tag_lbl = QLabel(tag_txt)
+        tag_lbl.setStyleSheet(
+            f"background: {theme.SURFACE_RAISED}; color: {theme.TEXT_MUTED}; "
+            "border-radius: 4px; padding: 2px 6px; font-size: 11px;"
         )
-        hdr.addWidget(badge)
-        hdr.addStretch(1)
-        self.status_lbl = QLabel("Đang kiểm tra…")
-        hdr.addWidget(self.status_lbl)
-        root.addLayout(hdr)
+        top_row.addWidget(tag_lbl)
+        top_row.addStretch(1)
 
-        sub = QLabel(sub_txt)
-        sub.setWordWrap(True)
-        sub.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
-        root.addWidget(sub)
+        self.status_badge = QLabel("Chưa cài")
+        self.status_lbl = self.status_badge
+        top_row.addWidget(self.status_badge)
 
+        self._expanded = True
+        self.btn_collapse = icon_button(
+            "chevron-up", "Thu gọn / Mở rộng", role="muted", size=14, side=26
+        )
+        self.btn_collapse.clicked.connect(self.toggle_expanded)
+        top_row.addWidget(self.btn_collapse)
+        layout.addLayout(top_row)
+
+        desc = QLabel(desc_txt)
+        desc.setWordWrap(True)
+        desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+        layout.addWidget(desc)
+
+        self.body_widget = QWidget(self)
+        body_layout = QVBoxLayout(self.body_widget)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(12)
+        layout.addWidget(self.body_widget)
+
+        # ── 2. Path row ──────────────────────────────────────────────────────
         path_row = QHBoxLayout()
         path_row.setSpacing(6)
-        lbl_dir = QLabel("Thư mục:")
-        lbl_dir.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
-        path_row.addWidget(lbl_dir)
+        path_lbl = QLabel(f"Thư mục {display_name}:")
+        path_lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
         default_dir = default_supertonic_path() if is_st else default_kokoro_path()
         self.path_edit = QLineEdit(default_dir)
         self.path_edit.textChanged.connect(lambda: (self.check_status(), self.changed.emit()))
-        path_row.addWidget(self.path_edit, 1)
-        btn_browse = icon_button("folder", f"Chọn thư mục {title_txt}", role="muted", size=14, side=28)
+        btn_browse = icon_button(
+            "folder-open", f"Chọn thư mục {display_name}…", role="muted", size=14, side=30
+        )
         btn_browse.clicked.connect(self._browse_dir)
+
+        path_row.addWidget(path_lbl)
+        path_row.addWidget(self.path_edit, 1)
         path_row.addWidget(btn_browse)
-        btn_scan = QPushButton("Quét lại")
-        btn_scan.setFixedHeight(28)
-        btn_scan.clicked.connect(self.check_status)
-        path_row.addWidget(btn_scan)
-        root.addLayout(path_row)
+        body_layout.addLayout(path_row)
 
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
-        if is_st:
-            self.btn_dl_main = QPushButton("Tải Supertonic 3 (~383 MB)")
-            self.btn_dl_main.clicked.connect(self._download_supertonic)
-            btn_row.addWidget(self.btn_dl_main)
-        else:
-            self.btn_dl_main = QPushButton("Tải Kokoro ONNX + 54 giọng (~338 MB)")
-            self.btn_dl_main.clicked.connect(lambda: self._download_kokoro_pack("all_onnx"))
-            btn_row.addWidget(self.btn_dl_main)
+        # ── 3. Download Manager Box (identical to H2MTTSCard & PiperTTSCard) ─
+        self.downloads_box = QFrame()
+        self.downloads_box.setObjectName("DownloadsBox")
+        dl_layout = QVBoxLayout(self.downloads_box)
+        dl_layout.setContentsMargins(12, 12, 12, 12)
+        dl_layout.setSpacing(10)
 
-            self.btn_dl_gpu = QPushButton("+ PyTorch GPU (~312 MB)")
-            self.btn_dl_gpu.clicked.connect(lambda: self._download_kokoro_pack("torch"))
-            btn_row.addWidget(self.btn_dl_gpu)
+        dl_header = QHBoxLayout()
+        dl_title = QLabel(f"📦 Tải tài nguyên mô hình {display_name}")
+        dl_title_font = QFont()
+        dl_title_font.setBold(True)
+        dl_title_font.setPointSize(10)
+        dl_title.setFont(dl_title_font)
+        dl_header.addWidget(dl_title)
+        dl_header.addStretch(1)
+        dl_layout.addLayout(dl_header)
 
-        self.btn_cancel_dl = QPushButton("Huỷ tải")
-        self.btn_cancel_dl.setVisible(False)
+        dl_desc = QLabel(
+            f"Kho tải: {repo_hint} · Tự động tải model về thư mục trên máy để chạy offline."
+        )
+        dl_desc.setWordWrap(True)
+        dl_desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+        dl_layout.addWidget(dl_desc)
+
+        btn_bar = QHBoxLayout()
+        btn_bar.setSpacing(8)
+
+        main_btn_label = (
+            "🚀 Tải các phần bắt buộc (~383 MB)"
+            if is_st
+            else "🚀 Tải phần bắt buộc — ONNX (~338 MB)"
+        )
+        self.btn_dl_main = QPushButton(main_btn_label)
+        self.btn_dl_main.setObjectName("primaryButton")
+        set_icon(self.btn_dl_main, "download", "white", 13)
+        self.btn_dl_main.clicked.connect(
+            self._download_supertonic if is_st else (lambda: self._download_kokoro_pack("all_onnx"))
+        )
+        self.btn_install = self.btn_dl_main
+        btn_bar.addWidget(self.btn_dl_main)
+
+        self.btn_check_engine = QPushButton("🔄 Quét lại")
+        set_icon(self.btn_check_engine, "check-circle", "muted", 12)
+        self.btn_check_engine.clicked.connect(self.check_status)
+        btn_bar.addWidget(self.btn_check_engine)
+
+        self.btn_clean_engine = QPushButton("Dọn dẹp")
+        self.btn_clean_engine.setToolTip(
+            f"Dọn file tạm (.part, .tmp) hoặc gỡ model {display_name} trong thư mục cục bộ"
+        )
+        set_icon(self.btn_clean_engine, "trash", "danger", 12)
+        self.btn_clean_engine.clicked.connect(self._delete_local_model)
+        self.btn_delete = self.btn_clean_engine
+        btn_bar.addWidget(self.btn_clean_engine)
+
+        btn_bar.addStretch(1)
+        dl_layout.addLayout(btn_bar)
+
+        # Progress panel (hidden by default, matching H2MTTSCard & PiperTTSCard)
+        self.progress_container = QWidget()
+        prog_layout = QVBoxLayout(self.progress_container)
+        prog_layout.setContentsMargins(0, 4, 0, 4)
+        prog_layout.setSpacing(4)
+
+        prog_top = QHBoxLayout()
+        self.lbl_progress = QLabel("Đang chuẩn bị tải…")
+        self.lbl_progress.setStyleSheet(f"font-size: 11px; color: {theme.ACCENT}; font-weight: bold;")
+        self.progress_lbl = self.lbl_progress
+        prog_top.addWidget(self.lbl_progress, 1)
+
+        self.btn_cancel_dl = QPushButton("Hủy")
+        self.btn_cancel_dl.setFixedWidth(55)
         self.btn_cancel_dl.clicked.connect(self._cancel_download)
-        btn_row.addWidget(self.btn_cancel_dl)
-
-        btn_row.addStretch(1)
-        self.btn_delete = icon_button("trash", f"Xoá model trong thư mục {title_txt}", role="muted", size=14, side=28)
-        self.btn_delete.clicked.connect(self._delete_local_model)
-        btn_row.addWidget(self.btn_delete)
-        root.addLayout(btn_row)
+        prog_top.addWidget(self.btn_cancel_dl)
+        prog_layout.addLayout(prog_top)
 
         self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
         self.progress_bar.setFixedHeight(8)
-        self.progress_bar.setVisible(False)
-        root.addWidget(self.progress_bar)
+        self.progress_bar.setTextVisible(False)
+        prog_layout.addWidget(self.progress_bar)
 
-        self.progress_lbl = QLabel("")
-        self.progress_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
-        self.progress_lbl.setVisible(False)
-        root.addWidget(self.progress_lbl)
+        self.progress_container.setVisible(False)
+        dl_layout.addWidget(self.progress_container)
+
+        # Package rows (matching H2M_PACKAGES layout)
+        if is_st:
+            pkgs = [
+                {
+                    "id": "supertonic_main",
+                    "name": "Supertonic 3 ONNX + 10 giọng",
+                    "tag": "Bắt buộc · CPU 44.1 kHz",
+                    "tag_color": theme.ACCENT,
+                    "tag_bg": theme.SURFACE_RAISED,
+                    "size": "~383 MB",
+                    "desc": "Kho hoangmui410/Supertonic-3 (onnx/*, voice_styles/* F1..F5 & M1..M5; hỗ trợ 16 ngôn ngữ).",
+                    "core": True,
+                    "dl_fn": self._download_supertonic,
+                }
+            ]
+        else:
+            pkgs = [
+                {
+                    "id": "kokoro_onnx",
+                    "name": "Kokoro-82M ONNX + 54 giọng",
+                    "tag": "Bắt buộc · CPU 24 kHz",
+                    "tag_color": theme.ACCENT,
+                    "tag_bg": theme.SURFACE_RAISED,
+                    "size": "~338 MB",
+                    "desc": "Kho hoangmui410/Kokoro-82M-ONNX (onnx/model.onnx + 54 voices/*.bin cho EN, FR, ES, PT, IT, HI, JA, ZH).",
+                    "core": True,
+                    "dl_fn": lambda: self._download_kokoro_pack("all_onnx"),
+                },
+                {
+                    "id": "kokoro_torch",
+                    "name": "Kokoro-82M PyTorch CUDA",
+                    "tag": "Tùy chọn · GPU CUDA",
+                    "tag_color": theme.BLUE,
+                    "tag_bg": theme.SURFACE_RAISED,
+                    "size": "~312 MB",
+                    "desc": "Kho hoangmui410/Kokoro-82M-Torch (config.json, kokoro-v1_0.pth) để tăng tốc GPU NVIDIA CUDA.",
+                    "core": False,
+                    "dl_fn": lambda: self._download_kokoro_pack("torch"),
+                },
+            ]
+
+        for pkg in pkgs:
+            row_frame = QFrame()
+            row_frame.setObjectName("PkgRow")
+            row_layout = QHBoxLayout(row_frame)
+            row_layout.setContentsMargins(10, 8, 10, 8)
+            row_layout.setSpacing(10)
+
+            info_col = QVBoxLayout()
+            info_col.setSpacing(2)
+
+            title_row = QHBoxLayout()
+            title_row.setSpacing(8)
+            name_lbl = QLabel(pkg["name"])
+            name_font = QFont()
+            name_font.setBold(True)
+            name_font.setPointSize(9)
+            name_lbl.setFont(name_font)
+            title_row.addWidget(name_lbl)
+
+            pkg_tag = QLabel(pkg["tag"])
+            pkg_tag.setStyleSheet(
+                f"background: {pkg['tag_bg']}; color: {pkg['tag_color']}; "
+                "border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600;"
+            )
+            title_row.addWidget(pkg_tag)
+            title_row.addStretch(1)
+            info_col.addLayout(title_row)
+
+            sub_lbl = QLabel(f"{pkg['size']} — {pkg['desc']}")
+            sub_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 10.5px;")
+            sub_lbl.setWordWrap(True)
+            info_col.addWidget(sub_lbl)
+            row_layout.addLayout(info_col, 1)
+
+            pkg_status = QLabel("Chưa tải")
+            pkg_status.setFixedWidth(92)
+            pkg_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            row_layout.addWidget(pkg_status)
+
+            btn_dl = QPushButton("Tải về")
+            btn_dl.setFixedWidth(74)
+            btn_dl.clicked.connect(pkg["dl_fn"])
+            row_layout.addWidget(btn_dl)
+            if pkg["id"] == "kokoro_torch":
+                self.btn_dl_gpu = btn_dl
+
+            btn_trash = icon_button("trash", f"Xoá {pkg['name']} khỏi thư mục cục bộ", role="danger", size=13, side=28)
+            btn_trash.clicked.connect(lambda _, pid=pkg["id"]: self._delete_pkg_clicked(pid))
+            btn_trash.setVisible(False)
+            row_layout.addWidget(btn_trash)
+
+            self.pkg_widgets[pkg["id"]] = {
+                "frame": row_frame,
+                "status_badge": pkg_status,
+                "btn_dl": btn_dl,
+                "btn_trash": btn_trash,
+                "pkg": pkg,
+            }
+            dl_layout.addWidget(row_frame)
+
+        body_layout.addWidget(self.downloads_box)
+
+        self.engine_status = QLabel("")
+        body_layout.addWidget(self.engine_status)
+
+    def is_expanded(self) -> bool:
+        return self._expanded
+
+    def toggle_expanded(self) -> None:
+        self.set_expanded(not self._expanded)
+
+    def set_expanded(self, expanded: bool) -> None:
+        self._expanded = bool(expanded)
+        self.body_widget.setVisible(self._expanded)
+        set_icon(
+            self.btn_collapse,
+            "chevron-up" if self._expanded else "chevron-down",
+            "muted",
+            14,
+        )
+        self.btn_collapse.setToolTip("Thu gọn" if self._expanded else "Mở rộng")
 
     def _browse_dir(self) -> None:
         start = self.path_edit.text().strip() or str(ROOT)
@@ -2824,48 +2945,215 @@ class HFModelTTSCard(QFrame):
 
         return KokoroTTSEngine(cfg)
 
+    def _paint_pkg_badge(self, w: Dict[str, Any], state: str, text: str, tooltip: str) -> None:
+        color = {
+            "installed": theme.SUCCESS,
+            "downloading": theme.BLUE,
+            "error": theme.DANGER,
+            "missing": theme.WARNING,
+        }.get(state, theme.WARNING)
+        w["status_badge"].setText(text)
+        w["status_badge"].setToolTip(tooltip)
+        w["status_badge"].setStyleSheet(
+            f"background: {theme.SURFACE_RAISED}; color: {color}; "
+            "border-radius: 8px; padding: 2px 6px; font-size: 10px; font-weight: bold;"
+        )
+
     def check_status(self) -> None:
         eng = self._engine()
-        ok, full_msg = eng.check_ready()
-        if ok:
-            voices_cnt = len(eng.available_voices())
-            if self._kind == "kokoro":
-                gpu_note = " · GPU PyTorch & CPU ONNX" if eng.resolve_torch_root() is not None else " · CPU ONNX"
-                short = f"● Đã sẵn sàng · {voices_cnt} giọng{gpu_note}"
-            else:
-                short = f"● Đã sẵn sàng · {voices_cnt} giọng (CPU ONNX)"
-            self.status_lbl.setText(short)
-            self.status_lbl.setToolTip(full_msg)
-            paint_status(self.status_lbl, "success")
-        else:
-            self.status_lbl.setText("● Chưa tải model")
-            self.status_lbl.setToolTip(full_msg)
-            paint_status(self.status_lbl, "warning")
-
         local_dir = self._local_dir()
-        has_local = local_dir.is_dir() and any(local_dir.iterdir())
+        has_local_any = local_dir.is_dir() and any(local_dir.iterdir())
+
+        if self._kind == "supertonic":
+            resolved = eng.resolve_root()
+            has_local_pkg = (
+                local_dir.is_dir()
+                and ((local_dir / "onnx").is_dir() and any((local_dir / "onnx").glob("*.onnx")))
+            )
+            w = self.pkg_widgets.get("supertonic_main")
+            if resolved is not None:
+                voices_cnt = len(eng.available_voices())
+                if has_local_pkg:
+                    self._paint_pkg_badge(w, "installed", "✓ Đã có", f"Đang dùng model tại: {resolved}")
+                    w["btn_dl"].setText("Tải lại")
+                    w["btn_trash"].setVisible(True)
+                    w["btn_trash"].setEnabled(not (self._worker and self._worker.isRunning()))
+                else:
+                    self._paint_pkg_badge(w, "installed", "✓ Sẵn (cache)", f"Đang dùng cache có sẵn: {resolved}")
+                    w["btn_dl"].setText("Tải về máy")
+                    w["btn_trash"].setVisible(False)
+                self.status_badge.setText("Đã cài đủ")
+                self.status_badge.setToolTip(f"Supertonic 3 · {voices_cnt} giọng (CPU ONNX)\nNguồn: {resolved}")
+                self.status_badge.setStyleSheet(
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
+                    "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+                )
+                self.btn_dl_main.setText("🚀 Đã cài đủ phần bắt buộc")
+            else:
+                self._paint_pkg_badge(w, "missing", "Chưa tải", "Model Supertonic 3 chưa có trên máy.")
+                w["btn_dl"].setText("Tải về")
+                w["btn_trash"].setVisible(has_local_any)
+                self.status_badge.setText("Chưa cài")
+                self.status_badge.setToolTip("Chưa tìm thấy model Supertonic 3.")
+                self.status_badge.setStyleSheet(
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
+                    "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+                )
+                self.btn_dl_main.setText("🚀 Tải các phần bắt buộc (~383 MB)")
+        else:
+            onnx_root = eng.resolve_onnx_root()
+            torch_root = eng.resolve_torch_root()
+            has_local_onnx = (local_dir / "onnx" / "model.onnx").is_file()
+            has_local_torch = (local_dir / "kokoro-v1_0.pth").is_file()
+
+            w_onnx = self.pkg_widgets.get("kokoro_onnx")
+            if onnx_root is not None:
+                if has_local_onnx:
+                    self._paint_pkg_badge(w_onnx, "installed", "✓ Đã có", f"Đang dùng ONNX tại: {onnx_root}")
+                    w_onnx["btn_dl"].setText("Tải lại")
+                    w_onnx["btn_trash"].setVisible(True)
+                    w_onnx["btn_trash"].setEnabled(not (self._worker and self._worker.isRunning()))
+                else:
+                    self._paint_pkg_badge(w_onnx, "installed", "✓ Sẵn (cache)", f"Đang dùng cache ONNX: {onnx_root}")
+                    w_onnx["btn_dl"].setText("Tải về máy")
+                    w_onnx["btn_trash"].setVisible(False)
+            else:
+                self._paint_pkg_badge(w_onnx, "missing", "Chưa tải", "Chưa tìm thấy Kokoro-82M ONNX.")
+                w_onnx["btn_dl"].setText("Tải về")
+                w_onnx["btn_trash"].setVisible(False)
+
+            w_torch = self.pkg_widgets.get("kokoro_torch")
+            if torch_root is not None:
+                if has_local_torch:
+                    self._paint_pkg_badge(w_torch, "installed", "✓ Đã có", f"Đang dùng PyTorch GPU tại: {torch_root}")
+                    w_torch["btn_dl"].setText("Tải lại")
+                    w_torch["btn_trash"].setVisible(True)
+                    w_torch["btn_trash"].setEnabled(not (self._worker and self._worker.isRunning()))
+                else:
+                    self._paint_pkg_badge(w_torch, "installed", "✓ Sẵn (cache)", f"Đang dùng cache PyTorch: {torch_root}")
+                    w_torch["btn_dl"].setText("Tải về máy")
+                    w_torch["btn_trash"].setVisible(False)
+            else:
+                self._paint_pkg_badge(w_torch, "missing", "Chưa tải", "Tùy chọn tăng tốc GPU CUDA (PyTorch).")
+                w_torch["btn_dl"].setText("Tải về")
+                w_torch["btn_trash"].setVisible(False)
+
+            voices_cnt = len(eng.available_voices()) if onnx_root is not None else 0
+            if onnx_root is not None:
+                self.status_badge.setText("Đã cài đủ")
+                gpu_note = " · GPU PyTorch & CPU ONNX" if torch_root is not None else " · CPU ONNX"
+                self.status_badge.setToolTip(f"Kokoro-82M · {voices_cnt} giọng{gpu_note}\nNguồn ONNX: {onnx_root}")
+                self.status_badge.setStyleSheet(
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
+                    "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+                )
+                self.btn_dl_main.setText("🚀 Đã cài đủ phần bắt buộc")
+            elif torch_root is not None:
+                self.status_badge.setText("Thiếu gói")
+                self.status_badge.setToolTip("Đã có PyTorch GPU, cần thêm Kokoro ONNX + 54 giọng.")
+                self.status_badge.setStyleSheet(
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.WARNING}; "
+                    "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+                )
+                self.btn_dl_main.setText("🚀 Tải phần bắt buộc — ONNX (~338 MB)")
+            else:
+                self.status_badge.setText("Chưa cài")
+                self.status_badge.setToolTip("Chưa tìm thấy model Kokoro-82M.")
+                self.status_badge.setStyleSheet(
+                    f"background: {theme.SURFACE_RAISED}; color: {theme.DANGER}; "
+                    "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+                )
+                self.btn_dl_main.setText("🚀 Tải phần bắt buộc — ONNX (~338 MB)")
+
         if hasattr(self, "btn_delete"):
-            self.btn_delete.setEnabled(has_local and not (self._worker and self._worker.isRunning()))
+            self.btn_delete.setEnabled(has_local_any and not (self._worker and self._worker.isRunning()))
+
+    def _delete_pkg_clicked(self, pkg_id: str) -> None:
+        target = self._local_dir()
+        if not target.is_dir():
+            return
+        if pkg_id == "kokoro_torch":
+            reply = QMessageBox.question(
+                self,
+                "Xoá Kokoro-82M PyTorch GPU",
+                f"Bạn có chắc chắn muốn xoá file PyTorch GPU (`kokoro-v1_0.pth`) trong:\n{target}?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            for fname in ("kokoro-v1_0.pth", "config.json"):
+                fp = target / fname
+                if fp.is_file():
+                    try:
+                        fp.unlink()
+                    except Exception as exc:
+                        QMessageBox.warning(self, "Không thể xoá", f"Lỗi xoá {fp}: {exc}")
+            paint_status(self.engine_status, "success")
+            self.engine_status.setText("Đã xoá gói Kokoro-82M PyTorch GPU khỏi thư mục cục bộ.")
+            self.check_status()
+            self.changed.emit()
+            return
+        if pkg_id == "kokoro_onnx":
+            reply = QMessageBox.question(
+                self,
+                "Xoá Kokoro-82M ONNX",
+                f"Bạn có chắc chắn muốn xoá `onnx/` và `voices/` trong:\n{target}?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            for sub in ("onnx", "voices"):
+                sp = target / sub
+                if sp.is_dir():
+                    shutil.rmtree(sp, ignore_errors=True)
+            paint_status(self.engine_status, "success")
+            self.engine_status.setText("Đã xoá gói Kokoro-82M ONNX khỏi thư mục cục bộ.")
+            self.check_status()
+            self.changed.emit()
+            return
+        self._delete_local_model()
 
     def _delete_local_model(self) -> None:
         target = self._local_dir()
         if not target.is_dir():
+            QMessageBox.information(self, "Dọn dẹp", "Thư mục model cục bộ chưa tồn tại trên máy.")
             return
+        cleaned_files = 0
+        cleaned_bytes = 0
+        for pattern in ("*.part", "*.tmp"):
+            for f in target.rglob(pattern):
+                if f.is_file():
+                    try:
+                        sz = f.stat().st_size
+                        f.unlink()
+                        cleaned_files += 1
+                        cleaned_bytes += sz
+                    except Exception:
+                        pass
+        mb = round(cleaned_bytes / (1024 * 1024), 2)
+        msg = f"Đã dọn {cleaned_files} file tạm ({mb} MB)." if cleaned_files > 0 else "Không có file tạm nào cần dọn."
         reply = QMessageBox.question(
             self,
-            "Xoá model cục bộ",
-            f"Bạn có chắc chắn muốn xoá thư mục model đã tải tại:\n{target}\n\n"
+            "Dọn dẹp model cục bộ",
+            f"{msg}\n\nBạn có muốn xoá TOÀN BỘ model đã tải tại:\n{target}\n\n"
             "(Không ảnh hưởng tới cache ngoài như cit-voice-studio.)",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
+            if cleaned_files > 0:
+                self.check_status()
+                self.changed.emit()
             return
         try:
             shutil.rmtree(target)
         except Exception as exc:
             QMessageBox.warning(self, "Không thể xoá", f"Lỗi xoá {target}: {exc}")
             return
+        paint_status(self.engine_status, "success")
+        self.engine_status.setText(f"Đã dọn sạch model trong {target}.")
         self.check_status()
         self.changed.emit()
 
@@ -2873,29 +3161,38 @@ class HFModelTTSCard(QFrame):
         if self._worker and self._worker.isRunning():
             self._worker.cancel()
             self.btn_cancel_dl.setEnabled(False)
-            self.progress_lbl.setText("Đang huỷ tiến trình tải…")
+            self.lbl_progress.setText("Đang dừng tiến trình tải…")
+        else:
+            self.progress_container.setVisible(False)
 
-    def _start_jobs(self, jobs: List[Tuple[str, str, Optional[str]]]) -> None:
+    def _start_jobs(self, jobs: List[Tuple[str, str, Optional[str]]], pkg_ids: Optional[List[str]] = None) -> None:
         if self._worker and self._worker.isRunning():
             return
         target = self._local_dir()
+        self._active_pkg_ids = list(pkg_ids or [])
+        for pid in self._active_pkg_ids:
+            w = self.pkg_widgets.get(pid)
+            if w:
+                self._paint_pkg_badge(w, "downloading", "Đang tải…", "Đang tải từ Hugging Face…")
+
         self.progress_bar.setRange(0, 0)
-        self.progress_bar.setVisible(True)
-        self.progress_lbl.setText("Đang kết nối Hugging Face…")
-        self.progress_lbl.setVisible(True)
-        self.btn_dl_main.setEnabled(False)
-        if hasattr(self, "btn_dl_gpu"):
-            self.btn_dl_gpu.setEnabled(False)
-        self.btn_delete.setEnabled(False)
-        self.btn_cancel_dl.setVisible(True)
+        self.progress_bar.setValue(0)
+        self.progress_container.setVisible(True)
+        self.lbl_progress.setText("Đang kết nối Hugging Face…")
+        self.btn_cancel_dl.setText("Hủy")
         self.btn_cancel_dl.setEnabled(True)
+        self.btn_dl_main.setEnabled(False)
+        for w in self.pkg_widgets.values():
+            w["btn_dl"].setEnabled(False)
+            w["btn_trash"].setEnabled(False)
+        self.btn_delete.setEnabled(False)
 
         self._worker = _HFDownloadWorker(target, jobs, parent=self)
         self._worker.progress.connect(
             lambda cur, tot, fname: (
                 self.progress_bar.setRange(0, max(1, tot)),
                 self.progress_bar.setValue(cur),
-                self.progress_lbl.setText(f"[{cur}/{tot}] {fname}"),
+                self.lbl_progress.setText(f"[{cur}/{tot}] {fname}"),
             )
         )
         self._worker.finished_all.connect(self._on_download_done)
@@ -2904,17 +3201,27 @@ class HFModelTTSCard(QFrame):
     def _on_download_done(self, ok: bool, msg: str) -> None:
         self._worker = None
         self.btn_dl_main.setEnabled(True)
-        if hasattr(self, "btn_dl_gpu"):
-            self.btn_dl_gpu.setEnabled(True)
-        self.btn_cancel_dl.setVisible(False)
-        self.progress_lbl.setText(msg)
+        for w in self.pkg_widgets.values():
+            w["btn_dl"].setEnabled(True)
+        self.btn_cancel_dl.setText("Đóng")
+        self.btn_cancel_dl.setEnabled(True)
+        self.lbl_progress.setText(msg)
+        paint_status(self.engine_status, "success" if ok else "warning")
+        self.engine_status.setText(msg)
+        if not ok:
+            for pid in self._active_pkg_ids:
+                w = self.pkg_widgets.get(pid)
+                if w:
+                    self._paint_pkg_badge(w, "error", "Lỗi tải", msg)
+                    w["btn_dl"].setText("Thử lại")
+        self._active_pkg_ids = []
         self.check_status()
         self.changed.emit()
 
     def _download_supertonic(self) -> None:
         from core.supertonic_tts_engine import SUPERTONIC_REPO, SUPERTONIC_REV
 
-        self._start_jobs([(SUPERTONIC_REPO, "*", SUPERTONIC_REV)])
+        self._start_jobs([(SUPERTONIC_REPO, "*", SUPERTONIC_REV)], pkg_ids=["supertonic_main"])
 
     def _download_kokoro_pack(self, pack: str) -> None:
         from core.kokoro_tts_engine import (
@@ -2928,18 +3235,31 @@ class HFModelTTSCard(QFrame):
 
         if pack == "ja":
             jobs = [(KOKORO_ONNX_REPO, f"voices/{v}.bin", KOKORO_ONNX_REV) for v in KOKORO_JA_VOICES]
+            pids = ["kokoro_onnx"]
         elif pack == "zh":
             jobs = [(KOKORO_ONNX_REPO, f"voices/{v}.bin", KOKORO_ONNX_REV) for v in KOKORO_ZH_VOICES]
+            pids = ["kokoro_onnx"]
         elif pack == "torch":
             jobs = [(KOKORO_TORCH_REPO, "*", KOKORO_TORCH_REV)]
+            pids = ["kokoro_torch"]
         else:
             jobs = [(KOKORO_ONNX_REPO, "*", KOKORO_ONNX_REV)]
-        self._start_jobs(jobs)
+            pids = ["kokoro_onnx"]
+        self._start_jobs(jobs, pkg_ids=pids)
 
     def apply_theme(self) -> None:
         self.setStyleSheet(
             f"QFrame#HFModelTTSCard {{ background-color: {theme.GROUP_BG}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 8px; }}"
         )
+        if hasattr(self, "downloads_box"):
+            self.downloads_box.setStyleSheet(
+                f"QFrame#DownloadsBox {{ background-color: {theme.SURFACE_ALT}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
+            )
+        if hasattr(self, "pkg_widgets"):
+            for w in self.pkg_widgets.values():
+                w["frame"].setStyleSheet(
+                    f"QFrame#PkgRow {{ background-color: {theme.SURFACE}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
+                )
 
 
 class GeneralSettingsPage(QWidget):
@@ -2956,9 +3276,69 @@ class GeneralSettingsPage(QWidget):
         layout.addWidget(
             PageHeader(
                 "Cài đặt chung",
-                "Quản lý đường dẫn các công cụ nền tảng và tùy chọn hệ thống AutoYout.",
+                "Quản lý đường dẫn các công cụ nền tảng, đánh giá phần cứng và tùy chọn hệ thống AutoYout.",
             )
         )
+
+        # Hardware Specs Group (moved from H2MTTSCard)
+        specs_group = QGroupBox("Đánh giá cấu hình")
+        specs_group_layout = QVBoxLayout(specs_group)
+        specs_group_layout.setContentsMargins(10, 12, 10, 10)
+        specs_group_layout.setSpacing(8)
+
+        self.specs_box = QFrame()
+        self.specs_box.setObjectName("SpecsBox")
+        specs_layout = QVBoxLayout(self.specs_box)
+        specs_layout.setContentsMargins(12, 10, 12, 10)
+        specs_layout.setSpacing(8)
+
+        rate_row = QHBoxLayout()
+        self.rating_badge = QLabel("• Đánh giá cấu hình: Đang kiểm tra…")
+        self.rating_badge.setStyleSheet(
+            f"background: {theme.SURFACE_RAISED}; color: {theme.SUCCESS}; "
+            "border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+        )
+        rate_row.addWidget(self.rating_badge)
+        rate_row.addStretch(1)
+
+        self.btn_redetect = icon_button(
+            "refresh", "Dò lại cấu hình phần cứng", role="muted", size=13, side=28
+        )
+        self.btn_redetect.clicked.connect(self.detect_specs)
+        btn_redetect_text = QPushButton("Dò lại")
+        btn_redetect_text.setFlat(True)
+        btn_redetect_text.setStyleSheet(f"color: {theme.ACCENT}; font-size: 11px;")
+        btn_redetect_text.clicked.connect(self.detect_specs)
+        rate_row.addWidget(self.btn_redetect)
+        rate_row.addWidget(btn_redetect_text)
+        specs_layout.addLayout(rate_row)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(4)
+        grid.addWidget(self._make_spec_label("CPU"), 0, 0)
+        self.lbl_cpu = QLabel("—")
+        grid.addWidget(self.lbl_cpu, 0, 1)
+
+        grid.addWidget(self._make_spec_label("RAM"), 1, 0)
+        self.lbl_ram = QLabel("—")
+        grid.addWidget(self.lbl_ram, 1, 1)
+
+        grid.addWidget(self._make_spec_label("GPU"), 2, 0)
+        self.lbl_gpu = QLabel("—")
+        grid.addWidget(self.lbl_gpu, 2, 1)
+
+        grid.addWidget(self._make_spec_label("Ổ đĩa trống"), 3, 0)
+        self.lbl_disk = QLabel("—")
+        grid.addWidget(self.lbl_disk, 3, 1)
+        specs_layout.addLayout(grid)
+
+        self.lbl_note = QLabel("• Đang dò thông số phần cứng…")
+        self.lbl_note.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+        specs_layout.addWidget(self.lbl_note)
+
+        specs_group_layout.addWidget(self.specs_box)
+        layout.addWidget(specs_group)
 
         # Paths Group
         paths_box = QGroupBox("Đường dẫn hệ thống")
@@ -3056,6 +3436,32 @@ class GeneralSettingsPage(QWidget):
 
         layout.addWidget(app_box)
         layout.addStretch(1)
+
+        self.apply_theme()
+        self.detect_specs()
+
+    @staticmethod
+    def _make_spec_label(text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-weight: bold; font-size: 11px;")
+        lbl.setFixedWidth(80)
+        return lbl
+
+    def detect_specs(self) -> None:
+        path = self.h2mtts_edit.text().strip() if hasattr(self, "h2mtts_edit") else ""
+        data = detect_hardware(path or str(ROOT))
+        self.lbl_cpu.setText(data["cpu"])
+        self.lbl_ram.setText(data["ram"])
+        self.lbl_gpu.setText(data["gpu"])
+        self.lbl_disk.setText(data["disk"])
+        self.lbl_note.setText(data["note"])
+        self.rating_badge.setText(f"• Đánh giá cấu hình: {data['rating']}")
+
+    def apply_theme(self) -> None:
+        if hasattr(self, "specs_box"):
+            self.specs_box.setStyleSheet(
+                f"QFrame#SpecsBox {{ background-color: {theme.SURFACE_ALT}; border: 1px solid {theme.GROUP_BORDER}; border-radius: 6px; }}"
+            )
 
     @staticmethod
     def _wrap(layout) -> QWidget:
@@ -3158,7 +3564,7 @@ class SettingsTab(QWidget):
                 self.card_h2mtts.path_edit.blockSignals(True)
                 self.card_h2mtts.path_edit.setText(text)
                 self.card_h2mtts.path_edit.blockSignals(False)
-                self.card_h2mtts.detect_specs()
+                self.general_page.detect_specs()
                 self.card_h2mtts.check_packages_status()
 
         self.card_h2mtts.path_edit.textChanged.connect(_sync_h2_from_card)
@@ -3380,7 +3786,7 @@ class SettingsTab(QWidget):
             h2 = normalize_h2mtts_path(raw_h2)
             self.general_page.h2mtts_edit.setText(h2)
             self.card_h2mtts.path_edit.setText(h2)
-            self.card_h2mtts.detect_specs()
+            self.general_page.detect_specs()
 
             raw_piper = str(paths.get("piper") or "").strip()
             piper_norm = normalize_piper_path(raw_piper)
@@ -3571,6 +3977,8 @@ class SettingsTab(QWidget):
         self._settings = settings
 
     def apply_theme(self) -> None:
+        if hasattr(self, "general_page"):
+            self.general_page.apply_theme()
         if hasattr(self, "card_gemini"):
             self.card_gemini.apply_theme()
         if hasattr(self, "card_cloudflare_text"):
